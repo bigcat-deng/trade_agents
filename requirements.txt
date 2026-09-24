@@ -1,2 +1,4 @@
 fastapi==0.141.1
 uvicorn==0.53.0
+baostock==0.9.4
+akshare==1.18.97
