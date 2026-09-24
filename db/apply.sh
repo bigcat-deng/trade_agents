@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIGRATIONS_DIR="${ROOT}/db/migrations"
-DATABASE_URL="${DATABASE_URL:-postgresql://deng@localhost:5432/analytics}"
+# Prefer Unix socket + peer auth (no password). TCP to localhost asks for a password on Ubuntu.
+DATABASE_URL="${DATABASE_URL:-postgresql:///analytics}"
+
 
 if ! command -v psql >/dev/null 2>&1; then
   echo "psql was not found. Install PostgreSQL client tools, then run this script again." >&2

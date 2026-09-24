@@ -8,10 +8,16 @@ SQL migrations for the `analytics` PostgreSQL database.
 - Database `analytics` exists
 - Local user can connect without a password, or `DATABASE_URL` is set
 
-Default connection:
+Default connection (Unix socket, current OS user, peer auth):
 
 ```text
-postgresql://deng@localhost:5432/analytics
+postgresql:///analytics
+```
+
+This avoids password prompts on Ubuntu. To use TCP instead:
+
+```bash
+DATABASE_URL=postgresql://deng@127.0.0.1:5432/analytics bash db/apply.sh
 ```
 
 ## Apply
@@ -25,7 +31,7 @@ bash db/apply.sh
 Custom connection:
 
 ```bash
-DATABASE_URL=postgresql://deng@localhost:5432/analytics bash db/apply.sh
+DATABASE_URL=postgresql:///analytics bash db/apply.sh
 ```
 
 The script records applied files in `schema_migrations` and skips them on later runs.
