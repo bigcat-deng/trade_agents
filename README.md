@@ -67,6 +67,26 @@ http://127.0.0.1:8000/stocks
 
 It shows the latest sync date and the first 30 trading A-share stocks by code.
 
+## Sync daily bars
+
+Unadjusted daily K-lines for all latest trading A-shares.
+Source order: baostock → Eastmoney → Tencent. Stored format follows baostock.
+
+```bash
+# First full-ish backfill: last 200 trading days
+.venv/bin/python -m app.jobs.sync_stock_daily_bars --trading-days 200
+
+# Daily update: last 5 trading days
+.venv/bin/python -m app.jobs.sync_stock_daily_bars --trading-days 5
+
+# Explicit range
+.venv/bin/python -m app.jobs.sync_stock_daily_bars --start-date 2026-09-01 --end-date 2026-09-23
+
+# Trial / resume
+.venv/bin/python -m app.jobs.sync_stock_daily_bars --limit 5 --trading-days 5
+.venv/bin/python -m app.jobs.sync_stock_daily_bars --resume --trading-days 200
+```
+
 ## Move to another server
 
 1. Clone the repository.
