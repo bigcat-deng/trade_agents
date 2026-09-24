@@ -1,0 +1,23 @@
+---
+description: Prefer baostock over akshare; align codes and shared fields to baostock
+alwaysApply: true
+---
+
+# Market data source priority
+
+- Primary source: `baostock`
+- Secondary source: `akshare`
+- When fields must align across sources (especially stock codes), treat baostock as the source of truth
+- Map or normalize akshare values to baostock conventions before merge, compare, or database write
+- Do not invent a third coding scheme; reuse baostock formats
+
+## Examples
+
+```python
+# BAD: keep akshare code as the canonical key when merging
+merged = ak_df.merge(bs_df, left_on="code", right_on="code")
+
+# GOOD: normalize to baostock code first, then join on that key
+ak_df["code"] = normalize_to_baostock_code(ak_df["code"])
+merged = bs_df.merge(ak_df, on="code", how="left")
+```
