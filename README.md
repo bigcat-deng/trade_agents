@@ -30,10 +30,22 @@ curl http://127.0.0.1:8000/health
 
 Expected response: `{"status":"ok"}`.
 
+## Database
+
+PostgreSQL database `analytics` must already exist. Apply schema migrations with:
+
+```bash
+bash db/apply.sh
+```
+
+Details are in `db/README.md`.
+
 ## Move to another server
 
 1. Clone the repository.
 2. Install Python 3.11 or newer.
-3. Run `bash scripts/install.sh`.
-4. Start uvicorn with the command above.
-5. Open `/health` and confirm the response.
+3. Install PostgreSQL and create the `analytics` database.
+4. Run `bash scripts/install.sh`.
+5. Run `bash db/apply.sh`.
+6. Start uvicorn with the command above.
+7. Open `/health` and confirm the response.
