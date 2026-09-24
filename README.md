@@ -40,6 +40,17 @@ bash db/apply.sh
 
 Details are in `db/README.md`.
 
+## Sync stock universe
+
+Download one day of `baostock.query_all_stock` into `stock_universe_daily`:
+
+```bash
+.venv/bin/python -m app.jobs.sync_stock_universe
+.venv/bin/python -m app.jobs.sync_stock_universe --day 2024-12-20
+```
+
+Schedule with system cron if needed. The job does not include a built-in scheduler.
+
 ## Move to another server
 
 1. Clone the repository.
