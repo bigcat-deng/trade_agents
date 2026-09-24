@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>正常交易个股</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 3rem;
+    }
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+    }
+    .empty {
+      padding: 1rem 1.1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.85rem;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.95rem;
+    }
+    th {
+      font-weight: 600;
+      color: var(--muted);
+      background: #fafaf9;
+    }
+    tr:last-child td { border-bottom: none; }
+    code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>正常交易个股</h1>
+    {% if sync_date %}
+      <p class="meta">最后同步日期：{{ sync_date }} · 显示前 {{ stocks|length }} 只（按代码升序）</p>
+    {% else %}
+      <p class="meta">暂无同步日期</p>
+    {% endif %}
+
+    {% if stocks %}
+      <table>
+        <thead>
+          <tr>
+            <th>同步日期</th>
+            <th>代码</th>
+            <th>名称</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for stock in stocks %}
+            <tr>
+              <td>{{ stock.trade_date }}</td>
+              <td><code>{{ stock.code }}</code></td>
+              <td>{{ stock.code_name }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">暂无同步数据，请先运行同步任务。</div>
+    {% endif %}
+  </main>
+</body>
+</html>

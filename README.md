@@ -51,6 +51,22 @@ Download one day of `baostock.query_all_stock` into `stock_universe_daily`:
 
 Schedule with system cron if needed. The job does not include a built-in scheduler.
 
+Find the latest day baostock still has universe data for:
+
+```bash
+.venv/bin/python scripts/find_latest_stock_universe_day.py
+```
+
+## Stocks page
+
+After the database has synced data, open:
+
+```text
+http://127.0.0.1:8000/stocks
+```
+
+It shows the latest sync date and the first 30 trading A-share stocks by code.
+
 ## Move to another server
 
 1. Clone the repository.
