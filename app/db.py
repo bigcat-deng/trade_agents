@@ -382,6 +382,34 @@ def fetch_board_daily_bars_from_db(
     ]
 
 
+def fetch_board_heat_series(
+    board_type: str,
+    board_code: str,
+    start: date,
+    end: date,
+) -> list[dict[str, object]]:
+    """Short and long heat for one board. Null heats stay null."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date, heat_short, heat_long
+                FROM board_heat_daily
+                WHERE board_type = %s
+                  AND board_code = %s
+                  AND trade_date >= %s
+                  AND trade_date <= %s
+                ORDER BY trade_date
+                """,
+                (board_type, board_code, start, end),
+            )
+            rows = cur.fetchall()
+    return [
+        {"trade_date": row[0], "heat_short": row[1], "heat_long": row[2]}
+        for row in rows
+    ]
+
+
 def replace_board_universe(
     rows: list[BoardUniverseRow],
     *,
@@ -858,6 +886,266 @@ def fetch_industry_board_rotation(
         for row in fetched
     ]
     return as_of, prev_date, rows
+
+
+@dataclass(frozen=True)
+class IndustryHeatPoint:
+    trade_date: date
+    board_name: str
+    heat_short: object | None
+    heat_long: object | None
+    heat_short_change: object | None
+    heat_long_change: object | None
+    pct_chg: object | None
+
+
+def fetch_industry_heat_window(
+    trading_days: int,
+    as_of: date | None = None,
+) -> tuple[date | None, date | None, list[IndustryHeatPoint]]:
+    """Industry heats ending on as_of (default latest), plus the prior day changes."""
+    if trading_days < 1:
+        raise ValueError("trading_days must be >= 1")
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH all_days AS (
+                    SELECT trade_date,
+                           LAG(trade_date) OVER (ORDER BY trade_date) AS prev_date
+                    FROM (
+                        SELECT DISTINCT trade_date
+                        FROM board_heat_daily
+                        WHERE board_type = 'industry'
+                    ) AS distinct_days
+                ),
+                window_days AS (
+                    SELECT trade_date, prev_date
+                    FROM all_days
+                    WHERE %s::date IS NULL OR trade_date <= %s::date
+                    ORDER BY trade_date DESC
+                    LIMIT %s
+                ),
+                names AS (
+                    SELECT DISTINCT ON (board_code)
+                        board_code,
+                        board_name
+                    FROM board_universe_daily
+                    WHERE board_type = 'industry'
+                    ORDER BY board_code, trade_date DESC
+                )
+                SELECT
+                    h.trade_date,
+                    COALESCE(n.board_name, h.board_code) AS board_name,
+                    h.heat_short,
+                    h.heat_long,
+                    CASE
+                        WHEN h.heat_short IS NULL OR prev.heat_short IS NULL THEN NULL
+                        ELSE prev.heat_short - h.heat_short
+                    END AS heat_short_change,
+                    CASE
+                        WHEN h.heat_long IS NULL OR prev.heat_long IS NULL THEN NULL
+                        ELSE prev.heat_long - h.heat_long
+                    END AS heat_long_change,
+                    h.pct_chg,
+                    bounds.prev_date
+                FROM window_days AS bounds
+                JOIN board_heat_daily AS h
+                  ON h.board_type = 'industry'
+                 AND h.trade_date = bounds.trade_date
+                LEFT JOIN board_heat_daily AS prev
+                  ON prev.board_type = 'industry'
+                 AND prev.board_code = h.board_code
+                 AND prev.trade_date = bounds.prev_date
+                LEFT JOIN names AS n ON n.board_code = h.board_code
+                ORDER BY h.trade_date, board_name
+                """,
+                (as_of, as_of, trading_days),
+            )
+            fetched = cur.fetchall()
+    if not fetched:
+        return None, None, []
+    as_of = max(row[0] for row in fetched)
+    prev_date = next(row[7] for row in fetched if row[0] == as_of)
+    points = [
+        IndustryHeatPoint(
+            trade_date=row[0],
+            board_name=row[1],
+            heat_short=row[2],
+            heat_long=row[3],
+            heat_short_change=row[4],
+            heat_long_change=row[5],
+            pct_chg=row[6],
+        )
+        for row in fetched
+    ]
+    return as_of, prev_date, points
+
+
+@dataclass(frozen=True)
+class IndustryPriceSummary:
+    board_name: str
+    ret_20: object | None
+    range_pos: object | None
+    amount_ratio: object | None
+
+
+def fetch_industry_price_summary(
+    trading_days: int,
+    as_of: date,
+) -> list[IndustryPriceSummary]:
+    """One row per industry board on as_of.
+
+    ret_20 is the close-to-close percent change versus the close 20 trading days earlier.
+    range_pos is where that close sits between the low and high of the heat window
+    (0 at the low, 1 at the high). amount_ratio is that day's amount divided by the
+    window's average amount.
+    """
+    if trading_days < 1:
+        raise ValueError("trading_days must be >= 1")
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH heat_days AS (
+                    SELECT trade_date,
+                           LAG(trade_date, 20) OVER (ORDER BY trade_date) AS ret_base_date
+                    FROM (
+                        SELECT DISTINCT trade_date
+                        FROM board_heat_daily
+                        WHERE board_type = 'industry'
+                    ) AS distinct_days
+                ),
+                end_day AS (
+                    SELECT trade_date, ret_base_date
+                    FROM heat_days
+                    WHERE trade_date <= %s::date
+                    ORDER BY trade_date DESC
+                    LIMIT 1
+                ),
+                window_days AS (
+                    SELECT trade_date
+                    FROM heat_days
+                    WHERE trade_date <= (SELECT trade_date FROM end_day)
+                    ORDER BY trade_date DESC
+                    LIMIT %s
+                ),
+                names AS (
+                    SELECT DISTINCT ON (board_code)
+                        board_code,
+                        board_name
+                    FROM board_universe_daily
+                    WHERE board_type = 'industry'
+                    ORDER BY board_code, trade_date DESC
+                ),
+                window_stats AS (
+                    SELECT
+                        b.board_code,
+                        MIN(b.low) AS range_low,
+                        MAX(b.high) AS range_high,
+                        AVG(b.amount) AS amount_avg
+                    FROM board_daily_bar AS b
+                    JOIN window_days AS w ON w.trade_date = b.trade_date
+                    WHERE b.board_type = 'industry'
+                    GROUP BY b.board_code
+                )
+                SELECT
+                    COALESCE(n.board_name, h.board_code) AS board_name,
+                    CASE
+                        WHEN base.close IS NULL OR base.close = 0 OR today.close IS NULL THEN NULL
+                        ELSE ROUND((today.close - base.close) / base.close * 100, 2)
+                    END AS ret_20,
+                    CASE
+                        WHEN stats.range_high IS NULL
+                          OR stats.range_low IS NULL
+                          OR today.close IS NULL
+                          OR stats.range_high = stats.range_low THEN NULL
+                        ELSE ROUND(
+                            (today.close - stats.range_low)
+                            / (stats.range_high - stats.range_low),
+                            2
+                        )
+                    END AS range_pos,
+                    CASE
+                        WHEN stats.amount_avg IS NULL
+                          OR stats.amount_avg = 0
+                          OR today.amount IS NULL THEN NULL
+                        ELSE ROUND(today.amount / stats.amount_avg, 2)
+                    END AS amount_ratio
+                FROM board_heat_daily AS h
+                JOIN end_day AS ending ON h.trade_date = ending.trade_date
+                LEFT JOIN names AS n ON n.board_code = h.board_code
+                LEFT JOIN window_stats AS stats ON stats.board_code = h.board_code
+                LEFT JOIN board_daily_bar AS today
+                  ON today.board_type = 'industry'
+                 AND today.board_code = h.board_code
+                 AND today.trade_date = ending.trade_date
+                LEFT JOIN board_daily_bar AS base
+                  ON base.board_type = 'industry'
+                 AND base.board_code = h.board_code
+                 AND base.trade_date = ending.ret_base_date
+                WHERE h.board_type = 'industry'
+                ORDER BY board_name
+                """,
+                (as_of, trading_days),
+            )
+            fetched = cur.fetchall()
+    return [
+        IndustryPriceSummary(
+            board_name=row[0],
+            ret_20=row[1],
+            range_pos=row[2],
+            amount_ratio=row[3],
+        )
+        for row in fetched
+    ]
+
+
+def fetch_interpret_result(
+    template_name: str,
+    as_of: date,
+    request_model: str,
+) -> tuple[str, str] | None:
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT response_model, content
+                FROM interpret_result
+                WHERE template_name = %s
+                  AND as_of = %s
+                  AND request_model = %s
+                """,
+                (template_name, as_of, request_model),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return row[0], row[1]
+
+
+def save_interpret_result(
+    template_name: str,
+    as_of: date,
+    request_model: str,
+    response_model: str,
+    content: str,
+) -> None:
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO interpret_result (
+                    template_name, as_of, request_model, response_model, content
+                ) VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (template_name, as_of, request_model) DO UPDATE SET
+                    response_model = EXCLUDED.response_model,
+                    content = EXCLUDED.content,
+                    created_at = now()
+                """,
+                (template_name, as_of, request_model, response_model, content),
+            )
+        conn.commit()
 
 
 def fetch_board_returns(board_type: str) -> list[tuple[date, str, object]]:

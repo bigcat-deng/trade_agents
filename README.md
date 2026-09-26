@@ -166,6 +166,8 @@ Rank industry boards (`board_type = industry`) by the 5-day mean of a new return
 .venv/bin/python -m app.jobs.compute_board_heat
 ```
 
+The rotation page asks the model for a JSON reading of the latest 20 trading days. The prompt also includes, for the cutoff day only, each board's 20-session return, where the close sits in that window's high-low range, and that day's amount relative to the window average. The page renders the reply as five tables. A saved reply that is not this JSON is ignored and requested again.
+
 ## K-line demo
 
 Generic chart helper plus a test page:

@@ -11,14 +11,25 @@ from app.charts.board_rotation import render_board_rotation
 from app.charts.kline import render_kline
 from app.db import (
     fetch_board_daily_bars_from_db,
+    fetch_board_heat_series,
     fetch_daily_bars_from_db,
     fetch_industry_board_rotation,
     fetch_industry_rotation_dates,
     fetch_latest_trading_stocks,
 )
+from app.env import load_env
+from app.interpret.service import (
+    InterpretConfigError,
+    InterpretFormatError,
+    Interpretation,
+    UnknownTemplate,
+    interpret,
+)
 from app.market_data.providers import baostock_kline
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
+
+load_env()
 
 app = FastAPI()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -28,6 +39,40 @@ class SyncRunRequest(BaseModel):
     trading_days: int | None = Field(default=200, ge=1)
     resume: bool = True
     day: str | None = None
+
+
+class InterpretRequest(BaseModel):
+    as_of: str | None = None
+
+
+@app.post("/api/interpret/{template_name}")
+def interpret_api(template_name: str, body: InterpretRequest | None = None) -> dict:
+    try:
+        requested = _parse_optional_day(body.as_of if body else None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        result = interpret(template_name, requested)
+    except UnknownTemplate as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InterpretConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except InterpretFormatError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _interpretation_payload(result)
+
+
+def _interpretation_payload(result: Interpretation) -> dict:
+    return {
+        "template": result.template,
+        "as_of": result.as_of.isoformat(),
+        "model": result.model,
+        "cached": result.cached,
+        "content": result.content,
+        "reading": result.reading,
+    }
 
 
 def _parse_optional_day(value: str | None) -> date | None:
@@ -219,6 +264,7 @@ def kline_demo_page(
             if start > end:
                 raise RuntimeError("开始日期不能晚于结束日期")
 
+            heats = None
             if selected_source == "online_index":
                 records = _load_online_index(start, end)
                 title = "上证指数 sh.000001（在线）"
@@ -231,19 +277,23 @@ def kline_demo_page(
                 records = fetch_board_daily_bars_from_db(
                     "industry", "881121", start, end
                 )
+                heats = fetch_board_heat_series("industry", "881121", start, end)
                 title = "半导体 881121（本地行业）"
                 code = "881121"
             elif selected_source == "local_board_concept":
                 records = fetch_board_daily_bars_from_db(
                     "concept", "300084", start, end
                 )
+                heats = fetch_board_heat_series("concept", "300084", start, end)
                 title = "煤化工概念 300084（本地概念）"
                 code = "300084"
             else:
                 raise RuntimeError(f"未知数据来源: {selected_source}")
 
             if records:
-                chart_html = render_kline(records, title=title, code=code)
+                chart_html = render_kline(
+                    records, title=title, code=code, heats=heats
+                )
                 summary = f"{title} · {len(records)} 根K线 · {start} ~ {end}"
             else:
                 summary = f"{title} · 所选区间无数据"

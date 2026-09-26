@@ -106,6 +106,47 @@
       font-size: 0.9rem;
       min-height: 1.2em;
     }
+    .reading {
+      margin-top: 1.25rem;
+      padding: 1rem 1.1rem 1.15rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .reading h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.15rem;
+    }
+    .reading .conclusion {
+      margin: 0.75rem 0 0;
+      line-height: 1.65;
+    }
+    .reading h3 {
+      margin: 1.15rem 0 0.4rem;
+      font-size: 1rem;
+    }
+    .reading .table-wrap {
+      overflow-x: auto;
+    }
+    .reading table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    .reading th,
+    .reading td {
+      padding: 0.35rem 0.5rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      white-space: nowrap;
+    }
+    .reading td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .reading .empty-section {
+      margin: 0;
+      color: var(--muted);
+    }
     .empty {
       padding: 1.5rem 1rem;
       color: var(--muted);
@@ -145,6 +186,11 @@
       <button type="submit" id="pick-confirm" disabled>确定</button>
       <p class="note" id="pick-message"></p>
     </form>
+    <section class="reading" id="heat-reading">
+      <h2>热度解读</h2>
+      <p class="meta" id="reading-meta"></p>
+      <div id="reading-body">正在解读…</div>
+    </section>
     <script>
       const dates = {{ dates | tojson }};
       const slider = document.getElementById("date-slider");
@@ -227,6 +273,101 @@
         pickMessage.textContent = "没有这个板块";
         if (previous) loadDate(Number(slider.value));
       });
+
+      const readingAsOf = dates[dates.length - 1];
+      const readingMeta = document.getElementById("reading-meta");
+      const readingBody = document.getElementById("reading-body");
+      readingMeta.textContent = "截至 " + readingAsOf;
+      fetch("/api/interpret/industry-heat-rotation", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({as_of: readingAsOf}),
+      }).then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) {
+          readingBody.textContent = payload.detail || "解读失败";
+          return;
+        }
+        readingMeta.textContent = "截至 " + payload.as_of + " · " + payload.model;
+        renderReading(payload.reading);
+      }).catch(() => {
+        readingBody.textContent = "解读失败";
+      });
+
+      function renderReading(reading) {
+        readingBody.replaceChildren();
+        if (!reading || !reading.conclusion) {
+          readingBody.textContent = "解读失败";
+          return;
+        }
+        const conclusion = document.createElement("p");
+        conclusion.className = "conclusion";
+        conclusion.textContent = reading.conclusion;
+        readingBody.appendChild(conclusion);
+        const columns = [
+          ["board", "板块"],
+          ["heat_short", "短期热度"],
+          ["heat_long", "长期热度"],
+          ["heat_short_change", "短期变化"],
+          ["heat_long_change", "长期变化"],
+          ["pct_chg", "当天涨跌幅"],
+          ["judgment", "判断"],
+          ["note", "说明"],
+        ];
+        for (const section of reading.sections || []) {
+          const heading = document.createElement("h3");
+          heading.textContent = section.title;
+          readingBody.appendChild(heading);
+          const rows = section.rows || [];
+          if (!rows.length) {
+            const empty = document.createElement("p");
+            empty.className = "empty-section";
+            empty.textContent = "没有符合条件的板块";
+            readingBody.appendChild(empty);
+            continue;
+          }
+          const wrap = document.createElement("div");
+          wrap.className = "table-wrap";
+          const table = document.createElement("table");
+          const head = document.createElement("tr");
+          for (const [, label] of columns) {
+            const cell = document.createElement("th");
+            cell.textContent = label;
+            head.appendChild(cell);
+          }
+          const thead = document.createElement("thead");
+          thead.appendChild(head);
+          table.appendChild(thead);
+          const tbody = document.createElement("tbody");
+          for (const row of rows) {
+            const line = document.createElement("tr");
+            for (const [key] of columns) {
+              const cell = document.createElement("td");
+              if (key === "board" || key === "judgment" || key === "note") {
+                cell.textContent = row[key] || "";
+              } else {
+                cell.className = "num";
+                cell.textContent = formatNum(row[key]);
+              }
+              line.appendChild(cell);
+            }
+            tbody.appendChild(line);
+          }
+          table.appendChild(tbody);
+          wrap.appendChild(table);
+          readingBody.appendChild(wrap);
+        }
+      }
+
+      function formatNum(value) {
+        if (value === null || value === undefined || value === "") return "—";
+        const number = Number(value);
+        if (!Number.isFinite(number)) return "—";
+        return number.toLocaleString("zh-CN", {
+          maximumFractionDigits: 2,
+          minimumFractionDigits: 0,
+        });
+      }
     </script>
     {% else %}
     <p class="empty">还没有行业板块热度。先同步板块日 K，再运行行业热度计算。</p>

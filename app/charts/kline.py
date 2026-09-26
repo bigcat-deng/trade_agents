@@ -223,6 +223,112 @@ def _add_macd_traces(
     fig.update_xaxes(rangeslider_visible=False, row=row, col=col)
 
 
+def _finite_number(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(number):
+        return None
+    return number
+
+
+def _scaled_heat_series(
+    frame: pd.DataFrame,
+    heats: Sequence[Mapping[str, Any]] | None,
+) -> tuple[list[float | None], list[float | None], list[float | None], list[float | None]] | None:
+    """Map negated short and long heat onto 0%–80% of this chart's volume.
+
+    Smaller heat is hotter, so the series is negated before scaling. Both lines
+    share one scale. A series that is entirely missing is returned as None.
+    """
+    if not heats:
+        return None
+    volume = pd.to_numeric(frame["volume"], errors="coerce")
+    volume_max = float(volume.max(skipna=True)) if volume.notna().any() else float("nan")
+    if not np.isfinite(volume_max) or volume_max <= 0:
+        return None
+
+    by_date: dict[pd.Timestamp, Mapping[str, Any]] = {}
+    for row in heats:
+        day = pd.to_datetime(row.get("trade_date"), errors="coerce")
+        if pd.isna(day):
+            continue
+        by_date[pd.Timestamp(day).normalize()] = row
+
+    short: list[float | None] = []
+    long: list[float | None] = []
+    for day in frame["trade_date"]:
+        row = by_date.get(pd.Timestamp(day).normalize())
+        if row is None:
+            short.append(None)
+            long.append(None)
+            continue
+        short.append(_finite_number(row.get("heat_short")))
+        long.append(_finite_number(row.get("heat_long")))
+
+    negated = [-value for value in (*short, *long) if value is not None]
+    if not negated:
+        return None
+    neg_min = min(negated)
+    neg_max = max(negated)
+    span = neg_max - neg_min
+    ceiling = volume_max * 0.8
+
+    def scale(series: list[float | None]) -> list[float | None] | None:
+        if all(value is None for value in series):
+            return None
+        scaled: list[float | None] = []
+        for value in series:
+            if value is None:
+                scaled.append(None)
+                continue
+            if span == 0:
+                scaled.append(ceiling / 2)
+                continue
+            scaled.append(((-value - neg_min) / span) * ceiling)
+        return scaled
+
+    return short, long, scale(short), scale(long)
+
+
+def _add_heat_traces(
+    fig: go.Figure,
+    frame: pd.DataFrame,
+    heats: Sequence[Mapping[str, Any]] | None,
+    *,
+    row: int,
+    col: int,
+) -> None:
+    scaled = _scaled_heat_series(frame, heats)
+    if scaled is None:
+        return
+    short, long, scaled_short, scaled_long = scaled
+    specs = (
+        ("短期热度", scaled_short, short, "#dc2626"),
+        ("长期热度", scaled_long, long, "#2563eb"),
+    )
+    for name, y_values, original, color in specs:
+        if y_values is None:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=frame["trade_date"],
+                y=y_values,
+                name=name,
+                mode="lines",
+                connectgaps=False,
+                line=dict(color=color, width=1.6),
+                customdata=original,
+                hovertemplate=name + " %{customdata:.2f}<extra></extra>",
+            ),
+            row=row,
+            col=col,
+        )
+
+
 def build_kline_figure(
     bars: Sequence[Mapping[str, Any]] | pd.DataFrame,
     *,
@@ -236,6 +342,7 @@ def build_kline_figure(
     macd_fast: int = MACD_FAST,
     macd_slow: int = MACD_SLOW,
     macd_signal: int = MACD_SIGNAL,
+    heats: Sequence[Mapping[str, Any]] | None = None,
 ) -> go.Figure:
     frame = _as_dataframe(bars)
     if frame.empty:
@@ -357,6 +464,7 @@ def build_kline_figure(
             row=volume_row,
             col=2,
         )
+        _add_heat_traces(fig, frame, heats, row=volume_row, col=2)
 
         padding = (price_max - price_min) * 0.02
         price_range = [price_min - padding, price_max + padding]
@@ -516,6 +624,7 @@ def render_kline(
     height: int | None = None,
     bollinger: bool = True,
     macd: bool = True,
+    heats: Sequence[Mapping[str, Any]] | None = None,
 ) -> str:
     """Return embeddable HTML for a candlestick chart."""
     figure = build_kline_figure(
@@ -525,6 +634,7 @@ def render_kline(
         height=height,
         bollinger=bollinger,
         macd=macd,
+        heats=heats,
     )
     xrefs = _select_xrefs_for_figure(figure)
     post_script = _PROFILE_AND_SELECT_SCRIPT.replace(
