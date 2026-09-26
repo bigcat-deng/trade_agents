@@ -35,8 +35,13 @@ _SUMMARY_COLUMNS = (
     "range_pos",
     "amount_ratio",
 )
+_LIST_LIMIT = 10
+_ROTATION_LISTS = (
+    ("hottest", "最热的", "最热"),
+    ("heating", "正在升温的", "升温"),
+    ("cooling", "正在降温的", "降温"),
+)
 _SECTIONS = (
-    ("hot_zone", "截止日的轮动", frozenset({"热区", "变热", "退潮"}), 10),
     ("aligned", "短期和长期一致", frozenset({"短长都热", "变热且长期热"}), 10),
     ("divergent", "短期和长期分歧", frozenset({"新升温", "热度消退"}), 10),
     ("price_split", "涨跌与热度背离", frozenset({"变热但下跌", "变冷但大涨"}), 10),
@@ -116,7 +121,7 @@ def normalize_reading(
     latest: dict[str, IndustryHeatPoint],
     summaries: dict[str, IndustryPriceSummary] | None = None,
 ) -> dict | None:
-    """Turn a model reply or a saved reading into the five tables shown on the page.
+    """Turn a model reply or a saved reading into the tables shown on the page.
 
     Heat numbers are taken from latest, not from the model. Unknown boards and
     judgments outside the allowed set are dropped.
@@ -128,7 +133,7 @@ def normalize_reading(
     if not conclusion:
         return None
     raw_sections = payload.get("sections")
-    sections = []
+    sections = _rotation_lists(latest, summaries)
     for section_id, title, judgments, limit in _SECTIONS:
         rows = _section_rows(payload, raw_sections, section_id, title)
         kept = []
@@ -199,6 +204,89 @@ def _summary_table(rows) -> str:
             )
         )
     return "\n".join(lines)
+
+
+def _rotation_lists(
+    latest: dict[str, IndustryHeatPoint],
+    summaries: dict[str, IndustryPriceSummary] | None,
+) -> list[dict]:
+    """Three cutoff-day lists ordered by short heat, not by the model.
+
+    Candidates are the re-ranked top 100. Equal values share a rank and the
+    next rank skips. Hottest uses the smallest short heat. Heating uses the
+    largest positive short-heat change. Cooling uses the most negative change.
+    """
+    kept = top_short_heat_keys(
+        [(point.board_code, _decimal(point.heat_short)) for point in latest.values()]
+    )
+    points = [point for point in latest.values() if point.board_code in kept]
+    grouped = {
+        "hottest": _take_ranked(
+            [
+                (heat, point.board_code, point)
+                for point in points
+                if (heat := _decimal(point.heat_short)) is not None
+            ]
+        ),
+        "heating": _take_ranked(
+            [
+                (-change, point.board_code, point)
+                for point in points
+                if (change := _decimal(point.heat_short_change)) is not None and change > 0
+            ]
+        ),
+        "cooling": _take_ranked(
+            [
+                (change, point.board_code, point)
+                for point in points
+                if (change := _decimal(point.heat_short_change)) is not None and change < 0
+            ]
+        ),
+    }
+    sections = []
+    for section_id, title, judgment in _ROTATION_LISTS:
+        rows = [
+            _rotation_row(point, judgment, summaries) for point in grouped[section_id]
+        ]
+        sections.append({"id": section_id, "title": title, "rows": rows})
+    return sections
+
+
+def _take_ranked(
+    rows: list[tuple[Decimal, str, IndustryHeatPoint]],
+    limit: int = _LIST_LIMIT,
+) -> list[IndustryHeatPoint]:
+    rows.sort(key=lambda item: (item[0], item[1]))
+    kept: list[IndustryHeatPoint] = []
+    rank_no = 0
+    previous: Decimal | None = None
+    for index, (metric, _code, point) in enumerate(rows, start=1):
+        if previous is None or metric != previous:
+            rank_no = index
+            previous = metric
+        if rank_no > limit:
+            break
+        kept.append(point)
+    return kept
+
+
+def _rotation_row(
+    point: IndustryHeatPoint,
+    judgment: str,
+    summaries: dict[str, IndustryPriceSummary] | None,
+) -> dict:
+    summary = None if summaries is None else summaries.get(point.board_name)
+    return {
+        "board": point.board_name,
+        "board_code": point.board_code,
+        "heat_short": _number(point.heat_short),
+        "heat_long": _number(point.heat_long),
+        "heat_short_change": _number(point.heat_short_change),
+        "heat_long_change": _number(point.heat_long_change),
+        "pct_chg": _number(point.pct_chg),
+        "judgment": judgment,
+        "note": _note_from_summary(summary),
+    }
 
 
 def _section_rows(payload: dict, raw_sections: object, section_id: str, title: str) -> list:

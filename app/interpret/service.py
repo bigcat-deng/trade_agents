@@ -104,7 +104,7 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
     reading = normalize_reading(content, latest, summaries)
     if reading is None:
         content, response_model = interpret_industry_heat(
-            prompt + "\n\n只输出一个 JSON 对象，键名使用 conclusion、hot_zone、aligned、divergent、price_split、watch。",
+            prompt + "\n\n只输出一个 JSON 对象，键名使用 conclusion、aligned、divergent、price_split、watch。",
             settings,
         )
         reading = normalize_reading(content, latest, summaries)
