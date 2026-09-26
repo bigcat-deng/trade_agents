@@ -143,6 +143,13 @@
       text-align: right;
       font-variant-numeric: tabular-nums;
     }
+    .reading td.stats {
+      white-space: normal;
+      line-height: 1.45;
+    }
+    .reading td.stats .hit {
+      color: #dc2626;
+    }
     .reading a {
       color: #1d4ed8;
       text-decoration: none;
@@ -320,6 +327,7 @@
           ["pct_chg", "当天涨跌幅"],
           ["judgment", "判断"],
           ["note", "说明"],
+          ["cross_stats", "统计"],
         ];
         for (const section of reading.sections || []) {
           const heading = document.createElement("h3");
@@ -350,7 +358,10 @@
             const line = document.createElement("tr");
             for (const [key] of columns) {
               const cell = document.createElement("td");
-              if (key === "board" && row.board_code) {
+              if (key === "cross_stats") {
+                cell.className = "stats";
+                appendStats(cell, row.cross_stats);
+              } else if (key === "board" && row.board_code) {
                 const link = document.createElement("a");
                 link.href = "/boards/industry/" + encodeURIComponent(row.board_code) + "/kline";
                 link.target = "_blank";
@@ -370,6 +381,25 @@
           table.appendChild(tbody);
           wrap.appendChild(table);
           readingBody.appendChild(wrap);
+        }
+      }
+
+      function appendStats(cell, stats) {
+        const value = stats || {};
+        const lines = [
+          ["macd ：", value.macd_up || 0, value.macd_down || 0],
+          ["热度：", value.heat_up || 0, value.heat_down || 0],
+        ];
+        for (const [label, up, down] of lines) {
+          const line = document.createElement("div");
+          line.append(label);
+          for (const [name, count] of [["上", up], ["下", down]]) {
+            const piece = document.createElement("span");
+            piece.textContent = name + "（" + count + "）";
+            if (count) piece.className = "hit";
+            line.append(piece);
+          }
+          cell.appendChild(line);
         }
       }
 

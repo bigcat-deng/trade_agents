@@ -219,7 +219,7 @@ def _add_macd_traces(
         row=row,
         col=col,
     )
-    fig.update_yaxes(title_text="MACD", row=row, col=col)
+    fig.update_yaxes(title_text="MACD", automargin=False, row=row, col=col)
     fig.update_xaxes(rangeslider_visible=False, row=row, col=col)
 
 
@@ -251,23 +251,12 @@ def _scaled_heat_series(
     if not np.isfinite(volume_max) or volume_max <= 0:
         return None
 
-    by_date: dict[pd.Timestamp, Mapping[str, Any]] = {}
-    for row in heats:
-        day = pd.to_datetime(row.get("trade_date"), errors="coerce")
-        if pd.isna(day):
-            continue
-        by_date[pd.Timestamp(day).normalize()] = row
-
-    short: list[float | None] = []
-    long: list[float | None] = []
-    for day in frame["trade_date"]:
-        row = by_date.get(pd.Timestamp(day).normalize())
-        if row is None:
-            short.append(None)
-            long.append(None)
-            continue
-        short.append(_finite_number(row.get("heat_short")))
-        long.append(_finite_number(row.get("heat_long")))
+    aligned = _aligned_heat(frame, heats)
+    if aligned is None:
+        return None
+    short_series, long_series = aligned
+    short = [None if pd.isna(value) else float(value) for value in short_series]
+    long = [None if pd.isna(value) else float(value) for value in long_series]
 
     negated = [-value for value in (*short, *long) if value is not None]
     if not negated:
@@ -292,6 +281,105 @@ def _scaled_heat_series(
         return scaled
 
     return short, long, scale(short), scale(long)
+
+
+def _aligned_heat(
+    frame: pd.DataFrame,
+    heats: Sequence[Mapping[str, Any]] | None,
+) -> tuple[pd.Series, pd.Series] | None:
+    if not heats:
+        return None
+    by_date: dict[pd.Timestamp, Mapping[str, Any]] = {}
+    for row in heats:
+        day = pd.to_datetime(row.get("trade_date"), errors="coerce")
+        if pd.isna(day):
+            continue
+        by_date[pd.Timestamp(day).normalize()] = row
+    short: list[float] = []
+    long: list[float] = []
+    for day in frame["trade_date"]:
+        row = by_date.get(pd.Timestamp(day).normalize())
+        if row is None:
+            short.append(np.nan)
+            long.append(np.nan)
+            continue
+        short_value = _finite_number(row.get("heat_short"))
+        long_value = _finite_number(row.get("heat_long"))
+        short.append(np.nan if short_value is None else short_value)
+        long.append(np.nan if long_value is None else long_value)
+    if not np.isfinite(short).any() and not np.isfinite(long).any():
+        return None
+    return pd.Series(short, dtype="float"), pd.Series(long, dtype="float")
+
+
+def _sign_change(left: pd.Series, right: pd.Series) -> pd.Series:
+    diff = left - right
+    previous = diff.shift(1)
+    return ((previous * diff) < 0).fillna(False)
+
+
+def _mid_marker_xy(
+    frame: pd.DataFrame,
+    mid: pd.Series,
+    mask: pd.Series,
+) -> tuple[list, list]:
+    dates: list = []
+    values: list[float] = []
+    for day, level, flagged in zip(frame["trade_date"], mid, mask, strict=False):
+        if bool(flagged) and pd.notna(level):
+            dates.append(day)
+            values.append(float(level))
+    return dates, values
+
+
+def _match_date_axis(fig: go.Figure, source: str, *, row: int, col: int) -> None:
+    """Keep a subplot's dates on the same scale as the price panel."""
+    fig.update_xaxes(matches=source, row=row, col=col)
+
+
+def _add_cross_markers(
+    fig: go.Figure,
+    frame: pd.DataFrame,
+    mid: pd.Series | None,
+    dif: pd.Series | None,
+    dea: pd.Series | None,
+    heats: Sequence[Mapping[str, Any]] | None,
+    *,
+    row: int | None,
+    col: int | None,
+) -> None:
+    """Mark heat and MACD crosses on the Bollinger middle line."""
+    if mid is None:
+        return
+    markers: list[tuple[str, pd.Series, str, str, int]] = []
+    aligned = _aligned_heat(frame, heats)
+    if aligned is not None:
+        short, long = aligned
+        markers.append(("热度交叉", _sign_change(short, long), "diamond", "#2563eb", 9))
+    if dif is not None and dea is not None:
+        markers.append(("MACD交叉", _sign_change(dif, dea), "x", "#ea580c", 10))
+
+    for name, mask, symbol, color, size in markers:
+        xs, ys = _mid_marker_xy(frame, mid, mask)
+        if not xs:
+            continue
+        trace = go.Scatter(
+            x=xs,
+            y=ys,
+            name=name,
+            mode="markers",
+            marker=dict(
+                symbol=symbol,
+                size=size,
+                color=color,
+                line=dict(width=1.6, color=color),
+            ),
+            hovertemplate=name + "<extra></extra>",
+        )
+        if row is None or col is None:
+            fig.add_trace(trace)
+        else:
+            fig.add_trace(trace, row=row, col=col)
 
 
 def _add_heat_traces(
@@ -448,6 +536,9 @@ def build_kline_figure(
             _add_bollinger_traces(
                 fig, frame, bb_mid, bb_upper, bb_lower, row=1, col=2
             )
+            _add_cross_markers(
+                fig, frame, bb_mid, dif, dea, heats, row=1, col=2
+            )
 
         colors = [
             "#dc2626" if close_v >= open_v else "#16a34a"
@@ -469,8 +560,10 @@ def build_kline_figure(
         padding = (price_max - price_min) * 0.02
         price_range = [price_min - padding, price_max + padding]
         fig.update_yaxes(range=price_range, title_text="Price", row=1, col=1)
-        fig.update_yaxes(range=price_range, title_text="Price", row=1, col=2)
-        fig.update_yaxes(title_text="Volume", row=volume_row, col=2)
+        fig.update_yaxes(
+            range=price_range, title_text="Price", automargin=False, row=1, col=2
+        )
+        fig.update_yaxes(title_text="Volume", automargin=False, row=volume_row, col=2)
         fig.update_xaxes(
             title_text="Vol",
             row=1,
@@ -480,9 +573,11 @@ def build_kline_figure(
         )
         fig.update_xaxes(rangeslider_visible=False, row=1, col=2)
         fig.update_xaxes(rangeslider_visible=False, row=volume_row, col=2)
+        _match_date_axis(fig, "x2", row=volume_row, col=2)
 
         if macd and macd_row is not None and dif is not None:
             _add_macd_traces(fig, frame, dif, dea, hist, row=macd_row, col=2)
+            _match_date_axis(fig, "x2", row=macd_row, col=2)
     else:
         if macd:
             fig = make_subplots(
@@ -497,6 +592,9 @@ def build_kline_figure(
                 _add_bollinger_traces(
                     fig, frame, bb_mid, bb_upper, bb_lower, row=1, col=1
                 )
+                _add_cross_markers(
+                    fig, frame, bb_mid, dif, dea, heats, row=1, col=1
+                )
             fig.update_yaxes(title_text="Price", row=1, col=1)
             fig.update_xaxes(rangeslider_visible=False, row=1, col=1)
             _add_macd_traces(fig, frame, dif, dea, hist, row=2, col=1)
@@ -507,6 +605,9 @@ def build_kline_figure(
             if bollinger and bb_mid is not None:
                 _add_bollinger_traces(
                     fig, frame, bb_mid, bb_upper, bb_lower, row=None, col=None
+                )
+                _add_cross_markers(
+                    fig, frame, bb_mid, dif, dea, heats, row=None, col=None
                 )
             fig.update_yaxes(title_text="Price")
             fig.update_xaxes(rangeslider_visible=False)

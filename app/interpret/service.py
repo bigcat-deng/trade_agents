@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from app.db import fetch_interpret_result, save_interpret_result
+from app.interpret.cross_stats import attach_cross_stats
 from app.interpret.industry_heat import (
     TEMPLATE_NAME,
     build_industry_heat_prompt,
@@ -86,7 +87,7 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
                 as_of=resolved,
                 model=response_model,
                 content=json.dumps(reading, ensure_ascii=False),
-                reading=reading,
+                reading=attach_cross_stats(reading, resolved),
                 cached=True,
             )
 
@@ -114,6 +115,6 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
         as_of=resolved,
         model=response_model,
         content=saved,
-        reading=reading,
+        reading=attach_cross_stats(reading, resolved),
         cached=False,
     )

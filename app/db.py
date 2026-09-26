@@ -431,6 +431,46 @@ def fetch_trading_dates_ending(
             return [row[0] for row in cur.fetchall()]
 
 
+def fetch_industry_board_close_heat(
+    board_codes: list[str],
+    start: date,
+    end: date,
+) -> dict[str, list[tuple[date, object, object, object]]]:
+    """Daily close and heats for the given industry boards, oldest first."""
+    if not board_codes:
+        return {}
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    b.board_code,
+                    b.trade_date,
+                    b.close,
+                    h.heat_short,
+                    h.heat_long
+                FROM board_daily_bar AS b
+                LEFT JOIN board_heat_daily AS h
+                  ON h.board_type = b.board_type
+                 AND h.board_code = b.board_code
+                 AND h.trade_date = b.trade_date
+                WHERE b.board_type = 'industry'
+                  AND b.board_code = ANY(%s)
+                  AND b.trade_date >= %s
+                  AND b.trade_date <= %s
+                ORDER BY b.board_code, b.trade_date
+                """,
+                (board_codes, start, end),
+            )
+            rows = cur.fetchall()
+    grouped: dict[str, list[tuple[date, object, object, object]]] = {}
+    for board_code, trade_date, close, heat_short, heat_long in rows:
+        grouped.setdefault(board_code, []).append(
+            (trade_date, close, heat_short, heat_long)
+        )
+    return grouped
+
+
 def fetch_board_heat_series(
     board_type: str,
     board_code: str,
