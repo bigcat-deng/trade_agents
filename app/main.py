@@ -27,6 +27,16 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 class SyncRunRequest(BaseModel):
     trading_days: int | None = Field(default=200, ge=1)
     resume: bool = True
+    day: str | None = None
+
+
+def _parse_optional_day(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError(f"invalid day {value!r}; expected YYYY-MM-DD") from exc
 
 
 def _parse_day(value: str | None, default: date) -> date:
@@ -93,6 +103,7 @@ def sync_run_api(job_id: str, body: SyncRunRequest | None = None) -> dict:
             job_id,
             trading_days=payload.trading_days,
             resume=payload.resume,
+            day=_parse_optional_day(payload.day),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

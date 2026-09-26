@@ -92,11 +92,15 @@
       color: var(--muted);
       font-size: 0.82rem;
     }
-    .controls input[type="number"] {
+    .controls input[type="number"],
+    .controls input[type="date"] {
       width: 4.5rem;
       padding: 0.25rem 0.35rem;
       border: 1px solid var(--line);
       background: #fff;
+    }
+    .controls input[type="date"] {
+      width: 9.5rem;
     }
     button {
       padding: 0.35rem 0.7rem;
@@ -182,6 +186,17 @@
         logEl.scrollTop = logEl.scrollHeight;
       }
 
+      const saved = {};
+      rowsEl.querySelectorAll("input[data-day], input[data-days], input[data-resume]").forEach((el) => {
+        const key = el.getAttribute("data-day")
+          || el.getAttribute("data-days")
+          || el.getAttribute("data-resume");
+        if (!key) return;
+        if (el.type === "checkbox") saved[`resume:${key}`] = el.checked;
+        else if (el.hasAttribute("data-day")) saved[`day:${key}`] = el.value;
+        else saved[`days:${key}`] = el.value;
+      });
+
       rowsEl.innerHTML = "";
       for (const item of data.items || []) {
         const tr = document.createElement("tr");
@@ -196,11 +211,18 @@
             : "—";
 
         let controls = "";
+        if (item.supports_day) {
+          const dayVal = saved[`day:${item.job_id}`] || item.suggested_day || "";
+          controls += `<label>日期 <input type="date" value="${dayVal}" data-day="${item.job_id}" required></label>`;
+        }
         if (item.supports_trading_days) {
-          controls += `<label>天数 <input type="number" min="1" value="200" data-days="${item.job_id}"></label>`;
+          const daysVal = saved[`days:${item.job_id}`] || "200";
+          controls += `<label>天数 <input type="number" min="1" value="${daysVal}" data-days="${item.job_id}"></label>`;
         }
         if (item.supports_resume) {
-          controls += `<label><input type="checkbox" checked data-resume="${item.job_id}"> resume</label>`;
+          const resumeChecked =
+            saved[`resume:${item.job_id}`] == null ? true : !!saved[`resume:${item.job_id}`];
+          controls += `<label><input type="checkbox" ${resumeChecked ? "checked" : ""} data-resume="${item.job_id}"> resume</label>`;
         }
         controls += `<button type="button" data-run="${item.job_id}" ${busy ? "disabled" : ""}>全量同步</button>`;
 
@@ -231,9 +253,18 @@
 
     async function runJob(jobId) {
       messageEl.hidden = true;
+      const dayInput = document.querySelector(`input[data-day="${jobId}"]`);
       const daysInput = document.querySelector(`input[data-days="${jobId}"]`);
       const resumeInput = document.querySelector(`input[data-resume="${jobId}"]`);
       const body = {};
+      if (dayInput) {
+        if (!dayInput.value) {
+          messageEl.hidden = false;
+          messageEl.textContent = "请选择同步日期";
+          return;
+        }
+        body.day = dayInput.value;
+      }
       if (daysInput) body.trading_days = Number(daysInput.value || 200);
       if (resumeInput) body.resume = !!resumeInput.checked;
       else body.resume = true;

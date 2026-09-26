@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import psycopg
@@ -16,6 +16,18 @@ def _iso(value: date | datetime | None) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
     return value.isoformat()
+
+
+def previous_weekday(today: date | None = None) -> date:
+    """Most recent Mon–Fri strictly before `today` (calendar weekends skipped)."""
+    day = (today or date.today()) - timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
+
+def _suggested_day(existing: date | None) -> str:
+    return _iso(existing) or previous_weekday().isoformat()
 
 
 def fetch_sync_dashboard_status() -> list[dict[str, Any]]:
@@ -65,6 +77,8 @@ def _stock_universe(cur: psycopg.Cursor) -> dict[str, Any]:
         "last_synced_at": _iso(last_ingest),
         "supports_trading_days": False,
         "supports_resume": False,
+        "supports_day": True,
+        "suggested_day": _suggested_day(latest_day),
         "complete": bool(latest_day),
     }
 
@@ -118,6 +132,8 @@ def _stock_daily_bars(cur: psycopg.Cursor) -> dict[str, Any]:
         "last_synced_at": _iso(last_sync or last_ingest),
         "supports_trading_days": True,
         "supports_resume": True,
+        "supports_day": False,
+        "suggested_day": None,
         "complete": target > 0 and covered_n >= target,
     }
 
@@ -156,6 +172,8 @@ def _board_universe(cur: psycopg.Cursor) -> dict[str, Any]:
         "last_synced_at": _iso(last_ingest),
         "supports_trading_days": False,
         "supports_resume": False,
+        "supports_day": True,
+        "suggested_day": _suggested_day(latest_day),
         "complete": total_n > 0,
     }
 
@@ -241,6 +259,8 @@ def _board_daily_bars(cur: psycopg.Cursor) -> dict[str, Any]:
         "last_synced_at": _iso(last_sync or last_ingest),
         "supports_trading_days": True,
         "supports_resume": True,
+        "supports_day": False,
+        "suggested_day": None,
         "complete": universe > 0 and covered >= universe,
     }
 
@@ -249,6 +269,8 @@ def _board_constituents(cur: psycopg.Cursor) -> dict[str, Any]:
     universe, covered, ind_miss, con_miss = _board_coverage_against_universe(
         cur, "board_constituent_daily"
     )
+    cur.execute("SELECT MAX(trade_date) FROM board_universe_daily")
+    uni_day = cur.fetchone()[0]
     cur.execute(
         """
         SELECT COUNT(*), MIN(trade_date), MAX(trade_date), MAX(ingested_at)
@@ -283,5 +305,7 @@ def _board_constituents(cur: psycopg.Cursor) -> dict[str, Any]:
         "last_synced_at": _iso(last_sync or last_ingest),
         "supports_trading_days": False,
         "supports_resume": True,
+        "supports_day": True,
+        "suggested_day": _suggested_day(uni_day or snap or data_end),
         "complete": universe > 0 and covered >= universe,
     }
