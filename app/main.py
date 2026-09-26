@@ -259,7 +259,7 @@ def board_kline_page(
     error = None
     try:
         if start_date is None and end_date is None:
-            days = fetch_trading_dates_ending("industry", today, 60)
+            days = fetch_trading_dates_ending("industry", today, 100)
             if days:
                 start = days[0]
         else:
