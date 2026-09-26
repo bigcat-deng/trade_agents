@@ -2,6 +2,7 @@
 
 Default board type is industry, so an existing run keeps ranking industries only.
 Pass ``--board-type concept`` to rank concepts among themselves.
+Pass ``--board-type all`` to rank industry first, then concept.
 """
 
 from __future__ import annotations
@@ -27,16 +28,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--board-type",
-        choices=("industry", "concept"),
+        choices=("industry", "concept", "all"),
         default="industry",
-        help="Which boards to rank. Default: industry.",
+        help="Which boards to rank. Default: industry. all ranks both.",
     )
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    board_type = args.board_type
+def _align(board_type: str) -> int:
     try:
         returns = [
             BoardReturn(
@@ -88,6 +87,16 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 - CLI exit boundary
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    board_types = ("industry", "concept") if args.board_type == "all" else (args.board_type,)
+    for board_type in board_types:
+        code = _align(board_type)
+        if code != 0:
+            return code
+    return 0
 
 
 if __name__ == "__main__":

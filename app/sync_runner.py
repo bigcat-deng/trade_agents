@@ -17,6 +17,7 @@ JOB_IDS = (
     "stock_daily_bars",
     "board_universe",
     "board_daily_bars",
+    "board_heat",
     "board_constituents",
 )
 
@@ -28,6 +29,7 @@ JOB_LABELS: dict[str, str] = {
     "stock_daily_bars": "个股日 K",
     "board_universe": "板块名单",
     "board_daily_bars": "板块日 K",
+    "board_heat": "板块热度",
     "board_constituents": "板块成分",
 }
 
@@ -113,6 +115,8 @@ def _build_command(
         if resume:
             cmd.append("--resume")
         return cmd
+    if job_id == "board_heat":
+        return [py, "-m", "app.jobs.compute_board_heat", "--board-type", "all"]
     if job_id == "board_constituents":
         cmd = [py, "-m", "app.jobs.sync_board_constituents"]
         if day is not None:

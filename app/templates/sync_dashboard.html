@@ -224,7 +224,8 @@
             saved[`resume:${item.job_id}`] == null ? true : !!saved[`resume:${item.job_id}`];
           controls += `<label><input type="checkbox" ${resumeChecked ? "checked" : ""} data-resume="${item.job_id}"> resume</label>`;
         }
-        controls += `<button type="button" data-run="${item.job_id}" ${busy ? "disabled" : ""}>全量同步</button>`;
+        const action = item.action_label || "全量同步";
+        controls += `<button type="button" data-run="${item.job_id}" ${busy ? "disabled" : ""}>${action}</button>`;
 
         tr.innerHTML = `
           <td>

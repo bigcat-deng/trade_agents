@@ -39,6 +39,7 @@ def fetch_sync_dashboard_status() -> list[dict[str, Any]]:
                 _stock_daily_bars(cur),
                 _board_universe(cur),
                 _board_daily_bars(cur),
+                _board_heat(cur),
                 _board_constituents(cur),
             ]
 
@@ -262,6 +263,56 @@ def _board_daily_bars(cur: psycopg.Cursor) -> dict[str, Any]:
         "supports_day": False,
         "suggested_day": None,
         "complete": universe > 0 and covered >= universe,
+    }
+
+
+def _board_heat(cur: psycopg.Cursor) -> dict[str, Any]:
+    cur.execute(
+        """
+        SELECT
+            (SELECT MAX(trade_date) FROM board_daily_bar WHERE board_type = 'industry'),
+            (SELECT MAX(trade_date) FROM board_heat_daily WHERE board_type = 'industry'),
+            (SELECT MAX(trade_date) FROM board_daily_bar WHERE board_type = 'concept'),
+            (SELECT MAX(trade_date) FROM board_heat_daily WHERE board_type = 'concept'),
+            (SELECT MIN(trade_date) FROM board_heat_daily),
+            (SELECT MAX(trade_date) FROM board_heat_daily),
+            (SELECT MAX(ingested_at) FROM board_heat_daily)
+        """
+    )
+    industry_bars, industry_heat, concept_bars, concept_heat, heat_start, heat_end, last_ingest = (
+        cur.fetchone()
+    )
+    aligned = 0
+    for bars_end, heat_day in (
+        (industry_bars, industry_heat),
+        (concept_bars, concept_heat),
+    ):
+        if bars_end is not None and heat_day == bars_end:
+            aligned += 1
+
+    def _day(value: date | None) -> str:
+        return value.isoformat() if value is not None else "—"
+
+    return {
+        "job_id": "board_heat",
+        "title": "板块热度",
+        "table": "board_heat_daily",
+        "snapshot_date": None,
+        "covered": aligned,
+        "target": 2,
+        "detail": (
+            f"行业热度至 {_day(industry_heat)}，日 K 至 {_day(industry_bars)}；"
+            f"概念热度至 {_day(concept_heat)}，日 K 至 {_day(concept_bars)}"
+        ),
+        "data_start": _iso(heat_start),
+        "data_end": _iso(heat_end),
+        "last_synced_at": _iso(last_ingest),
+        "supports_trading_days": False,
+        "supports_resume": False,
+        "supports_day": False,
+        "suggested_day": None,
+        "action_label": "计算热度",
+        "complete": aligned == 2,
     }
 
 
