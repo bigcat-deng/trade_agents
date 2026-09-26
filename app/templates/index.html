@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>trade_agents</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+      --accent: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 3rem;
+    }
+    h1 {
+      margin: 0 0 0.4rem;
+      font-size: 1.85rem;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 1.75rem;
+    }
+    ul.tools {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 0.75rem;
+    }
+    .tools a {
+      display: block;
+      padding: 1rem 1.1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      text-decoration: none;
+    }
+    .tools a:hover {
+      border-color: #a8a29e;
+    }
+    .tools strong {
+      display: block;
+      font-size: 1.05rem;
+      margin-bottom: 0.25rem;
+    }
+    .tools span {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>trade_agents</h1>
+    <p class="meta">工具索引 · 后续新功能会挂在这里</p>
+    <ul class="tools">
+      <li>
+        <a href="/sync">
+          <strong>同步看板</strong>
+          <span>查看各表覆盖与最后同步时间，手动触发全量同步</span>
+        </a>
+      </li>
+      <li>
+        <a href="/stocks">
+          <strong>正常交易个股</strong>
+          <span>最新 universe 中交易中的 A 股样例</span>
+        </a>
+      </li>
+      <li>
+        <a href="/boards/rotation">
+          <strong>板块热度轮转</strong>
+          <span>行业板块短期与长期热度的散点轮转</span>
+        </a>
+      </li>
+      <li>
+        <a href="/charts/kline-demo">
+          <strong>K 线 demo</strong>
+          <span>在线指数或本地个股日 K 试看</span>
+        </a>
+      </li>
+    </ul>
+  </main>
+</body>
+</html>

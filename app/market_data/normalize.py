@@ -29,6 +29,43 @@ class DailyBar:
     source: str
 
 
+@dataclass(frozen=True)
+class BoardUniverseRow:
+    trade_date: date
+    board_type: str
+    board_code: str
+    board_name: str
+    source: str
+
+
+@dataclass(frozen=True)
+class BoardDailyBar:
+    trade_date: date
+    board_type: str
+    board_code: str
+    open: Decimal | None
+    high: Decimal | None
+    low: Decimal | None
+    close: Decimal | None
+    volume: int | None
+    amount: Decimal | None
+    pct_chg: Decimal | None
+    turn: Decimal | None
+    amplitude: Decimal | None
+    adjustflag: int
+    source: str
+
+
+@dataclass(frozen=True)
+class BoardConstituentRow:
+    trade_date: date
+    board_type: str
+    board_code: str
+    stock_code: str
+    stock_name: str
+    source: str
+
+
 def _to_date(value: Any) -> date:
     if isinstance(value, datetime):
         return value.date()
@@ -100,6 +137,162 @@ def from_akshare_em_row(row: dict[str, Any], code: str) -> DailyBar:
         tradestatus=1,
         pct_chg=_to_decimal(row.get("涨跌幅")),
         is_st=None,
+        source="akshare_em",
+    )
+
+
+def from_akshare_em_board_name_row(
+    row: dict[str, Any],
+    *,
+    trade_date: date,
+    board_type: str,
+) -> BoardUniverseRow:
+    board_code = str(row["板块代码"]).strip().upper()
+    board_name = str(row["板块名称"]).strip()
+    if not board_code or not board_name:
+        raise ValueError("empty board code or name")
+    if board_type not in {"industry", "concept"}:
+        raise ValueError(f"invalid board_type: {board_type}")
+    return BoardUniverseRow(
+        trade_date=trade_date,
+        board_type=board_type,
+        board_code=board_code,
+        board_name=board_name,
+        source="akshare_em",
+    )
+
+
+def from_akshare_em_board_hist_row(
+    row: dict[str, Any],
+    *,
+    board_type: str,
+    board_code: str,
+) -> BoardDailyBar:
+    if board_type not in {"industry", "concept"}:
+        raise ValueError(f"invalid board_type: {board_type}")
+    return BoardDailyBar(
+        trade_date=_to_date(row["日期"]),
+        board_type=board_type,
+        board_code=board_code.strip().upper(),
+        open=_to_decimal(row.get("开盘")),
+        high=_to_decimal(row.get("最高")),
+        low=_to_decimal(row.get("最低")),
+        close=_to_decimal(row.get("收盘")),
+        volume=_to_int(row.get("成交量")),
+        amount=_to_decimal(row.get("成交额")),
+        pct_chg=_to_decimal(row.get("涨跌幅")),
+        turn=_to_decimal(row.get("换手率")),
+        amplitude=_to_decimal(row.get("振幅")),
+        adjustflag=3,
+        source="akshare_em",
+    )
+
+
+def from_akshare_ths_board_hist_row(
+    row: dict[str, Any],
+    *,
+    board_type: str,
+    board_code: str,
+    prev_close: Decimal | None = None,
+) -> BoardDailyBar:
+    """Normalize THS board index row; board_code is the Tonghuashun board id."""
+    if board_type not in {"industry", "concept"}:
+        raise ValueError(f"invalid board_type: {board_type}")
+    open_ = _to_decimal(row.get("开盘价") or row.get("开盘"))
+    high = _to_decimal(row.get("最高价") or row.get("最高"))
+    low = _to_decimal(row.get("最低价") or row.get("最低"))
+    close = _to_decimal(row.get("收盘价") or row.get("收盘"))
+    pct_chg = _to_decimal(row.get("涨跌幅"))
+    if pct_chg is None and close is not None and prev_close not in (None, 0):
+        pct_chg = (close - prev_close) / prev_close * Decimal("100")
+    amplitude = _to_decimal(row.get("振幅"))
+    if amplitude is None and high is not None and low is not None and prev_close not in (None, 0):
+        amplitude = (high - low) / prev_close * Decimal("100")
+    return BoardDailyBar(
+        trade_date=_to_date(row["日期"]),
+        board_type=board_type,
+        board_code=str(board_code).strip(),
+        open=open_,
+        high=high,
+        low=low,
+        close=close,
+        volume=_to_int(row.get("成交量")),
+        amount=_to_decimal(row.get("成交额")),
+        pct_chg=pct_chg,
+        turn=_to_decimal(row.get("换手率")),
+        amplitude=amplitude,
+        adjustflag=3,
+        source="akshare_ths",
+    )
+
+
+def from_akshare_ths_board_name_row(
+    row: dict[str, Any],
+    *,
+    trade_date: date,
+    board_type: str,
+) -> BoardUniverseRow:
+    board_code = str(row.get("code") or row.get("板块代码") or "").strip()
+    board_name = str(row.get("name") or row.get("板块名称") or "").strip()
+    if not board_code or not board_name:
+        raise ValueError("empty board code or name")
+    if board_type not in {"industry", "concept"}:
+        raise ValueError(f"invalid board_type: {board_type}")
+    return BoardUniverseRow(
+        trade_date=trade_date,
+        board_type=board_type,
+        board_code=board_code,
+        board_name=board_name,
+        source="akshare_ths",
+    )
+
+
+def from_akshare_ths_board_cons_row(
+    row: dict[str, Any],
+    *,
+    trade_date: date,
+    board_type: str,
+    board_code: str,
+) -> BoardConstituentRow:
+    if board_type not in {"industry", "concept"}:
+        raise ValueError(f"invalid board_type: {board_type}")
+    raw_code = row.get("代码") or row.get("股票代码")
+    raw_name = row.get("名称") or row.get("股票简称") or row.get("股票名称")
+    stock_code = to_baostock(str(raw_code))
+    stock_name = str(raw_name or "").strip()
+    if not stock_name:
+        raise ValueError("empty stock name")
+    return BoardConstituentRow(
+        trade_date=trade_date,
+        board_type=board_type,
+        board_code=str(board_code).strip(),
+        stock_code=stock_code,
+        stock_name=stock_name,
+        source="akshare_ths",
+    )
+
+
+def from_akshare_em_board_cons_row(
+    row: dict[str, Any],
+    *,
+    trade_date: date,
+    board_type: str,
+    board_code: str,
+) -> BoardConstituentRow:
+    if board_type not in {"industry", "concept"}:
+        raise ValueError(f"invalid board_type: {board_type}")
+    raw_code = row.get("代码") or row.get("f12")
+    raw_name = row.get("名称") or row.get("f14")
+    stock_code = to_baostock(str(raw_code))
+    stock_name = str(raw_name or "").strip()
+    if not stock_name:
+        raise ValueError("empty stock name")
+    return BoardConstituentRow(
+        trade_date=trade_date,
+        board_type=board_type,
+        board_code=board_code.strip().upper(),
+        stock_code=stock_code,
+        stock_name=stock_name,
         source="akshare_em",
     )
 

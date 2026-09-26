@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>同步看板</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+      --ok: #166534;
+      --warn: #9a3412;
+      --busy: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    .nav {
+      margin-bottom: 1rem;
+      font-size: 0.92rem;
+    }
+    .nav a { color: var(--muted); text-decoration: none; }
+    .nav a:hover { color: var(--ink); }
+    h1 {
+      margin: 0 0 0.4rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    .runner {
+      margin: 0 0 1.25rem;
+      padding: 0.85rem 1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      font-size: 0.92rem;
+    }
+    .runner.busy { border-color: #93c5fd; }
+    .runner .label { color: var(--muted); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      font-weight: 600;
+      color: var(--muted);
+      background: #fafaf9;
+    }
+    tr:last-child td { border-bottom: none; }
+    code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.85em; }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge.ok { background: #dcfce7; color: var(--ok); }
+    .badge.gap { background: #ffedd5; color: var(--warn); }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      align-items: center;
+    }
+    .controls label {
+      display: inline-flex;
+      gap: 0.25rem;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .controls input[type="number"] {
+      width: 4.5rem;
+      padding: 0.25rem 0.35rem;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    button {
+      padding: 0.35rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover:not(:disabled) { border-color: #a8a29e; }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    pre.log {
+      margin: 1rem 0 0;
+      padding: 0.85rem 1rem;
+      background: #1c1917;
+      color: #e7e5e4;
+      overflow: auto;
+      max-height: 220px;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+    .msg { margin-top: 0.75rem; color: var(--warn); font-size: 0.9rem; }
+    .detail { color: var(--muted); font-size: 0.82rem; margin-top: 0.2rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="nav"><a href="/">← 总索引</a></div>
+    <h1>同步看板</h1>
+    <div id="runner" class="runner">
+      <span class="label">当前任务：</span><span id="runner-text">加载中…</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>同步项</th>
+          <th>覆盖</th>
+          <th>数据区间</th>
+          <th>最后同步</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <p id="message" class="msg" hidden></p>
+    <pre id="log" class="log" hidden></pre>
+  </main>
+
+  <script>
+    const rowsEl = document.getElementById("rows");
+    const runnerEl = document.getElementById("runner");
+    const runnerText = document.getElementById("runner-text");
+    const messageEl = document.getElementById("message");
+    const logEl = document.getElementById("log");
+
+    function fmt(v) {
+      return v == null || v === "" ? "—" : v;
+    }
+
+    function render(data) {
+      const runner = data.runner || {};
+      const busy = !!runner.busy;
+      runnerEl.classList.toggle("busy", busy);
+      if (busy) {
+        runnerText.textContent = `${runner.label || runner.job_id} 运行中（自 ${fmt(runner.started_at)}）`;
+      } else if (runner.finished_at) {
+        const ok = runner.exit_code === 0;
+        runnerText.textContent =
+          `空闲 · 上次 ${runner.label || runner.job_id || ""} ` +
+          `${ok ? "成功" : "失败"}（${fmt(runner.finished_at)}` +
+          (ok ? "" : ` exit=${runner.exit_code}`) + `）`;
+      } else {
+        runnerText.textContent = "空闲";
+      }
+
+      if (runner.log_tail) {
+        logEl.hidden = false;
+        logEl.textContent = runner.log_tail;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      rowsEl.innerHTML = "";
+      for (const item of data.items || []) {
+        const tr = document.createElement("tr");
+        const complete = !!item.complete;
+        const badge = complete
+          ? '<span class="badge ok">全量</span>'
+          : '<span class="badge gap">未全量</span>';
+        const covered = `${item.covered ?? 0} / ${item.target ?? 0}`;
+        const range =
+          item.data_start || item.data_end
+            ? `${fmt(item.data_start)} ~ ${fmt(item.data_end)}`
+            : "—";
+
+        let controls = "";
+        if (item.supports_trading_days) {
+          controls += `<label>天数 <input type="number" min="1" value="200" data-days="${item.job_id}"></label>`;
+        }
+        if (item.supports_resume) {
+          controls += `<label><input type="checkbox" checked data-resume="${item.job_id}"> resume</label>`;
+        }
+        controls += `<button type="button" data-run="${item.job_id}" ${busy ? "disabled" : ""}>全量同步</button>`;
+
+        tr.innerHTML = `
+          <td>
+            <div><strong>${item.title}</strong> ${badge}</div>
+            <div class="detail"><code>${item.table}</code></div>
+            <div class="detail">${item.detail || ""}</div>
+          </td>
+          <td>${covered}</td>
+          <td>${range}</td>
+          <td>${fmt(item.last_synced_at)}</td>
+          <td><div class="controls">${controls}</div></td>
+        `;
+        rowsEl.appendChild(tr);
+      }
+
+      rowsEl.querySelectorAll("button[data-run]").forEach((btn) => {
+        btn.addEventListener("click", () => runJob(btn.getAttribute("data-run")));
+      });
+    }
+
+    async function refresh() {
+      const res = await fetch("/api/sync/status");
+      const data = await res.json();
+      render(data);
+    }
+
+    async function runJob(jobId) {
+      messageEl.hidden = true;
+      const daysInput = document.querySelector(`input[data-days="${jobId}"]`);
+      const resumeInput = document.querySelector(`input[data-resume="${jobId}"]`);
+      const body = {};
+      if (daysInput) body.trading_days = Number(daysInput.value || 200);
+      if (resumeInput) body.resume = !!resumeInput.checked;
+      else body.resume = true;
+
+      const res = await fetch(`/api/sync/run/${jobId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        messageEl.hidden = false;
+        messageEl.textContent = data.detail || data.error || res.statusText;
+        return;
+      }
+      await refresh();
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

@@ -41,6 +41,12 @@ The script records applied files in `schema_migrations` and skips them on later 
 - `stock_universe_daily`: daily security universe from baostock
 - `stock_daily_bar`: unadjusted daily OHLCV bars (baostock format; multi-source ingest)
 - `stock_daily_bar_sync_state`: per-code sync status for resume
+- `board_universe_daily`: Tonghuashun industry/concept board list snapshots (codes `881xxx` / `30xxxx`)
+- `board_daily_bar`: board daily OHLCV bars (THS / local synth)
+- `board_daily_bar_sync_state`: per-board sync status for resume
+- `board_constituent_daily`: board/concept ↔ stock membership snapshots (THS boards; baostock stock codes)
+- `board_constituent_sync_state`: per-board constituent sync status for resume
+- `board_heat_daily`: industry/concept heat (rank of daily return, MA5 / MA20 of rank)
 
 ## Layout
 

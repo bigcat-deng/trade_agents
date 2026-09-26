@@ -10,6 +10,8 @@ def to_baostock(code: str) -> str:
     if value.startswith(("sh", "sz", "bj")) and len(value) == 8:
         return f"{value[:2]}.{value[2:]}"
     digits = "".join(ch for ch in value if ch.isdigit())
+    if digits and len(digits) <= 6:
+        digits = digits.zfill(6)
     if len(digits) != 6:
         raise ValueError(f"unsupported stock code: {code!r}")
     if digits.startswith(("5", "6", "9")):

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>板块热度轮转</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.75rem;
+    }
+    .slider {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.35rem 0.85rem;
+      align-items: center;
+      margin: 0 0 1rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .slider strong {
+      font-variant-numeric: tabular-nums;
+    }
+    .slider input {
+      width: 100%;
+      accent-color: #1d4ed8;
+    }
+    .slider .ends {
+      grid-column: 2;
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .chart {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.4rem;
+    }
+    .picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+      margin-top: 0.85rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .picker button, .picker input {
+      font: inherit;
+      padding: 0.45rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .picker button {
+      cursor: pointer;
+    }
+    .picker button:disabled, .picker input:disabled {
+      cursor: default;
+      color: var(--muted);
+      background: #f5f5f4;
+    }
+    .picker input {
+      flex: 1 1 12rem;
+      min-width: 10rem;
+    }
+    .picker .note {
+      flex: 1 1 100%;
+      margin: 0;
+      color: #b91c1c;
+      font-size: 0.9rem;
+      min-height: 1.2em;
+    }
+    .empty {
+      padding: 1.5rem 1rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="/">← 索引</a>
+    <h1>板块热度轮转</h1>
+    {% if as_of %}
+    <div class="slider">
+      <strong id="slider-date">{{ as_of }}</strong>
+      <input
+        id="date-slider"
+        type="range"
+        min="0"
+        max="{{ dates|length - 1 }}"
+        value="{{ dates|length - 1 }}"
+        step="1"
+        aria-label="交易日期"
+      >
+      <div class="ends">
+        <span>{{ dates[0] }}</span>
+        <span>{{ dates[-1] }}</span>
+      </div>
+    </div>
+    <p class="meta" id="rotation-meta">
+      行业板块 · {{ as_of }} 对比 {{ prev_date }}
+      · 短期 {{ short_count }} 个 · 长期 {{ long_count }} 个
+      · 颜色为当日收益率（红涨绿跌）· 圆越大，近 20 日收益率波动越大
+    </p>
+    <div class="chart" id="rotation-chart">{{ chart_html | safe }}</div>
+    <form class="picker" id="board-picker">
+      <button type="button" id="pick-toggle">选择</button>
+      <input id="pick-name" type="text" placeholder="板块名称" disabled autocomplete="off">
+      <button type="submit" id="pick-confirm" disabled>确定</button>
+      <p class="note" id="pick-message"></p>
+    </form>
+    <script>
+      const dates = {{ dates | tojson }};
+      const slider = document.getElementById("date-slider");
+      const dateLabel = document.getElementById("slider-date");
+      const meta = document.getElementById("rotation-meta");
+      const chart = document.getElementById("rotation-chart");
+      const pickToggle = document.getElementById("pick-toggle");
+      const pickName = document.getElementById("pick-name");
+      const pickConfirm = document.getElementById("pick-confirm");
+      const pickMessage = document.getElementById("pick-message");
+      const pickForm = document.getElementById("board-picker");
+      let requested = dates.length - 1;
+      let selecting = false;
+      let highlight = "";
+
+      function mountHtml(html) {
+        chart.innerHTML = html;
+        chart.querySelectorAll("script").forEach((oldScript) => {
+          const script = document.createElement("script");
+          script.text = oldScript.text;
+          oldScript.replaceWith(script);
+        });
+      }
+
+      async function loadDate(index) {
+        requested = index;
+        const day = dates[index];
+        dateLabel.textContent = day;
+        const params = new URLSearchParams({as_of: day});
+        if (highlight) params.set("highlight", highlight);
+        const response = await fetch("/api/boards/rotation?" + params.toString());
+        if (!response.ok || requested !== index) return null;
+        const payload = await response.json();
+        if (requested !== index) return null;
+        meta.textContent =
+          "行业板块 · " + payload.as_of + " 对比 " + payload.prev_date +
+          " · 短期 " + payload.short_count + " 个 · 长期 " + payload.long_count +
+          " 个 · 颜色为当日收益率（红涨绿跌）· 圆越大，近 20 日收益率波动越大";
+        mountHtml(payload.chart_html);
+        return payload;
+      }
+
+      slider.addEventListener("input", () => {
+        loadDate(Number(slider.value));
+      });
+
+      pickToggle.addEventListener("click", () => {
+        if (!selecting) {
+          selecting = true;
+          pickToggle.textContent = "清空";
+          pickName.disabled = false;
+          pickConfirm.disabled = false;
+          pickName.focus();
+          return;
+        }
+        selecting = false;
+        highlight = "";
+        pickToggle.textContent = "选择";
+        pickName.value = "";
+        pickName.disabled = true;
+        pickConfirm.disabled = true;
+        pickMessage.textContent = "";
+        loadDate(Number(slider.value));
+      });
+
+      pickForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!selecting) return;
+        const name = pickName.value.trim();
+        if (!name) return;
+        const previous = highlight;
+        highlight = name;
+        const payload = await loadDate(Number(slider.value));
+        if (!payload) return;
+        if (payload.highlight_matched) {
+          pickMessage.textContent = "";
+          return;
+        }
+        highlight = previous;
+        pickMessage.textContent = "没有这个板块";
+        if (previous) loadDate(Number(slider.value));
+      });
+    </script>
+    {% else %}
+    <p class="empty">还没有行业板块热度。先同步板块日 K，再运行行业热度计算。</p>
+    {% endif %}
+  </main>
+</body>
+</html>
