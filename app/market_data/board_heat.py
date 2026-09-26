@@ -19,6 +19,7 @@ from decimal import Decimal
 INDUSTRY = "industry"
 SHORT_WINDOW = 5
 LONG_WINDOW = 20
+SHORT_HEAT_RERANK_LIMIT = 100
 
 
 AVG_MA = 2
@@ -44,6 +45,37 @@ class BoardHeatRow:
     universe_n: int | None
     heat_short: Decimal | None
     heat_long: Decimal | None
+
+
+def top_short_heat_keys(
+    rows: list[tuple[str, Decimal | None]],
+    limit: int = SHORT_HEAT_RERANK_LIMIT,
+) -> set[str]:
+    """Re-rank by smoothed short heat. The smallest heat is rank 1.
+
+    Equal heats share a rank and the next rank skips. Keys with an empty
+    short heat are left out. The returned set is everyone whose new rank is
+    within `limit`.
+    """
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    ranked: list[tuple[Decimal, str]] = []
+    for key, heat in rows:
+        if not key or heat is None:
+            continue
+        ranked.append((heat, key))
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    kept: set[str] = set()
+    rank_no = 0
+    previous: Decimal | None = None
+    for index, (heat, key) in enumerate(ranked, start=1):
+        if previous is None or heat != previous:
+            rank_no = index
+            previous = heat
+        if rank_no > limit:
+            break
+        kept.add(key)
+    return kept
 
 
 def compute_heat(returns: list[BoardReturn], board_type: str = INDUSTRY) -> list[BoardHeatRow]:

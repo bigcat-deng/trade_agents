@@ -1,4 +1,4 @@
-"""Side-by-side scatter charts of industry-board heat rotation."""
+"""Side-by-side scatter charts of board heat rotation."""
 
 from __future__ import annotations
 
@@ -23,8 +23,13 @@ def render_board_rotation(
     prev_date: str,
     include_plotlyjs: bool = True,
     highlight: str | None = None,
+    label_names: set[str] | None = None,
 ) -> tuple[str, int, int]:
-    """Return embeddable HTML plus short and long point counts."""
+    """Return embeddable HTML plus short and long point counts.
+
+    ``label_names`` None labels every point. A set labels only those names;
+    the highlighted point is always labeled. Hover still shows every name.
+    """
     short_rows = [
         row
         for row in rows
@@ -58,6 +63,7 @@ def render_board_rotation(
         previous=lambda row: _float(row.prev_heat_short),
         sizeref=sizeref,
         highlight=highlight,
+        label_names=label_names,
         row=1,
         col=1,
     )
@@ -68,6 +74,7 @@ def render_board_rotation(
         previous=lambda row: _float(row.prev_heat_long),
         sizeref=sizeref,
         highlight=highlight,
+        label_names=label_names,
         row=1,
         col=2,
     )
@@ -119,23 +126,45 @@ def _add_panel(
     previous,
     sizeref: float,
     highlight: str | None,
+    label_names: set[str] | None,
     row: int,
     col: int,
 ) -> None:
     if not rows:
         return
     chosen = [item for item in rows if highlight and item.board_name == highlight]
-    others = [item for item in rows if item not in chosen]
-    if others:
+    rest = [item for item in rows if item not in chosen]
+    if label_names is None:
+        labeled = rest
+        unlabeled = []
+    else:
+        labeled = [item for item in rest if item.board_name in label_names]
+        unlabeled = [item for item in rest if item.board_name not in label_names]
+    if unlabeled:
         _add_trace(
             figure,
-            others,
+            unlabeled,
             heat=heat,
             previous=previous,
             sizeref=sizeref,
-            color=[_float(item.pct_chg) for item in others],
+            color=[_float(item.pct_chg) for item in unlabeled],
             coloraxis="coloraxis",
             text_color="#1c1917",
+            show_text=False,
+            row=row,
+            col=col,
+        )
+    if labeled:
+        _add_trace(
+            figure,
+            labeled,
+            heat=heat,
+            previous=previous,
+            sizeref=sizeref,
+            color=[_float(item.pct_chg) for item in labeled],
+            coloraxis="coloraxis",
+            text_color="#1c1917",
+            show_text=True,
             row=row,
             col=col,
         )
@@ -149,6 +178,7 @@ def _add_panel(
             color="#2563eb",
             coloraxis=None,
             text_color="#2563eb",
+            show_text=True,
             row=row,
             col=col,
         )
@@ -164,6 +194,7 @@ def _add_trace(
     color,
     coloraxis: str | None,
     text_color: str,
+    show_text: bool,
     row: int,
     col: int,
 ) -> None:
@@ -181,7 +212,7 @@ def _add_trace(
         go.Scatter(
             x=[heat(item) for item in rows],
             y=[previous(item) - heat(item) for item in rows],
-            mode="markers+text",
+            mode="markers+text" if show_text else "markers",
             textposition="top center",
             textfont=dict(size=10, color=text_color),
             marker=marker,

@@ -1,12 +1,16 @@
-"""Align industry-board heat with board_daily_bar and store it."""
+"""Align board heat with board_daily_bar and store it.
+
+Default board type is industry, so an existing run keeps ranking industries only.
+Pass ``--board-type concept`` to rank concepts among themselves.
+"""
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 from app.db import fetch_board_heat, fetch_board_returns, replace_board_heat
 from app.market_data.board_heat import (
-    INDUSTRY,
     BoardReturn,
     alignment_errors,
     compute_heat,
@@ -14,8 +18,25 @@ from app.market_data.board_heat import (
 )
 
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Rank one board type from board_daily_bar and store heat in board_heat_daily. "
+            "Industry and concept are ranked separately."
+        )
+    )
+    parser.add_argument(
+        "--board-type",
+        choices=("industry", "concept"),
+        default="industry",
+        help="Which boards to rank. Default: industry.",
+    )
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
-    del argv  # alignment is the only mode
+    args = build_parser().parse_args(argv)
+    board_type = args.board_type
     try:
         returns = [
             BoardReturn(
@@ -26,9 +47,9 @@ def main(argv: list[str] | None = None) -> int:
                 low=low,
                 close=close,
             )
-            for trade_date, board_code, pct_chg, high, low, close in fetch_board_returns(INDUSTRY)
+            for trade_date, board_code, pct_chg, high, low, close in fetch_board_returns(board_type)
         ]
-        computed = compute_heat(returns, INDUSTRY)
+        computed = compute_heat(returns, board_type)
         problems = alignment_errors(returns, computed)
         if problems:
             print("error: computed heat is not aligned with board bars:", file=sys.stderr)
@@ -36,20 +57,20 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"error: {problem}", file=sys.stderr)
             return 1
 
-        stored = fetch_board_heat(INDUSTRY)
+        stored = fetch_board_heat(board_type)
         dirty = find_dirty_start(computed, stored)
         if dirty is None:
             end = max((row.trade_date for row in computed), default=None)
             end_text = end.isoformat() if end is not None else "none"
             print(
-                f"industry heat already aligned through {end_text} ({len(computed)} rows)",
+                f"{board_type} heat already aligned through {end_text} ({len(computed)} rows)",
                 flush=True,
             )
             return 0
 
         to_write = [row for row in computed if row.trade_date >= dirty]
-        written = replace_board_heat(INDUSTRY, dirty, to_write)
-        stored_after = fetch_board_heat(INDUSTRY)
+        written = replace_board_heat(board_type, dirty, to_write)
+        stored_after = fetch_board_heat(board_type)
         problems = alignment_errors(returns, stored_after)
         if problems or find_dirty_start(computed, stored_after) is not None:
             print("error: stored heat is still not aligned:", file=sys.stderr)
@@ -59,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
 
         end = max(row.trade_date for row in computed).isoformat() if computed else "none"
         print(
-            f"recomputed industry heat from {dirty.isoformat()} through {end}, "
+            f"recomputed {board_type} heat from {dirty.isoformat()} through {end}, "
             f"wrote {written} rows, total {len(stored_after)}",
             flush=True,
         )

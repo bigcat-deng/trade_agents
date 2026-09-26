@@ -98,11 +98,11 @@
 </head>
 <body>
   <main>
-    <a class="back" href="/boards/rotation">← 热度轮转</a>
+    <a class="back" href="{{ back_href }}">← 热度轮转</a>
     <h1>{{ board_name }}</h1>
-    <p class="meta">{{ board_code }} · 行业板块</p>
+    <p class="meta">{{ board_code }} · {{ kind_label }}</p>
 
-    <form method="get" action="/boards/industry/{{ board_code }}/kline">
+    <form method="get" action="{{ form_action }}">
       <label class="date">
         开始日期
         <input type="date" name="start_date" value="{{ start_date }}" required>

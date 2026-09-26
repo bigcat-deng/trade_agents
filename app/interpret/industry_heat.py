@@ -13,9 +13,10 @@ from jinja2 import StrictUndefined, Template
 from app.db import (
     IndustryHeatPoint,
     IndustryPriceSummary,
-    fetch_industry_heat_window,
-    fetch_industry_price_summary,
+    fetch_heat_window,
+    fetch_price_summary,
 )
+from app.market_data.board_heat import top_short_heat_keys
 from app.prompts.template import PromptTemplate, load_prompt
 
 TEMPLATE_NAME = "industry-heat-rotation"
@@ -43,30 +44,55 @@ _SECTIONS = (
 )
 
 
-def build_industry_heat_prompt(
+def build_heat_prompt(
+    template_name: str,
     as_of: date | None = None,
 ) -> tuple[PromptTemplate, str, date, dict[str, IndustryHeatPoint], dict[str, IndustryPriceSummary]]:
-    template = load_prompt(TEMPLATE_NAME)
+    template = load_prompt(template_name)
+    board_type = str(template.config.get("board_type") or "industry")
+    if board_type not in {"industry", "concept"}:
+        raise RuntimeError(f"unsupported board_type: {board_type}")
     window = int(template.config.get("window_trading_days") or 20)
-    resolved, prev_date, points = fetch_industry_heat_window(window, as_of)
+    resolved, prev_date, points = fetch_heat_window(board_type, window, as_of)
     if resolved is None or not points:
-        raise RuntimeError("no industry heat rows to interpret")
+        raise RuntimeError(f"no {board_type} heat rows to interpret")
     latest = {
         point.board_name: point
         for point in points
         if point.trade_date == resolved
     }
     summaries = {
-        row.board_name: row for row in fetch_industry_price_summary(window, resolved)
+        row.board_name: row for row in fetch_price_summary(board_type, window, resolved)
     }
+    board_count = len(latest)
+    if board_type == "concept":
+        kept = top_short_heat_keys(
+            [(point.board_code, _decimal(point.heat_short)) for point in latest.values()]
+        )
+        points = [point for point in points if point.board_code in kept]
+        latest = {name: point for name, point in latest.items() if point.board_code in kept}
+        summaries = {name: row for name, row in summaries.items() if name in latest}
     body = Template(template.body, undefined=StrictUndefined).render(
         as_of=resolved.isoformat(),
         prev_date=prev_date.isoformat() if prev_date else "",
-        board_count=len(latest),
+        board_count=board_count,
+        shown_count=len(latest),
         heat_table=_table(points),
         price_summary=_summary_table(summaries.values()),
     )
     return template, body, resolved, latest, summaries
+
+
+def _decimal(value: object) -> Decimal | None:
+    if value is None or value == "":
+        return None
+    return Decimal(str(value))
+
+
+def build_industry_heat_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date, dict[str, IndustryHeatPoint], dict[str, IndustryPriceSummary]]:
+    return build_heat_prompt(TEMPLATE_NAME, as_of)
 
 
 def model_settings(template: PromptTemplate) -> dict[str, str]:

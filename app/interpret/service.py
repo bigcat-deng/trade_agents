@@ -9,16 +9,24 @@ from datetime import date
 from app.db import fetch_interpret_result, save_interpret_result
 from app.interpret.cross_stats import attach_cross_stats
 from app.interpret.industry_heat import (
-    TEMPLATE_NAME,
-    build_industry_heat_prompt,
+    build_heat_prompt,
     interpret_industry_heat,
     model_settings,
     normalize_reading,
 )
 from app.prompts.template import load_prompt
 
+
+def _heat_builder(template_name: str):
+    def build(as_of: date | None = None):
+        return build_heat_prompt(template_name, as_of)
+
+    return build
+
+
 BUILDERS = {
-    TEMPLATE_NAME: build_industry_heat_prompt,
+    "industry-heat-rotation": _heat_builder("industry-heat-rotation"),
+    "concept-heat-rotation": _heat_builder("concept-heat-rotation"),
 }
 
 
@@ -63,6 +71,7 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
         raise UnknownTemplate(template_name)
 
     template, prompt, resolved, latest, summaries = builder(as_of)
+    board_type = str(template.config.get("board_type") or "industry")
     settings = model_settings(template)
     missing = [
         name
@@ -87,7 +96,7 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
                 as_of=resolved,
                 model=response_model,
                 content=json.dumps(reading, ensure_ascii=False),
-                reading=attach_cross_stats(reading, resolved),
+                reading=attach_cross_stats(reading, resolved, board_type),
                 cached=True,
             )
 
@@ -115,6 +124,6 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
         as_of=resolved,
         model=response_model,
         content=saved,
-        reading=attach_cross_stats(reading, resolved),
+        reading=attach_cross_stats(reading, resolved, board_type),
         cached=False,
     )

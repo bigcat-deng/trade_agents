@@ -431,12 +431,13 @@ def fetch_trading_dates_ending(
             return [row[0] for row in cur.fetchall()]
 
 
-def fetch_industry_board_close_heat(
+def fetch_board_close_heat(
+    board_type: str,
     board_codes: list[str],
     start: date,
     end: date,
 ) -> dict[str, list[tuple[date, object, object, object]]]:
-    """Daily close and heats for the given industry boards, oldest first."""
+    """Daily close and heats for the given boards, oldest first."""
     if not board_codes:
         return {}
     with psycopg.connect(database_url()) as conn:
@@ -454,13 +455,13 @@ def fetch_industry_board_close_heat(
                   ON h.board_type = b.board_type
                  AND h.board_code = b.board_code
                  AND h.trade_date = b.trade_date
-                WHERE b.board_type = 'industry'
+                WHERE b.board_type = %s
                   AND b.board_code = ANY(%s)
                   AND b.trade_date >= %s
                   AND b.trade_date <= %s
                 ORDER BY b.board_code, b.trade_date
                 """,
-                (board_codes, start, end),
+                (board_type, board_codes, start, end),
             )
             rows = cur.fetchall()
     grouped: dict[str, list[tuple[date, object, object, object]]] = {}
@@ -846,8 +847,8 @@ class BoardRotationRow:
     prev_heat_long: object | None
 
 
-def fetch_industry_rotation_dates(lookback: int = 10) -> list[date]:
-    """Oldest-first industry heat dates from the latest day back `lookback` days."""
+def fetch_rotation_dates(board_type: str, lookback: int = 10) -> list[date]:
+    """Oldest-first heat dates for one board type, from the latest day back `lookback` days."""
     with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -856,23 +857,24 @@ def fetch_industry_rotation_dates(lookback: int = 10) -> list[date]:
                 FROM (
                     SELECT DISTINCT trade_date
                     FROM board_heat_daily
-                    WHERE board_type = 'industry'
+                    WHERE board_type = %s
                     ORDER BY trade_date DESC
                     LIMIT %s
                 ) AS recent
                 ORDER BY trade_date
                 """,
-                (lookback + 1,),
+                (board_type, lookback + 1),
             )
             return [row[0] for row in cur.fetchall()]
 
 
-def fetch_industry_board_rotation(
+def fetch_board_rotation(
+    board_type: str,
     as_of: date | None = None,
 ) -> tuple[date | None, date | None, list[BoardRotationRow]]:
-    """Industry rotation for one heat day and the prior heat day.
+    """Rotation for one heat day and the prior heat day of one board type.
 
-    `as_of` defaults to the latest industry heat date.
+    `as_of` defaults to the latest heat date of that type.
     """
     with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
@@ -884,7 +886,7 @@ def fetch_industry_board_rotation(
                     FROM (
                         SELECT DISTINCT trade_date
                         FROM board_heat_daily
-                        WHERE board_type = 'industry'
+                        WHERE board_type = %s
                     ) AS distinct_days
                 ),
                 chosen AS (
@@ -909,7 +911,7 @@ def fetch_industry_board_rotation(
                         u.board_code,
                         u.board_name
                     FROM board_universe_daily AS u
-                    WHERE u.board_type = 'industry'
+                    WHERE u.board_type = %s
                     ORDER BY u.board_code, u.trade_date DESC
                 ),
                 vol AS (
@@ -924,7 +926,7 @@ def fetch_industry_board_rotation(
                             ) AS rn
                         FROM board_daily_bar AS b
                         JOIN pair AS p ON b.trade_date <= p.as_of
-                        WHERE b.board_type = 'industry'
+                        WHERE b.board_type = %s
                           AND b.pct_chg IS NOT NULL
                     ) AS recent
                     WHERE rn <= 20
@@ -944,17 +946,17 @@ def fetch_industry_board_rotation(
                     prev.heat_long AS prev_heat_long
                 FROM pair AS p
                 JOIN board_heat_daily AS c
-                  ON c.board_type = 'industry'
+                  ON c.board_type = %s
                  AND c.trade_date = p.as_of
                 LEFT JOIN board_heat_daily AS prev
-                  ON prev.board_type = 'industry'
+                  ON prev.board_type = %s
                  AND prev.trade_date = p.prev_date
                  AND prev.board_code = c.board_code
                 LEFT JOIN names AS n ON n.board_code = c.board_code
                 LEFT JOIN vol AS v ON v.board_code = c.board_code
                 ORDER BY c.board_code
                 """,
-                (as_of, as_of),
+                (board_type, as_of, as_of, board_type, board_type, board_type, board_type),
             )
             fetched = cur.fetchall()
     if not fetched:
@@ -989,11 +991,12 @@ class IndustryHeatPoint:
     pct_chg: object | None
 
 
-def fetch_industry_heat_window(
+def fetch_heat_window(
+    board_type: str,
     trading_days: int,
     as_of: date | None = None,
 ) -> tuple[date | None, date | None, list[IndustryHeatPoint]]:
-    """Industry heats ending on as_of (default latest), plus the prior day changes."""
+    """Heats of one board type ending on as_of (default latest), plus prior-day changes."""
     if trading_days < 1:
         raise ValueError("trading_days must be >= 1")
     with psycopg.connect(database_url()) as conn:
@@ -1006,7 +1009,7 @@ def fetch_industry_heat_window(
                     FROM (
                         SELECT DISTINCT trade_date
                         FROM board_heat_daily
-                        WHERE board_type = 'industry'
+                        WHERE board_type = %s
                     ) AS distinct_days
                 ),
                 window_days AS (
@@ -1021,7 +1024,7 @@ def fetch_industry_heat_window(
                         board_code,
                         board_name
                     FROM board_universe_daily
-                    WHERE board_type = 'industry'
+                    WHERE board_type = %s
                     ORDER BY board_code, trade_date DESC
                 )
                 SELECT
@@ -1042,16 +1045,16 @@ def fetch_industry_heat_window(
                     bounds.prev_date
                 FROM window_days AS bounds
                 JOIN board_heat_daily AS h
-                  ON h.board_type = 'industry'
+                  ON h.board_type = %s
                  AND h.trade_date = bounds.trade_date
                 LEFT JOIN board_heat_daily AS prev
-                  ON prev.board_type = 'industry'
+                  ON prev.board_type = %s
                  AND prev.board_code = h.board_code
                  AND prev.trade_date = bounds.prev_date
                 LEFT JOIN names AS n ON n.board_code = h.board_code
                 ORDER BY h.trade_date, board_name
                 """,
-                (as_of, as_of, trading_days),
+                (board_type, as_of, as_of, trading_days, board_type, board_type, board_type),
             )
             fetched = cur.fetchall()
     if not fetched:
@@ -1082,11 +1085,12 @@ class IndustryPriceSummary:
     amount_ratio: object | None
 
 
-def fetch_industry_price_summary(
+def fetch_price_summary(
+    board_type: str,
     trading_days: int,
     as_of: date,
 ) -> list[IndustryPriceSummary]:
-    """One row per industry board on as_of.
+    """One row per board of this type on as_of.
 
     ret_20 is the close-to-close percent change versus the close 20 trading days earlier.
     range_pos is where that close sits between the low and high of the heat window
@@ -1105,7 +1109,7 @@ def fetch_industry_price_summary(
                     FROM (
                         SELECT DISTINCT trade_date
                         FROM board_heat_daily
-                        WHERE board_type = 'industry'
+                        WHERE board_type = %s
                     ) AS distinct_days
                 ),
                 end_day AS (
@@ -1127,7 +1131,7 @@ def fetch_industry_price_summary(
                         board_code,
                         board_name
                     FROM board_universe_daily
-                    WHERE board_type = 'industry'
+                    WHERE board_type = %s
                     ORDER BY board_code, trade_date DESC
                 ),
                 window_stats AS (
@@ -1138,7 +1142,7 @@ def fetch_industry_price_summary(
                         AVG(b.amount) AS amount_avg
                     FROM board_daily_bar AS b
                     JOIN window_days AS w ON w.trade_date = b.trade_date
-                    WHERE b.board_type = 'industry'
+                    WHERE b.board_type = %s
                     GROUP BY b.board_code
                 )
                 SELECT
@@ -1169,17 +1173,26 @@ def fetch_industry_price_summary(
                 LEFT JOIN names AS n ON n.board_code = h.board_code
                 LEFT JOIN window_stats AS stats ON stats.board_code = h.board_code
                 LEFT JOIN board_daily_bar AS today
-                  ON today.board_type = 'industry'
+                  ON today.board_type = %s
                  AND today.board_code = h.board_code
                  AND today.trade_date = ending.trade_date
                 LEFT JOIN board_daily_bar AS base
-                  ON base.board_type = 'industry'
+                  ON base.board_type = %s
                  AND base.board_code = h.board_code
                  AND base.trade_date = ending.ret_base_date
-                WHERE h.board_type = 'industry'
+                WHERE h.board_type = %s
                 ORDER BY board_name
                 """,
-                (as_of, trading_days),
+                (
+                    board_type,
+                    as_of,
+                    trading_days,
+                    board_type,
+                    board_type,
+                    board_type,
+                    board_type,
+                    board_type,
+                ),
             )
             fetched = cur.fetchall()
     return [

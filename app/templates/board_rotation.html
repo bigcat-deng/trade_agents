@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>板块热度轮转</title>
+  <title>{{ title }}</title>
   <style>
     :root {
       --bg: #f4f1ea;
@@ -170,7 +170,7 @@
 <body>
   <main>
     <a class="back" href="/">← 索引</a>
-    <h1>板块热度轮转</h1>
+    <h1>{{ title }}</h1>
     {% if as_of %}
     <div class="slider">
       <strong id="slider-date">{{ as_of }}</strong>
@@ -189,7 +189,7 @@
       </div>
     </div>
     <p class="meta" id="rotation-meta">
-      行业板块 · {{ as_of }} 对比 {{ prev_date }}
+      {{ kind_label }} · {{ as_of }} 对比 {{ prev_date }}
       · 短期 {{ short_count }} 个 · 长期 {{ long_count }} 个
       · 颜色为当日收益率（红涨绿跌）· 圆越大，近 20 日收益率波动越大
     </p>
@@ -207,6 +207,13 @@
     </section>
     <script>
       const dates = {{ dates | tojson }};
+      const rotationApi = {{ rotation_api | tojson }};
+      const interpretTemplate = {{ interpret_template | tojson }};
+      const klinePrefix = {{ kline_prefix | tojson }};
+      const kindLabel = {{ kind_label | tojson }};
+      const missingMessage = {{ missing_message | tojson }};
+      const showAllLabels = {{ show_all_labels | tojson }};
+      let labeledNames = [];
       const slider = document.getElementById("date-slider");
       const dateLabel = document.getElementById("slider-date");
       const meta = document.getElementById("rotation-meta");
@@ -216,7 +223,7 @@
       const pickConfirm = document.getElementById("pick-confirm");
       const pickMessage = document.getElementById("pick-message");
       const pickForm = document.getElementById("board-picker");
-      let requested = dates.length - 1;
+      let requestId = 0;
       let selecting = false;
       let highlight = "";
 
@@ -230,17 +237,20 @@
       }
 
       async function loadDate(index) {
-        requested = index;
+        const ticket = ++requestId;
         const day = dates[index];
         dateLabel.textContent = day;
         const params = new URLSearchParams({as_of: day});
         if (highlight) params.set("highlight", highlight);
-        const response = await fetch("/api/boards/rotation?" + params.toString());
-        if (!response.ok || requested !== index) return null;
+        if (!showAllLabels) {
+          for (const name of labeledNames) params.append("label", name);
+        }
+        const response = await fetch(rotationApi + "?" + params.toString());
+        if (!response.ok || ticket !== requestId) return null;
         const payload = await response.json();
-        if (requested !== index) return null;
+        if (ticket !== requestId) return null;
         meta.textContent =
-          "行业板块 · " + payload.as_of + " 对比 " + payload.prev_date +
+          kindLabel + " · " + payload.as_of + " 对比 " + payload.prev_date +
           " · 短期 " + payload.short_count + " 个 · 长期 " + payload.long_count +
           " 个 · 颜色为当日收益率（红涨绿跌）· 圆越大，近 20 日收益率波动越大";
         mountHtml(payload.chart_html);
@@ -284,7 +294,7 @@
           return;
         }
         highlight = previous;
-        pickMessage.textContent = "没有这个板块";
+        pickMessage.textContent = missingMessage;
         if (previous) loadDate(Number(slider.value));
       });
 
@@ -292,7 +302,7 @@
       const readingMeta = document.getElementById("reading-meta");
       const readingBody = document.getElementById("reading-body");
       readingMeta.textContent = "截至 " + readingAsOf;
-      fetch("/api/interpret/industry-heat-rotation", {
+      fetch("/api/interpret/" + interpretTemplate, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({as_of: readingAsOf}),
@@ -304,6 +314,16 @@
         }
         readingMeta.textContent = "截至 " + payload.as_of + " · " + payload.model;
         renderReading(payload.reading);
+        if (!showAllLabels && payload.reading) {
+          const names = [];
+          for (const section of payload.reading.sections || []) {
+            for (const row of section.rows || []) {
+              if (row.board) names.push(row.board);
+            }
+          }
+          labeledNames = [...new Set(names)];
+          loadDate(Number(slider.value));
+        }
       }).catch(() => {
         readingBody.textContent = "解读失败";
       });
@@ -363,7 +383,7 @@
                 appendStats(cell, row.cross_stats);
               } else if (key === "board" && row.board_code) {
                 const link = document.createElement("a");
-                link.href = "/boards/industry/" + encodeURIComponent(row.board_code) + "/kline";
+                link.href = klinePrefix + "/" + encodeURIComponent(row.board_code) + "/kline";
                 link.target = "_blank";
                 link.rel = "noopener";
                 link.textContent = row.board || "";
@@ -414,7 +434,7 @@
       }
     </script>
     {% else %}
-    <p class="empty">还没有行业板块热度。先同步板块日 K，再运行行业热度计算。</p>
+    <p class="empty">{{ empty_message }}</p>
     {% endif %}
   </main>
 </body>
