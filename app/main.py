@@ -155,6 +155,11 @@ def index_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html", {})
 
 
+@app.get("/index-all", response_class=HTMLResponse)
+def index_all_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "index_all.html", {})
+
+
 @app.get("/sync", response_class=HTMLResponse)
 def sync_dashboard_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "sync_dashboard.html", {})
