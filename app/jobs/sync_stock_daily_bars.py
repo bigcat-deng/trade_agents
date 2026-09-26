@@ -12,7 +12,6 @@ import baostock as bs
 from app.db import (
     fetch_all_latest_trading_stock_codes,
     fetch_completed_sync_codes,
-    fetch_latest_universe_date,
     save_sync_state,
     upsert_daily_bars,
 )
@@ -61,11 +60,9 @@ def resolve_window(
     end: date | None,
     trading_days: int | None,
 ) -> tuple[date, date]:
-    resolved_end = end or fetch_latest_universe_date()
-    if resolved_end is None:
-        raise RuntimeError(
-            "no stock_universe_daily data found; sync universe first or pass --end-date"
-        )
+    # End on the day the job starts. The universe snapshot only chooses which
+    # codes to pull, and can lag the last trading session.
+    resolved_end = end or date.today()
 
     if start is not None and trading_days is not None:
         raise RuntimeError("use either --start-date or --trading-days, not both")
@@ -113,7 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--end-date",
         type=parse_day,
-        help="Inclusive end date YYYY-MM-DD (default: latest stock_universe_daily date)",
+        help="Inclusive end date YYYY-MM-DD (default: the day the job starts)",
     )
     parser.add_argument(
         "--trading-days",

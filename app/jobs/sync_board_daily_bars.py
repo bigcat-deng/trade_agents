@@ -12,9 +12,7 @@ import baostock as bs
 from app.db import (
     BoardListItem,
     fetch_completed_board_sync_keys,
-    fetch_latest_board_universe_date,
     fetch_latest_board_codes,
-    fetch_latest_universe_date,
     save_board_sync_state,
     upsert_board_daily_bars,
 )
@@ -52,12 +50,9 @@ def resolve_window(
     end: date | None,
     trading_days: int | None,
 ) -> tuple[date, date]:
-    resolved_end = end or fetch_latest_board_universe_date() or fetch_latest_universe_date()
-    if resolved_end is None:
-        raise RuntimeError(
-            "no board_universe_daily or stock_universe_daily data found; "
-            "sync board universe first or pass --end-date"
-        )
+    # End on the day the job starts. Industry and concept share this window.
+    # The board list only chooses which codes to pull.
+    resolved_end = end or date.today()
 
     if start is not None and trading_days is not None:
         raise RuntimeError("use either --start-date or --trading-days, not both")
@@ -120,10 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--end-date",
         type=parse_day,
-        help=(
-            "Inclusive end date YYYY-MM-DD "
-            "(default: latest board_universe_daily date)"
-        ),
+        help="Inclusive end date YYYY-MM-DD (default: the day the job starts)",
     )
     parser.add_argument(
         "--trading-days",
