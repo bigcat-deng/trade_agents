@@ -14,6 +14,11 @@ from app.interpret.industry_heat import (
     model_settings,
     normalize_reading,
 )
+from app.interpret.medicine_theme import (
+    build_medicine_theme_prompt,
+    interpret_prose,
+    prose_reading,
+)
 from app.prompts.template import load_prompt
 
 
@@ -27,6 +32,7 @@ def _heat_builder(template_name: str):
 BUILDERS = {
     "industry-heat-rotation": _heat_builder("industry-heat-rotation"),
     "concept-heat-rotation": _heat_builder("concept-heat-rotation"),
+    "medicine-theme-heat": build_medicine_theme_prompt,
 }
 
 
@@ -69,6 +75,9 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
         except FileNotFoundError as exc:
             raise UnknownTemplate(template_name) from exc
         raise UnknownTemplate(template_name)
+
+    if template_name == "medicine-theme-heat":
+        return _interpret_prose(template_name, builder, as_of)
 
     template, prompt, resolved, latest, summaries = builder(as_of)
     board_type = str(template.config.get("board_type") or "industry")
@@ -125,5 +134,57 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
         model=response_model,
         content=saved,
         reading=attach_cross_stats(reading, resolved, board_type),
+        cached=False,
+    )
+
+
+def _interpret_prose(template_name: str, builder, as_of: date | None) -> Interpretation:
+    template, prompt, resolved = builder(as_of)
+    settings = model_settings(template)
+    missing = [
+        name
+        for name, value in (
+            ("LLM_BASE_URL", settings["base_url"]),
+            ("LLM_MODEL", settings["model"]),
+            ("LLM_API_KEY", settings["api_key"]),
+        )
+        if not value
+    ]
+    if missing:
+        raise InterpretConfigError(missing)
+
+    request_model = settings["model"]
+    stored = fetch_interpret_result(template.name, resolved, request_model)
+    if stored is not None:
+        response_model, content = stored
+        reading = prose_reading(content)
+        if reading.get("conclusion"):
+            return Interpretation(
+                template=template.name,
+                as_of=resolved,
+                model=response_model,
+                content=json.dumps(reading, ensure_ascii=False),
+                reading=reading,
+                cached=True,
+            )
+
+    text, response_model = interpret_prose(prompt, settings)
+    reading = prose_reading(text)
+    if not reading.get("conclusion"):
+        raise InterpretFormatError("model reply is empty")
+    saved = json.dumps(reading, ensure_ascii=False)
+    save_interpret_result(
+        template.name,
+        resolved,
+        request_model,
+        response_model,
+        saved,
+    )
+    return Interpretation(
+        template=template.name,
+        as_of=resolved,
+        model=response_model,
+        content=saved,
+        reading=reading,
         cached=False,
     )

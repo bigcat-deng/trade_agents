@@ -1341,3 +1341,52 @@ def replace_board_heat(board_type: str, start: date, rows: list[BoardHeatRow]) -
         conn.commit()
     return len(payload)
 
+
+def fetch_heat_dates_ending(
+    board_type: str,
+    on_or_before: date,
+    limit: int,
+) -> list[date]:
+    """Up to `limit` distinct heat dates on or before the day, oldest first."""
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date
+                FROM (
+                    SELECT DISTINCT trade_date
+                    FROM board_heat_daily
+                    WHERE board_type = %s
+                      AND trade_date <= %s
+                    ORDER BY trade_date DESC
+                    LIMIT %s
+                ) AS recent
+                ORDER BY trade_date
+                """,
+                (board_type, on_or_before, limit),
+            )
+            return [row[0] for row in cur.fetchall()]
+
+
+def fetch_concept_heat_window(
+    start: date,
+    end: date,
+) -> list[tuple[date, str, object | None]]:
+    """All concept heat_short rows in [start, end], for percentile maps."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date, board_code, heat_short
+                FROM board_heat_daily
+                WHERE board_type = 'concept'
+                  AND trade_date >= %s
+                  AND trade_date <= %s
+                ORDER BY trade_date, board_code
+                """,
+                (start, end),
+            )
+            return [(row[0], row[1], row[2]) for row in cur.fetchall()]
+

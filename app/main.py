@@ -9,12 +9,15 @@ from pydantic import BaseModel, Field
 
 from app.charts.board_rotation import render_board_rotation
 from app.charts.kline import render_kline
+from app.charts.theme_heat import render_theme_charts
 from app.db import (
     fetch_board_daily_bars_from_db,
     fetch_board_heat_series,
     fetch_board_name,
     fetch_board_rotation,
+    fetch_concept_heat_window,
     fetch_daily_bars_from_db,
+    fetch_heat_dates_ending,
     fetch_rotation_dates,
     fetch_trading_dates_ending,
     fetch_latest_trading_stocks,
@@ -31,6 +34,7 @@ from app.market_data.board_heat import top_short_heat_keys
 from app.market_data.providers import baostock_kline
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
+from app.themes import build_theme_view, get_theme
 
 load_env()
 
@@ -319,6 +323,160 @@ def board_rotation_page(request: Request) -> HTMLResponse:
 @app.get("/boards/concept/rotation", response_class=HTMLResponse)
 def concept_rotation_page(request: Request) -> HTMLResponse:
     return _rotation_page(request, "concept")
+
+
+@app.get("/boards/concept/themes/medicine", response_class=HTMLResponse)
+def medicine_theme_page(request: Request) -> HTMLResponse:
+    payload = _theme_page_payload("medicine", None, include_plotlyjs=False)
+    return templates.TemplateResponse(request, "concept_theme.html", payload)
+
+
+@app.get("/api/boards/concept/themes/medicine")
+def medicine_theme_api(as_of: str = Query(...)) -> dict:
+    try:
+        day = datetime.strptime(as_of, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    return _theme_api_payload("medicine", day, include_plotlyjs=False)
+
+
+def _theme_page_payload(
+    theme_id: str,
+    as_of: date | None,
+    *,
+    include_plotlyjs: bool,
+) -> dict:
+    data = _theme_payload(theme_id, as_of, include_plotlyjs=include_plotlyjs)
+    return {
+        "title": data["title"],
+        "as_of": data["as_of"],
+        "dates": data["dates"],
+        "theme_api": f"/api/boards/concept/themes/{theme_id}",
+        "kline_prefix": "/boards/concept",
+        "back_href": "/boards/concept/rotation",
+        "back_label": "概念热度轮转",
+        "interpret_template": "medicine-theme-heat",
+        "initial": data,
+    }
+
+
+def _theme_api_payload(
+    theme_id: str,
+    as_of: date,
+    *,
+    include_plotlyjs: bool,
+) -> dict:
+    return _theme_payload(theme_id, as_of, include_plotlyjs=include_plotlyjs)
+
+
+def _theme_payload(
+    theme_id: str,
+    as_of: date | None,
+    *,
+    include_plotlyjs: bool,
+) -> dict:
+    theme = get_theme(theme_id)
+    if theme is None:
+        raise HTTPException(status_code=404, detail=f"unknown theme: {theme_id}")
+
+    slider_dates = fetch_rotation_dates(theme.board_type, 10)
+    if as_of is not None and as_of not in slider_dates:
+        raise HTTPException(
+            status_code=400,
+            detail="date is outside the last 11 trading days",
+        )
+    selected = as_of or (slider_dates[-1] if slider_dates else None)
+    if selected is None:
+        view = build_theme_view(
+            theme,
+            as_of=date.today(),
+            window_dates=[],
+            heat_rows=[],
+            slider_dates=[],
+        )
+        view["meta_line"] = "还没有概念热度。先同步概念日 K，再运行概念热度计算。"
+        view["group_chart_html"] = ""
+        view["member_chart_html"] = ""
+        return view
+
+    window_dates = fetch_heat_dates_ending(
+        theme.board_type,
+        selected,
+        theme.window_trading_days,
+    )
+    heat_rows: list[tuple[date, str, object | None]] = []
+    if window_dates:
+        heat_rows = fetch_concept_heat_window(window_dates[0], window_dates[-1])
+
+    view = build_theme_view(
+        theme,
+        as_of=selected,
+        window_dates=window_dates,
+        heat_rows=heat_rows,
+        slider_dates=slider_dates,
+    )
+    view["meta_line"] = _theme_meta_line(view)
+    view["group_chart_html"], view["member_chart_html"] = _theme_charts(
+        view, include_plotlyjs=include_plotlyjs
+    )
+    return view
+
+
+def _theme_meta_line(view: dict) -> str:
+    if view.get("empty_message"):
+        return view["empty_message"]
+    start = view.get("window_start")
+    as_of = view.get("as_of")
+    days = view.get("window_days") or 0
+    return (
+        f"概念主题域 · 窗口 {start} → {as_of}（{days} 日）"
+        " · 分位 0=当日全市场概念中最热 · 热度越小越热"
+    )
+
+
+def _theme_charts(view: dict, *, include_plotlyjs: bool) -> tuple[str, str]:
+    series_a = view.get("series_group_a") or []
+    series_b = view.get("series_group_b") or []
+    if not series_a:
+        return "", ""
+    dates = [point["trade_date"] for point in series_a]
+    values_a = [point["value"] for point in series_a]
+    values_b = [point["value"] for point in series_b]
+    member_series = view.get("member_series") or {}
+
+    def _member_lines(members: list[dict]) -> list[dict]:
+        lines = []
+        for member in members:
+            series = member_series.get(member["board_code"], {})
+            points = series.get("points") or []
+            lines.append(
+                {
+                    "name": member["board_name"],
+                    "values": [point.get("percentile") for point in points],
+                }
+            )
+        return lines
+
+    sat = None
+    satellites = view.get("satellites") or []
+    if satellites:
+        first = satellites[0]
+        series = member_series.get(first["board_code"], {})
+        points = series.get("points") or []
+        sat = {
+            "name": first["board_name"],
+            "values": [point.get("percentile") for point in points],
+        }
+
+    return render_theme_charts(
+        dates=dates,
+        series_a=values_a,
+        series_b=values_b,
+        members_a=_member_lines(view.get("members_a") or []),
+        members_b=_member_lines(view.get("members_b") or []),
+        satellite=sat,
+        include_plotlyjs=include_plotlyjs,
+    )
 
 
 @app.get("/api/boards/rotation")

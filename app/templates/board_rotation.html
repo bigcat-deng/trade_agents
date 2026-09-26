@@ -171,6 +171,11 @@
   <main>
     <a class="back" href="/">← 索引</a>
     <h1>{{ title }}</h1>
+    {% if kind_label == "概念" %}
+    <p class="meta">
+      <a href="/boards/concept/themes/medicine" style="color:#1d4ed8;text-decoration:none">医药主题域试点 →</a>
+    </p>
+    {% endif %}
     {% if as_of %}
     <div class="slider">
       <strong id="slider-date">{{ as_of }}</strong>

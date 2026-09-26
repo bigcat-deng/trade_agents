@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+      --a: #1e3a8a;
+      --b: #92400e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.75rem;
+      line-height: 1.5;
+    }
+    .slider {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.35rem 0.85rem;
+      align-items: center;
+      margin: 0 0 1rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .slider strong { font-variant-numeric: tabular-nums; }
+    .slider input { width: 100%; accent-color: #1d4ed8; }
+    .slider .ends {
+      grid-column: 2;
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin: 0 0 1rem;
+    }
+    .badge {
+      flex: 1 1 14rem;
+      padding: 0.85rem 1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--line);
+    }
+    .badge.a { border-left-color: var(--a); }
+    .badge.ab { border-left-color: var(--b); }
+    .badge .kind {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: 0 0 0.2rem;
+    }
+    .badge .label {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    .badge .sub {
+      display: inline-block;
+      margin-left: 0.35rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--muted);
+    }
+    .badge .detail {
+      margin: 0.35rem 0 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .chart {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.4rem;
+      margin: 0 0 1rem;
+    }
+    .panel {
+      margin: 0 0 1rem;
+      padding: 1rem 1.1rem 1.15rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .panel h2 {
+      margin: 0 0 0.45rem;
+      font-size: 1.1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.4rem 0.5rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      white-space: nowrap;
+    }
+    td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    a.board {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+    a.board:hover { text-decoration: underline; }
+    .sat {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-start;
+    }
+    .sat-card {
+      flex: 0 1 16rem;
+      padding: 0.75rem 0.9rem;
+      border: 1px dashed var(--line);
+      background: #fafaf9;
+    }
+    .sat-card.burst {
+      border-color: #a8a29e;
+      background: #f5f5f4;
+    }
+    .sat-card .label { font-size: 1.1rem; font-weight: 600; margin: 0; }
+    .foot {
+      margin-top: 1.25rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .empty {
+      padding: 1.5rem 1rem;
+      color: var(--muted);
+    }
+    .metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin: 0.5rem 0 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .reading {
+      margin: 1rem 0 0;
+      padding: 1rem 1.1rem 1.15rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .reading h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.1rem;
+    }
+    .reading .conclusion {
+      margin: 0.65rem 0 0;
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+  </style>
+  <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
+</head>
+<body>
+  <main>
+    <a class="back" href="{{ back_href }}">← {{ back_label }}</a>
+    <h1 id="theme-title">{{ title }}</h1>
+    {% if as_of and dates %}
+    <div class="slider">
+      <strong id="slider-date">{{ as_of }}</strong>
+      <input
+        id="date-slider"
+        type="range"
+        min="0"
+        max="{{ dates|length - 1 }}"
+        value="{{ dates|length - 1 }}"
+        step="1"
+        aria-label="交易日期"
+      >
+      <div class="ends">
+        <span>{{ dates[0] }}</span>
+        <span>{{ dates[-1] }}</span>
+      </div>
+    </div>
+    {% endif %}
+    <p class="meta" id="theme-meta"></p>
+    <div id="theme-body"></div>
+  </main>
+  <script>
+    const dates = {{ dates | tojson }};
+    const themeApi = {{ theme_api | tojson }};
+    const klinePrefix = {{ kline_prefix | tojson }};
+    const interpretTemplate = {{ interpret_template | tojson }};
+    const initial = {{ initial | tojson }};
+    const slider = document.getElementById("date-slider");
+    const dateLabel = document.getElementById("slider-date");
+    const meta = document.getElementById("theme-meta");
+    const body = document.getElementById("theme-body");
+    let interpretRequestId = 0;
+
+    function fmt(value, digits) {
+      if (value === null || value === undefined) return "—";
+      return Number(value).toFixed(digits);
+    }
+
+    function boardLink(code, name) {
+      const href = `${klinePrefix}/${encodeURIComponent(code)}`;
+      return `<a class="board" href="${href}">${name}</a>`;
+    }
+
+    function memberRows(members) {
+      return members.map((m) => `
+        <tr>
+          <td>${boardLink(m.board_code, m.board_name)}</td>
+          <td class="num">${fmt(m.heat_short, 1)}</td>
+          <td class="num">${fmt(m.percentile, 2)}</td>
+          <td class="num">${fmt(m.delta, 1)}</td>
+          <td>${m.role || "—"}</td>
+        </tr>`).join("");
+    }
+
+    /** innerHTML does not run <script>; re-insert so Plotly.newPlot fires. */
+    function remountScripts(root) {
+      root.querySelectorAll("script").forEach((oldScript) => {
+        const script = document.createElement("script");
+        if (oldScript.src) {
+          script.src = oldScript.src;
+          script.async = false;
+        } else {
+          script.text = oldScript.textContent;
+        }
+        oldScript.replaceWith(script);
+      });
+    }
+
+    function renderBody(data) {
+      if (data.empty_message) {
+        body.innerHTML = `<p class="empty">${data.empty_message}</p>`;
+        return;
+      }
+      const abSub = data.badge_ab.sublabel
+        ? `<span class="sub">${data.badge_ab.sublabel}</span>`
+        : "";
+      const sat = (data.satellites && data.satellites[0]) || null;
+      const satClass = sat && sat.label === "爆发中" ? "sat-card burst" : "sat-card";
+      const satHtml = sat ? `
+        <div class="${satClass}">
+          <p class="kind" style="margin:0;color:var(--muted);font-size:0.78rem">卫星 · ${boardLink(sat.board_code, sat.board_name)}</p>
+          <p class="label">${sat.label}</p>
+          <p class="detail" style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--muted)">${sat.detail}</p>
+          <p class="detail" style="margin:0.25rem 0 0;font-size:0.85rem;color:var(--muted)">
+            变热 ${fmt(sat.delta, 1)} · 分位 ${fmt(sat.percentile_as_of, 2)}
+          </p>
+        </div>` : "";
+
+      const aSpread = data.badge_a.spread_d0 != null && data.badge_a.spread_as_of != null
+        ? `离散 ${fmt(data.badge_a.spread_d0, 2)} → ${fmt(data.badge_a.spread_as_of, 2)}`
+        : "";
+      const coMove = data.badge_a.co_move_ratio != null
+        ? `同向占比 ${fmt(data.badge_a.co_move_ratio, 2)}`
+        : "";
+
+      const constants = (data.constants || [])
+        .map((c) => `${c.name}=${c.value}`)
+        .join(" · ");
+
+      body.innerHTML = `
+        <div class="badges">
+          <div class="badge a" id="badge-a">
+            <p class="kind">群A · 制药主线</p>
+            <p class="label">${data.badge_a.label}</p>
+            <p class="detail">${data.badge_a.detail || ""}</p>
+          </div>
+          <div class="badge ab" id="badge-ab">
+            <p class="kind">A ↔ B</p>
+            <p class="label">${data.badge_ab.label}${abSub}</p>
+            <p class="detail">${data.badge_ab.detail || ""}</p>
+          </div>
+        </div>
+        <div class="chart" id="group-chart">${data.group_chart_html || ""}</div>
+        <section class="panel" id="panel-a">
+          <h2>群A 内部</h2>
+          <p class="meta" style="margin-top:0">短热越小越热 · 窗口变热 = 起点短热 − 截止日短热</p>
+          <div class="chart">${data.member_chart_html || ""}</div>
+          <table>
+            <thead>
+              <tr>
+                <th>概念</th>
+                <th class="num">短热</th>
+                <th class="num">分位</th>
+                <th class="num">窗口变热</th>
+                <th>角色</th>
+              </tr>
+            </thead>
+            <tbody>${memberRows(data.members_a || [])}</tbody>
+          </table>
+          <div class="metrics">
+            <span>${coMove}</span>
+            <span>${aSpread}</span>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>群B 与卫星</h2>
+          <div class="sat">
+            <div style="flex:1 1 16rem;overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>概念</th>
+                    <th class="num">短热</th>
+                    <th class="num">分位</th>
+                    <th class="num">窗口变热</th>
+                    <th>角色</th>
+                  </tr>
+                </thead>
+                <tbody>${memberRows(data.members_b || [])}</tbody>
+              </table>
+            </div>
+            ${satHtml}
+          </div>
+        </section>
+        <section class="reading" id="chart-reading">
+          <h2>图的解析</h2>
+          <p class="meta" id="reading-meta">正在解读…</p>
+          <div class="conclusion" id="reading-body"></div>
+        </section>
+        <p class="foot">
+          ${data.membership_note || ""}<br>
+          阈值：${constants}
+        </p>`;
+      remountScripts(body);
+      loadReading(data.as_of);
+    }
+
+    async function loadReading(asOf) {
+      const metaEl = document.getElementById("reading-meta");
+      const bodyEl = document.getElementById("reading-body");
+      if (!metaEl || !bodyEl || !interpretTemplate || !asOf) return;
+      const ticket = ++interpretRequestId;
+      metaEl.textContent = "正在解读…";
+      bodyEl.textContent = "";
+      try {
+        const response = await fetch("/api/interpret/" + interpretTemplate, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({as_of: asOf}),
+        });
+        const payload = await response.json();
+        if (ticket !== interpretRequestId) return;
+        if (!response.ok) {
+          metaEl.textContent = "解读失败";
+          bodyEl.textContent = payload.detail || "解读失败";
+          return;
+        }
+        const cached = payload.cached ? " · 缓存" : "";
+        metaEl.textContent = "截至 " + payload.as_of + " · " + payload.model + cached;
+        bodyEl.textContent = (payload.reading && payload.reading.conclusion) || "解读失败";
+      } catch (err) {
+        if (ticket !== interpretRequestId) return;
+        metaEl.textContent = "解读失败";
+        bodyEl.textContent = "解读失败";
+      }
+    }
+
+    async function loadDate(index) {
+      if (!dates || !dates.length) return;
+      const day = dates[index];
+      dateLabel.textContent = day;
+      meta.textContent = "加载中…";
+      const response = await fetch(`${themeApi}?as_of=${encodeURIComponent(day)}`);
+      if (!response.ok) {
+        meta.textContent = "加载失败";
+        return;
+      }
+      const data = await response.json();
+      meta.textContent = data.meta_line || "";
+      renderBody(data);
+    }
+
+    if (slider) {
+      slider.addEventListener("input", () => {
+        loadDate(Number(slider.value));
+      });
+    }
+
+    meta.textContent = initial.meta_line || "";
+    renderBody(initial);
+  </script>
+</body>
+</html>
