@@ -124,6 +124,7 @@ def normalize_reading(
             kept.append(
                 {
                     "board": board,
+                    "board_code": point.board_code,
                     "heat_short": _number(point.heat_short),
                     "heat_long": _number(point.heat_long),
                     "heat_short_change": _number(point.heat_short_change),

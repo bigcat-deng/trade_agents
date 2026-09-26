@@ -12,7 +12,9 @@ from app.charts.kline import render_kline
 from app.db import (
     fetch_board_daily_bars_from_db,
     fetch_board_heat_series,
+    fetch_board_name,
     fetch_daily_bars_from_db,
+    fetch_trading_dates_ending,
     fetch_industry_board_rotation,
     fetch_industry_rotation_dates,
     fetch_latest_trading_stocks,
@@ -238,6 +240,63 @@ def board_rotation_api(as_of: str, highlight: str | None = None) -> dict:
     if payload["chart_html"] is None:
         raise HTTPException(status_code=404, detail="no industry heat for that date")
     return payload
+
+
+@app.get("/boards/industry/{board_code}/kline", response_class=HTMLResponse)
+def board_kline_page(
+    request: Request,
+    board_code: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> HTMLResponse:
+    board_name = fetch_board_name("industry", board_code)
+    if board_name is None:
+        raise HTTPException(status_code=404, detail="没有这个行业板块")
+
+    today = date.today()
+    start = today
+    end = today
+    error = None
+    try:
+        if start_date is None and end_date is None:
+            days = fetch_trading_dates_ending("industry", today, 60)
+            if days:
+                start = days[0]
+        else:
+            start = _parse_day(start_date, today)
+            end = _parse_day(end_date, today)
+            if start > end:
+                raise RuntimeError("开始日期不能晚于结束日期")
+    except ValueError:
+        error = "日期格式应为 YYYY-MM-DD"
+    except RuntimeError as exc:
+        error = str(exc)
+
+    chart_html = None
+    summary = None
+    title = f"{board_name} {board_code}"
+    if error is None:
+        records = fetch_board_daily_bars_from_db("industry", board_code, start, end)
+        if records:
+            heats = fetch_board_heat_series("industry", board_code, start, end)
+            chart_html = render_kline(records, title=title, code=board_code, heats=heats)
+            summary = f"{title} · {len(records)} 根K线 · {start} ~ {end}"
+        else:
+            summary = f"{title} · 所选区间无数据"
+
+    return templates.TemplateResponse(
+        request,
+        "board_kline.html",
+        {
+            "board_code": board_code,
+            "board_name": board_name,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "chart_html": chart_html,
+            "summary": summary,
+            "error": error,
+        },
+    )
 
 
 @app.get("/charts/kline-demo", response_class=HTMLResponse)

@@ -382,6 +382,55 @@ def fetch_board_daily_bars_from_db(
     ]
 
 
+def fetch_board_name(board_type: str, board_code: str) -> str | None:
+    """Latest known name for one board."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT board_name
+                FROM board_universe_daily
+                WHERE board_type = %s
+                  AND board_code = %s
+                ORDER BY trade_date DESC
+                LIMIT 1
+                """,
+                (board_type, board_code),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return row[0]
+
+
+def fetch_trading_dates_ending(
+    board_type: str,
+    on_or_before: date,
+    limit: int,
+) -> list[date]:
+    """Up to `limit` distinct bar dates on or before the day, oldest first."""
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date
+                FROM (
+                    SELECT DISTINCT trade_date
+                    FROM board_daily_bar
+                    WHERE board_type = %s
+                      AND trade_date <= %s
+                    ORDER BY trade_date DESC
+                    LIMIT %s
+                ) AS recent
+                ORDER BY trade_date
+                """,
+                (board_type, on_or_before, limit),
+            )
+            return [row[0] for row in cur.fetchall()]
+
+
 def fetch_board_heat_series(
     board_type: str,
     board_code: str,
@@ -892,6 +941,7 @@ def fetch_industry_board_rotation(
 class IndustryHeatPoint:
     trade_date: date
     board_name: str
+    board_code: str
     heat_short: object | None
     heat_long: object | None
     heat_short_change: object | None
@@ -937,6 +987,7 @@ def fetch_industry_heat_window(
                 SELECT
                     h.trade_date,
                     COALESCE(n.board_name, h.board_code) AS board_name,
+                    h.board_code,
                     h.heat_short,
                     h.heat_long,
                     CASE
@@ -966,16 +1017,17 @@ def fetch_industry_heat_window(
     if not fetched:
         return None, None, []
     as_of = max(row[0] for row in fetched)
-    prev_date = next(row[7] for row in fetched if row[0] == as_of)
+    prev_date = next(row[8] for row in fetched if row[0] == as_of)
     points = [
         IndustryHeatPoint(
             trade_date=row[0],
             board_name=row[1],
-            heat_short=row[2],
-            heat_long=row[3],
-            heat_short_change=row[4],
-            heat_long_change=row[5],
-            pct_chg=row[6],
+            board_code=row[2],
+            heat_short=row[3],
+            heat_long=row[4],
+            heat_short_change=row[5],
+            heat_long_change=row[6],
+            pct_chg=row[7],
         )
         for row in fetched
     ]

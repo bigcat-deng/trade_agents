@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ board_name }} K线</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+      --accent: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 1.25rem;
+    }
+    form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.85rem 1rem;
+      align-items: end;
+      padding: 1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      margin-bottom: 1rem;
+    }
+    label {
+      display: grid;
+      gap: 0.35rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-width: 0;
+    }
+    label.date {
+      flex: 0 1 168px;
+    }
+    input, button {
+      font: inherit;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      width: 100%;
+      max-width: 100%;
+    }
+    button {
+      width: auto;
+      flex: 0 0 auto;
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      cursor: pointer;
+      padding-inline: 1.1rem;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.75rem;
+      min-height: 200px;
+    }
+    .error {
+      color: #b91c1c;
+      margin: 0.75rem 0;
+    }
+    .note {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="/boards/rotation">← 热度轮转</a>
+    <h1>{{ board_name }}</h1>
+    <p class="meta">{{ board_code }} · 行业板块</p>
+
+    <form method="get" action="/boards/industry/{{ board_code }}/kline">
+      <label class="date">
+        开始日期
+        <input type="date" name="start_date" value="{{ start_date }}" required>
+      </label>
+      <label class="date">
+        结束日期
+        <input type="date" name="end_date" value="{{ end_date }}" required>
+      </label>
+      <button type="submit">绘制</button>
+    </form>
+
+    {% if error %}
+      <p class="error">{{ error }}</p>
+    {% endif %}
+
+    {% if chart_html %}
+      <p class="note">{{ summary }}</p>
+      <div class="panel">{{ chart_html | safe }}</div>
+    {% else %}
+      <p class="note">{{ summary or "没有可绘制的数据。" }}</p>
+    {% endif %}
+  </main>
+</body>
+</html>
