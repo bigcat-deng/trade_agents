@@ -17,10 +17,14 @@ from app.themes.badges import (
 from app.themes.ai import AI_THEME
 from app.themes.config import ThemeConfig, constants_footnote, theme_board_codes
 from app.themes.medicine import MEDICINE_THEME
+from app.themes.metals import METALS_THEME
+from app.themes.semiconductor import SEMICONDUCTOR_THEME
 
 _THEMES: dict[str, ThemeConfig] = {
     MEDICINE_THEME.theme_id: MEDICINE_THEME,
     AI_THEME.theme_id: AI_THEME,
+    SEMICONDUCTOR_THEME.theme_id: SEMICONDUCTOR_THEME,
+    METALS_THEME.theme_id: METALS_THEME,
 }
 
 

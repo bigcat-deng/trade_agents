@@ -26,6 +26,8 @@ PROSE_THEME_TEMPLATES = frozenset(
     {
         "medicine-theme-reading",
         "ai-theme-reading",
+        "semiconductor-theme-reading",
+        "metals-theme-reading",
     }
 )
 
@@ -84,6 +86,18 @@ def build_ai_theme_prompt(
     as_of: date | None = None,
 ) -> tuple[PromptTemplate, str, date]:
     return build_theme_reading_prompt("ai-theme-reading", as_of)
+
+
+def build_semiconductor_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("semiconductor-theme-reading", as_of)
+
+
+def build_metals_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("metals-theme-reading", as_of)
 
 
 def interpret_prose(prompt: str, settings: dict[str, str]) -> tuple[str, str]:

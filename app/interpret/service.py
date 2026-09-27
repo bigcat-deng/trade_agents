@@ -18,6 +18,8 @@ from app.interpret.medicine_theme import (
     PROSE_THEME_TEMPLATES,
     build_ai_theme_prompt,
     build_medicine_theme_prompt,
+    build_metals_theme_prompt,
+    build_semiconductor_theme_prompt,
     interpret_prose,
     prose_reading,
 )
@@ -36,6 +38,8 @@ BUILDERS = {
     "concept-heat-rotation": _heat_builder("concept-heat-rotation"),
     "medicine-theme-reading": build_medicine_theme_prompt,
     "ai-theme-reading": build_ai_theme_prompt,
+    "semiconductor-theme-reading": build_semiconductor_theme_prompt,
+    "metals-theme-reading": build_metals_theme_prompt,
 }
 
 

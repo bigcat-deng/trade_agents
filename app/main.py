@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.charts.board_rotation import render_board_rotation
 from app.charts.kline import render_kline
 from app.charts.mini_kline import render_mini_kline
-from app.charts.theme_heat import render_theme_charts
+from app.charts.theme_heat import render_theme_charts, render_theme_group_chart
 from app.db import (
     fetch_board_daily_bars_from_db,
     fetch_board_daily_bars_many,
@@ -37,7 +37,7 @@ from app.market_data.csi500 import fetch_csi500_closes
 from app.market_data.providers import baostock_kline
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
-from app.themes import build_theme_view, get_theme
+from app.themes import build_theme_view, get_theme, list_themes
 from app.themes.config import ThemeConfig, theme_board_codes
 
 MINI_KLINE_TRADING_DAYS = 60
@@ -331,6 +331,21 @@ def concept_rotation_page(request: Request) -> HTMLResponse:
     return _rotation_page(request, "concept")
 
 
+@app.get("/boards/concept/themes", response_class=HTMLResponse)
+def concept_themes_hub_page(request: Request) -> HTMLResponse:
+    payload = _themes_hub_page_payload(None, include_plotlyjs=False)
+    return templates.TemplateResponse(request, "concept_themes_hub.html", payload)
+
+
+@app.get("/api/boards/concept/themes")
+def concept_themes_hub_api(as_of: str = Query(...)) -> dict:
+    try:
+        day = datetime.strptime(as_of, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    return _themes_hub_payload(day, include_plotlyjs=False)
+
+
 @app.get("/boards/concept/themes/{theme_id}", response_class=HTMLResponse)
 def concept_theme_page(request: Request, theme_id: str) -> HTMLResponse:
     payload = _theme_page_payload(theme_id, None, include_plotlyjs=False)
@@ -344,6 +359,120 @@ def concept_theme_api(theme_id: str, as_of: str = Query(...)) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
     return _theme_api_payload(theme_id, day, include_plotlyjs=False)
+
+
+def _themes_hub_page_payload(
+    as_of: date | None,
+    *,
+    include_plotlyjs: bool,
+) -> dict:
+    data = _themes_hub_payload(as_of, include_plotlyjs=include_plotlyjs)
+    return {
+        "title": "主题域",
+        "as_of": data["as_of"],
+        "dates": data["dates"],
+        "hub_api": "/api/boards/concept/themes",
+        "back_href": "/",
+        "back_label": "索引",
+        "initial": data,
+    }
+
+
+def _themes_hub_payload(
+    as_of: date | None,
+    *,
+    include_plotlyjs: bool,
+) -> dict:
+    themes = list_themes()
+    slider_dates = fetch_rotation_dates("concept", 10)
+    if as_of is not None and as_of not in slider_dates:
+        raise HTTPException(
+            status_code=400,
+            detail="date is outside the last 11 trading days",
+        )
+    selected = as_of or (slider_dates[-1] if slider_dates else None)
+    if selected is None:
+        return {
+            "as_of": None,
+            "dates": [],
+            "meta_line": "还没有概念热度。先同步概念日 K，再运行概念热度计算。",
+            "themes": [],
+            "empty_message": "还没有概念热度。",
+        }
+
+    window_days = max((t.window_trading_days for t in themes), default=20)
+    window_dates = fetch_heat_dates_ending("concept", selected, window_days)
+    heat_rows: list[tuple[date, str, object | None]] = []
+    if window_dates:
+        heat_rows = fetch_concept_heat_window(window_dates[0], window_dates[-1])
+
+    cards = []
+    plotly_once = include_plotlyjs
+    for theme in themes:
+        theme_window = window_dates[-theme.window_trading_days :] if window_dates else []
+        view = build_theme_view(
+            theme,
+            as_of=selected,
+            window_dates=theme_window,
+            heat_rows=heat_rows,
+            slider_dates=slider_dates,
+        )
+        chart_html = ""
+        if not view.get("empty_message"):
+            chart_html = _theme_group_chart_only(
+                view, include_plotlyjs=plotly_once, height=260
+            )
+            if chart_html and plotly_once:
+                plotly_once = False
+        cards.append(
+            {
+                "theme_id": theme.theme_id,
+                "title": theme.title,
+                "href": f"/boards/concept/themes/{theme.theme_id}",
+                "group_a_label": theme.group_a_label,
+                "group_b_label": theme.group_b_label,
+                "badge_a": view.get("badge_a"),
+                "badge_ab": view.get("badge_ab"),
+                "group_chart_html": chart_html,
+                "empty_message": view.get("empty_message"),
+                "window_start": view.get("window_start"),
+                "window_days": view.get("window_days"),
+            }
+        )
+
+    start = window_dates[0].isoformat() if window_dates else None
+    return {
+        "as_of": selected.isoformat(),
+        "dates": [day.isoformat() for day in slider_dates],
+        "meta_line": (
+            f"主题域总览 · 截止 {selected.isoformat()}"
+            + (f" · 窗口约至 {start}" if start else "")
+            + " · 分位 0=最热 · 每图为该主题群A↔群B中位"
+        ),
+        "themes": cards,
+        "empty_message": None,
+    }
+
+
+def _theme_group_chart_only(
+    view: dict, *, include_plotlyjs: bool, height: int = 280
+) -> str:
+    series_a = view.get("series_group_a") or []
+    series_b = view.get("series_group_b") or []
+    if not series_a:
+        return ""
+    grouping = view.get("grouping") or {}
+    label_a = (grouping.get("group_a") or {}).get("label") or "群A"
+    label_b = (grouping.get("group_b") or {}).get("label") or "群B"
+    return render_theme_group_chart(
+        dates=[point["trade_date"] for point in series_a],
+        series_a=[point["value"] for point in series_a],
+        series_b=[point["value"] for point in series_b],
+        label_a=label_a,
+        label_b=label_b,
+        include_plotlyjs=include_plotlyjs,
+        height=height,
+    )
 
 
 def _theme_page_payload(
@@ -364,8 +493,8 @@ def _theme_page_payload(
         "dates": data["dates"],
         "theme_api": f"/api/boards/concept/themes/{theme_id}",
         "kline_prefix": "/boards/concept",
-        "back_href": "/boards/concept/rotation",
-        "back_label": "概念热度轮转",
+        "back_href": "/boards/concept/themes",
+        "back_label": "主题域",
         "interpret_template": interpret_template,
         "initial": data,
     }

@@ -13,6 +13,53 @@ _GROUP_A = "#1e3a8a"
 _GROUP_B = "#92400e"
 
 
+def render_theme_group_chart(
+    *,
+    dates: list[str],
+    series_a: list[float | None],
+    series_b: list[float | None],
+    label_a: str = "群A",
+    label_b: str = "群B",
+    include_plotlyjs: bool = True,
+    height: int = 280,
+    title: str | None = None,
+) -> str:
+    """A↔B group median percentile chart (same as theme page first chart)."""
+    short_a = label_a.split("·", 1)[-1].strip() if "·" in label_a else label_a
+    short_b = label_b.split("·", 1)[-1].strip() if "·" in label_b else label_b
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=series_a,
+            mode="lines+markers",
+            name=f"{short_a} 中位",
+            line=dict(color=_GROUP_A, width=2.5),
+            marker=dict(size=5),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=series_b,
+            mode="lines+markers",
+            name=f"{short_b} 中位",
+            line=dict(color=_GROUP_B, width=2.5),
+            marker=dict(size=5),
+        )
+    )
+    _style_heat_axis(
+        fig,
+        title=title or "群热度分位（中位数）· 上热下冷",
+        height=height,
+    )
+    return fig.to_html(
+        full_html=False,
+        include_plotlyjs="cdn" if include_plotlyjs else False,
+        config={"displayModeBar": False, "responsive": True},
+    )
+
+
 def render_theme_charts(
     *,
     dates: list[str],
@@ -40,32 +87,14 @@ def render_theme_charts(
     short_a = label_a.split("·", 1)[-1].strip() if "·" in label_a else label_a
     short_b = label_b.split("·", 1)[-1].strip() if "·" in label_b else label_b
 
-    group_fig = go.Figure()
-    group_fig.add_trace(
-        go.Scatter(
-            x=dates,
-            y=series_a,
-            mode="lines+markers",
-            name=f"{short_a} 中位",
-            line=dict(color=_GROUP_A, width=2.5),
-            marker=dict(size=6),
-        )
-    )
-    group_fig.add_trace(
-        go.Scatter(
-            x=dates,
-            y=series_b,
-            mode="lines+markers",
-            name=f"{short_b} 中位",
-            line=dict(color=_GROUP_B, width=2.5),
-            marker=dict(size=6),
-        )
-    )
-    _style_heat_axis(group_fig, title="群热度分位（中位数）· 上热下冷")
-    group_html = group_fig.to_html(
-        full_html=False,
-        include_plotlyjs="cdn" if include_plotlyjs else False,
-        config={"displayModeBar": False, "responsive": True},
+    group_html = render_theme_group_chart(
+        dates=dates,
+        series_a=series_a,
+        series_b=series_b,
+        label_a=label_a,
+        label_b=label_b,
+        include_plotlyjs=include_plotlyjs,
+        height=320,
     )
 
     member_fig = make_subplots(
@@ -135,11 +164,11 @@ def render_theme_charts(
     return group_html, member_html
 
 
-def _style_heat_axis(figure: go.Figure, *, title: str) -> None:
+def _style_heat_axis(figure: go.Figure, *, title: str, height: int = 320) -> None:
     figure.update_yaxes(autorange="reversed", title_text="分位 0=最热")
     figure.update_layout(
         title=dict(text=title, font=dict(size=14)),
-        height=320,
+        height=height,
         margin=dict(l=48, r=24, t=48, b=36),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
         plot_bgcolor="#fffdf8",
