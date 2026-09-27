@@ -413,17 +413,19 @@
       const abSub = data.badge_ab.sublabel
         ? `<span class="sub">${data.badge_ab.sublabel}</span>`
         : "";
-      const sat = (data.satellites && data.satellites[0]) || null;
-      const satClass = sat && sat.label === "爆发中" ? "sat-card burst" : "sat-card";
-      const satHtml = sat ? `
+      const satList = data.satellites || [];
+      const satHtml = satList.map((sat) => {
+        const satClass = sat.label === "爆发中" ? "sat-card burst" : "sat-card";
+        return `
         <div class="${satClass}">
-          <p class="kind" style="margin:0;color:var(--muted);font-size:0.78rem">卫星 · ${boardLink(sat.board_code, sat.board_name)}</p>
+          <p class="kind" style="margin:0;color:var(--muted);font-size:0.78rem">${(data.grouping && data.grouping.satellite && data.grouping.satellite.label) || "卫星"} · ${boardLink(sat.board_code, sat.board_name)}</p>
           <p class="label">${sat.label}</p>
           <p class="detail" style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--muted)">${sat.detail}</p>
           <p class="detail" style="margin:0.25rem 0 0;font-size:0.85rem;color:var(--muted)">
             变热 ${fmt(sat.delta, 1)} · 分位 ${fmt(sat.percentile_as_of, 2)}
           </p>
-        </div>` : "";
+        </div>`;
+      }).join("");
 
       const aSpread = data.badge_a.spread_d0 != null && data.badge_a.spread_as_of != null
         ? `离散 ${fmt(data.badge_a.spread_d0, 2)} → ${fmt(data.badge_a.spread_as_of, 2)}`
@@ -436,11 +438,14 @@
         .map((c) => `${c.name}=${c.value}`)
         .join(" · ");
 
+      const labelA = (data.grouping && data.grouping.group_a && data.grouping.group_a.label) || "群A";
+      const labelB = (data.grouping && data.grouping.group_b && data.grouping.group_b.label) || "群B";
+
       body.innerHTML = `
         ${groupingHtml(data)}
         <div class="badges">
           <div class="badge a" id="badge-a">
-            <p class="kind">群A · 制药主线</p>
+            <p class="kind">${labelA}</p>
             <p class="label">${data.badge_a.label}</p>
             <p class="detail">${data.badge_a.detail || ""}</p>
           </div>
@@ -452,7 +457,7 @@
         </div>
         <div class="chart" id="group-chart">${data.group_chart_html || ""}</div>
         <section class="panel" id="panel-a">
-          <h2>群A 内部</h2>
+          <h2>${labelA} 内部</h2>
           <p class="meta" style="margin-top:0">短热越小越热 · 窗口变热 = 起点短热 − 截止日短热</p>
           <div class="chart">${data.member_chart_html || ""}</div>
           <table>
@@ -473,7 +478,7 @@
           </div>
         </section>
         <section class="panel">
-          <h2>群B 与卫星</h2>
+          <h2>${labelB} 与卫星</h2>
           <div class="sat">
             <div style="flex:1 1 16rem;overflow-x:auto">
               <table>

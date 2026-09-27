@@ -14,11 +14,13 @@ from app.themes.badges import (
     percentiles_from_heats,
     window_delta,
 )
+from app.themes.ai import AI_THEME
 from app.themes.config import ThemeConfig, constants_footnote, theme_board_codes
 from app.themes.medicine import MEDICINE_THEME
 
 _THEMES: dict[str, ThemeConfig] = {
     MEDICINE_THEME.theme_id: MEDICINE_THEME,
+    AI_THEME.theme_id: AI_THEME,
 }
 
 
@@ -194,11 +196,11 @@ def build_theme_view(
             for name, value in constants_footnote(theme)
         ],
         "membership_note": (
-            "试点配置：A="
+            f"试点配置：{theme.group_a_label}="
             + "、".join(b.board_name for b in theme.group_a)
-            + "；B="
+            + f"；{theme.group_b_label}="
             + "、".join(b.board_name for b in theme.group_b)
-            + "；卫星="
+            + f"；{theme.satellite_label}="
             + "、".join(b.board_name for b in theme.satellites)
         ),
         "empty_message": None,

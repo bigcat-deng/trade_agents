@@ -26,6 +26,7 @@ class ThemeConfig:
     group_b_reason: str = ""
     satellite_reason: str = ""
     grouping_note: str = ""
+    interpret_template: str = ""
     window_trading_days: int = 20
     # Window Δ flat band (heat_short rank units).
     epsilon: float = 5.0

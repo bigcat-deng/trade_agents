@@ -331,19 +331,19 @@ def concept_rotation_page(request: Request) -> HTMLResponse:
     return _rotation_page(request, "concept")
 
 
-@app.get("/boards/concept/themes/medicine", response_class=HTMLResponse)
-def medicine_theme_page(request: Request) -> HTMLResponse:
-    payload = _theme_page_payload("medicine", None, include_plotlyjs=False)
+@app.get("/boards/concept/themes/{theme_id}", response_class=HTMLResponse)
+def concept_theme_page(request: Request, theme_id: str) -> HTMLResponse:
+    payload = _theme_page_payload(theme_id, None, include_plotlyjs=False)
     return templates.TemplateResponse(request, "concept_theme.html", payload)
 
 
-@app.get("/api/boards/concept/themes/medicine")
-def medicine_theme_api(as_of: str = Query(...)) -> dict:
+@app.get("/api/boards/concept/themes/{theme_id}")
+def concept_theme_api(theme_id: str, as_of: str = Query(...)) -> dict:
     try:
         day = datetime.strptime(as_of, "%Y-%m-%d").date()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
-    return _theme_api_payload("medicine", day, include_plotlyjs=False)
+    return _theme_api_payload(theme_id, day, include_plotlyjs=False)
 
 
 def _theme_page_payload(
@@ -353,6 +353,11 @@ def _theme_page_payload(
     include_plotlyjs: bool,
 ) -> dict:
     data = _theme_payload(theme_id, as_of, include_plotlyjs=include_plotlyjs)
+    theme = get_theme(theme_id)
+    interpret_template = (
+        (theme.interpret_template if theme is not None else "")
+        or f"{theme_id}-theme-reading"
+    )
     return {
         "title": data["title"],
         "as_of": data["as_of"],
@@ -361,7 +366,7 @@ def _theme_page_payload(
         "kline_prefix": "/boards/concept",
         "back_href": "/boards/concept/rotation",
         "back_label": "概念热度轮转",
-        "interpret_template": "medicine-theme-reading",
+        "interpret_template": interpret_template,
         "initial": data,
     }
 
@@ -453,9 +458,9 @@ def _theme_mini_klines(theme: ThemeConfig, as_of: date) -> str:
     bars_by_code = fetch_board_daily_bars_many(theme.board_type, codes, start, end)
     benchmark = dict(fetch_csi500_closes(start, end))
     sections = [
-        ("群A", theme.group_a),
-        ("群B", theme.group_b),
-        ("卫星", theme.satellites),
+        (theme.group_a_label, theme.group_a),
+        (theme.group_b_label, theme.group_b),
+        (theme.satellite_label, theme.satellites),
     ]
     bench_note = (
         " · 灰底为中证500同期走势（已按本图高低对齐）"
@@ -519,16 +524,20 @@ def _theme_charts(view: dict, *, include_plotlyjs: bool) -> tuple[str, str]:
             )
         return lines
 
-    sat = None
-    satellites = view.get("satellites") or []
-    if satellites:
-        first = satellites[0]
-        series = member_series.get(first["board_code"], {})
+    sat_lines = []
+    for sat in view.get("satellites") or []:
+        series = member_series.get(sat["board_code"], {})
         points = series.get("points") or []
-        sat = {
-            "name": first["board_name"],
-            "values": [point.get("percentile") for point in points],
-        }
+        sat_lines.append(
+            {
+                "name": sat["board_name"],
+                "values": [point.get("percentile") for point in points],
+            }
+        )
+
+    grouping = view.get("grouping") or {}
+    label_a = (grouping.get("group_a") or {}).get("label") or "群A"
+    label_b = (grouping.get("group_b") or {}).get("label") or "群B"
 
     return render_theme_charts(
         dates=dates,
@@ -536,7 +545,9 @@ def _theme_charts(view: dict, *, include_plotlyjs: bool) -> tuple[str, str]:
         series_b=values_b,
         members_a=_member_lines(view.get("members_a") or []),
         members_b=_member_lines(view.get("members_b") or []),
-        satellite=sat,
+        satellites=sat_lines,
+        label_a=label_a,
+        label_b=label_b,
         include_plotlyjs=include_plotlyjs,
     )
 

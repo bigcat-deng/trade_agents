@@ -1,4 +1,4 @@
-"""Build and call the medicine theme fused reading prompt."""
+"""Build and call concept-theme fused reading prompts."""
 
 from __future__ import annotations
 
@@ -21,15 +21,23 @@ from app.themes import get_theme
 from app.themes.config import theme_board_codes
 from app.themes.service import build_theme_view
 
-TEMPLATE_NAME = "medicine-theme-reading"
 DEFAULT_PRICE_DAYS = 60
+PROSE_THEME_TEMPLATES = frozenset(
+    {
+        "medicine-theme-reading",
+        "ai-theme-reading",
+    }
+)
 
 
-def build_medicine_theme_prompt(
+def build_theme_reading_prompt(
+    template_name: str,
     as_of: date | None = None,
 ) -> tuple[PromptTemplate, str, date]:
-    template = load_prompt(TEMPLATE_NAME)
-    theme_id = str(template.config.get("theme_id") or "medicine")
+    template = load_prompt(template_name)
+    theme_id = str(template.config.get("theme_id") or "")
+    if not theme_id:
+        raise RuntimeError(f"theme_id missing in prompt config: {template_name}")
     theme = get_theme(theme_id)
     if theme is None:
         raise RuntimeError(f"unknown theme: {theme_id}")
@@ -64,6 +72,18 @@ def build_medicine_theme_prompt(
         data_block=_data_block(view, price_stats),
     )
     return template, body, resolved
+
+
+def build_medicine_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("medicine-theme-reading", as_of)
+
+
+def build_ai_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("ai-theme-reading", as_of)
 
 
 def interpret_prose(prompt: str, settings: dict[str, str]) -> tuple[str, str]:
@@ -104,6 +124,206 @@ def prose_reading(content: str) -> dict:
             if isinstance(conclusion, str) and conclusion.strip():
                 return {"conclusion": conclusion.strip(), "sections": []}
     return {"conclusion": text, "sections": []}
+
+
+def _group_labels(view: dict) -> tuple[str, str, str]:
+    grouping = view.get("grouping") or {}
+    label_a = (grouping.get("group_a") or {}).get("label") or "群A"
+    label_b = (grouping.get("group_b") or {}).get("label") or "群B"
+    label_sat = (grouping.get("satellite") or {}).get("label") or "卫星"
+    return label_a, label_b, label_sat
+
+
+def _data_block(view: dict, price_stats: dict) -> str:
+    label_a, label_b, label_sat = _group_labels(view)
+    sats = view.get("satellites") or []
+    ab = view["badge_ab"]
+    ab_label = ab["label"]
+    if ab.get("sublabel"):
+        ab_label = f"{ab_label}·{ab['sublabel']}"
+
+    a_codes = [(m["board_code"], m["board_name"]) for m in view["members_a"]]
+    b_codes = [(m["board_code"], m["board_name"]) for m in view["members_b"]]
+
+    lines = [
+        f"截止日：{view['as_of']}",
+        f"热度窗口起点：{view['window_start']}",
+        f"热度窗口交易日数：{view['window_days']}",
+        (
+            f"价格窗口：{price_stats.get('start') or ''} → {price_stats.get('end') or ''}"
+            f"（{price_stats.get('days') or 0} 个交易日）"
+        ),
+        f"成员：{view.get('membership_note') or ''}",
+        "",
+        "## 徽章",
+        f"{label_a}：{view['badge_a']['label']} — {view['badge_a'].get('detail') or ''}",
+        (
+            f"  群窗口变热中位≈{view['badge_a'].get('delta')}；"
+            f"同向占比={view['badge_a'].get('co_move_ratio')}；"
+            f"分位离散 {view['badge_a'].get('spread_d0')} → {view['badge_a'].get('spread_as_of')}"
+        ),
+        f"A↔B：{ab_label} — {ab.get('detail') or ''}",
+        (
+            f"  ΔA={ab.get('delta_a')}；ΔB={ab.get('delta_b')}；"
+            f"群间分位缺口 {ab.get('gap_d0')} → {ab.get('gap_as_of')}"
+        ),
+    ]
+    for sat in sats:
+        lines.extend(
+            [
+                (
+                    f"{label_sat}：{sat['board_name']} — {sat['label']}；"
+                    f"{sat.get('detail') or ''}"
+                ),
+                (
+                    f"  变热={sat.get('delta')}；截止分位={sat.get('percentile_as_of')}"
+                ),
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 价格相对中证500（近价格窗口，单位 %）",
+            "",
+            f"中证500收益率：{_fmt(price_stats.get('index_ret'), 2)}",
+            "概念\t窗口变热\t短热分位\t概念收益率\t中证500收益率\t超额",
+        ]
+    )
+    price_by_code = {row["board_code"]: row for row in price_stats.get("rows") or []}
+    for group_name, members in (
+        (label_a, view["members_a"]),
+        (label_b, view["members_b"]),
+    ):
+        lines.append(f"# {group_name}")
+        for member in members:
+            prow = price_by_code.get(member["board_code"]) or {}
+            lines.append(
+                "\t".join(
+                    [
+                        member["board_name"],
+                        _fmt(member.get("delta"), 1),
+                        _fmt(member.get("percentile"), 3),
+                        _fmt(prow.get("ret"), 2),
+                        _fmt(prow.get("index_ret"), 2),
+                        _fmt(prow.get("excess"), 2),
+                    ]
+                )
+            )
+    if sats:
+        lines.append(f"# {label_sat}")
+        for sat in sats:
+            prow = price_by_code.get(sat["board_code"]) or {}
+            lines.append(
+                "\t".join(
+                    [
+                        sat["board_name"],
+                        _fmt(sat.get("delta"), 1),
+                        _fmt(sat.get("percentile_as_of"), 3),
+                        _fmt(prow.get("ret"), 2),
+                        _fmt(prow.get("index_ret"), 2),
+                        _fmt(prow.get("excess"), 2),
+                    ]
+                )
+            )
+
+    group_lines = _group_excess_summary(view, price_by_code)
+    if group_lines:
+        lines.extend(["", "## 群层超额（成员超额简单平均）", *group_lines])
+
+    lines.extend(
+        [
+            "",
+            "## 截止日成员热度表",
+            "",
+            f"### {label_a}",
+            _member_table(view["members_a"]),
+            "",
+            f"### {label_b}",
+            _member_table(view["members_b"]),
+            "",
+            "## 上图序列（群中位分位，按日）",
+            "",
+            _series_line(view["series_group_a"], f"{label_a}中位"),
+            _series_line(view["series_group_b"], f"{label_b}中位"),
+            "",
+            "## 下图序列（成员短热分位，按日）",
+            "",
+            f"### {label_a}",
+            _member_series(a_codes, view["member_series"]),
+            "",
+            f"### {label_b}",
+            _member_series(b_codes, view["member_series"]),
+        ]
+    )
+    if sats:
+        lines.extend(
+            [
+                "",
+                f"### {label_sat}",
+                _member_series(
+                    [(s["board_code"], s["board_name"]) for s in sats],
+                    view["member_series"],
+                ),
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _group_excess_summary(view: dict, price_by_code: dict) -> list[str]:
+    label_a, label_b, _ = _group_labels(view)
+    lines = []
+    for label, members in ((label_a, view["members_a"]), (label_b, view["members_b"])):
+        excesses = []
+        for member in members:
+            row = price_by_code.get(member["board_code"]) or {}
+            if row.get("excess") is not None:
+                excesses.append(float(row["excess"]))
+        if excesses:
+            lines.append(f"{label}平均超额：{_fmt(mean(excesses), 2)}")
+    return lines
+
+
+def _member_table(members: list[dict]) -> str:
+    rows = ["概念\t短热\t分位\t窗口变热\t角色"]
+    for member in members:
+        rows.append(
+            "\t".join(
+                [
+                    member["board_name"],
+                    _fmt(member.get("heat_short"), 1),
+                    _fmt(member.get("percentile"), 3),
+                    _fmt(member.get("delta"), 1),
+                    member.get("role") or "",
+                ]
+            )
+        )
+    return "\n".join(rows)
+
+
+def _series_line(points: list[dict], label: str) -> str:
+    bits = [f"{p['trade_date']}:{_fmt(p.get('value'), 3)}" for p in points]
+    return label + "\t" + " ".join(bits)
+
+
+def _member_series(
+    codes_names: list[tuple[str, str]],
+    member_series: dict,
+) -> str:
+    lines = []
+    for code, name in codes_names:
+        points = (member_series.get(code) or {}).get("points") or []
+        bits = [
+            f"{p['trade_date']}:{_fmt(p.get('percentile'), 3)}" for p in points
+        ]
+        lines.append(name + "\t" + " ".join(bits))
+    return "\n".join(lines)
+
+
+def _fmt(value: object, digits: int) -> str:
+    if value is None:
+        return ""
+    return f"{float(value):.{digits}f}"
 
 
 def _price_stats(
@@ -168,191 +388,3 @@ def _series_return(series: list[tuple[date, float]]) -> float | None:
     if first == 0:
         return None
     return (last / first - 1.0) * 100.0
-
-
-def _fmt(value: object, digits: int) -> str:
-    if value is None:
-        return ""
-    return f"{float(value):.{digits}f}"
-
-
-def _data_block(view: dict, price_stats: dict) -> str:
-    sat = (view.get("satellites") or [None])[0]
-    ab = view["badge_ab"]
-    ab_label = ab["label"]
-    if ab.get("sublabel"):
-        ab_label = f"{ab_label}·{ab['sublabel']}"
-
-    a_codes = [(m["board_code"], m["board_name"]) for m in view["members_a"]]
-    b_codes = [(m["board_code"], m["board_name"]) for m in view["members_b"]]
-
-    lines = [
-        f"截止日：{view['as_of']}",
-        f"热度窗口起点：{view['window_start']}",
-        f"热度窗口交易日数：{view['window_days']}",
-        (
-            f"价格窗口：{price_stats.get('start') or ''} → {price_stats.get('end') or ''}"
-            f"（{price_stats.get('days') or 0} 个交易日）"
-        ),
-        f"成员：{view.get('membership_note') or ''}",
-        "",
-        "## 徽章",
-        f"群A：{view['badge_a']['label']} — {view['badge_a'].get('detail') or ''}",
-        (
-            f"  群窗口变热中位≈{view['badge_a'].get('delta')}；"
-            f"同向占比={view['badge_a'].get('co_move_ratio')}；"
-            f"分位离散 {view['badge_a'].get('spread_d0')} → {view['badge_a'].get('spread_as_of')}"
-        ),
-        f"A↔B：{ab_label} — {ab.get('detail') or ''}",
-        (
-            f"  ΔA={ab.get('delta_a')}；ΔB={ab.get('delta_b')}；"
-            f"群间分位缺口 {ab.get('gap_d0')} → {ab.get('gap_as_of')}"
-        ),
-    ]
-    if sat:
-        lines.extend(
-            [
-                (
-                    f"卫星：{sat['board_name']} — {sat['label']}；{sat.get('detail') or ''}"
-                ),
-                (
-                    f"  变热={sat.get('delta')}；截止分位={sat.get('percentile_as_of')}"
-                ),
-            ]
-        )
-
-    lines.extend(
-        [
-            "",
-            "## 价格相对中证500（近价格窗口，单位 %）",
-            "",
-            f"中证500收益率：{_fmt(price_stats.get('index_ret'), 2)}",
-            "概念\t窗口变热\t短热分位\t概念收益率\t中证500收益率\t超额",
-        ]
-    )
-    price_by_code = {row["board_code"]: row for row in price_stats.get("rows") or []}
-    for group_name, members in (
-        ("群A", view["members_a"]),
-        ("群B", view["members_b"]),
-    ):
-        lines.append(f"# {group_name}")
-        for member in members:
-            prow = price_by_code.get(member["board_code"]) or {}
-            lines.append(
-                "\t".join(
-                    [
-                        member["board_name"],
-                        _fmt(member.get("delta"), 1),
-                        _fmt(member.get("percentile"), 3),
-                        _fmt(prow.get("ret"), 2),
-                        _fmt(prow.get("index_ret"), 2),
-                        _fmt(prow.get("excess"), 2),
-                    ]
-                )
-            )
-    if sat:
-        prow = price_by_code.get(sat["board_code"]) or {}
-        lines.append("# 卫星")
-        lines.append(
-            "\t".join(
-                [
-                    sat["board_name"],
-                    _fmt(sat.get("delta"), 1),
-                    _fmt(sat.get("percentile_as_of"), 3),
-                    _fmt(prow.get("ret"), 2),
-                    _fmt(prow.get("index_ret"), 2),
-                    _fmt(prow.get("excess"), 2),
-                ]
-            )
-        )
-
-    group_lines = _group_excess_summary(view, price_by_code)
-    if group_lines:
-        lines.extend(["", "## 群层超额（成员超额简单平均）", *group_lines])
-
-    lines.extend(
-        [
-            "",
-            "## 截止日成员热度表",
-            "",
-            "### 群A",
-            _member_table(view["members_a"]),
-            "",
-            "### 群B",
-            _member_table(view["members_b"]),
-            "",
-            "## 上图序列（群中位分位，按日）",
-            "",
-            _series_line(view["series_group_a"], "群A中位"),
-            _series_line(view["series_group_b"], "群B中位"),
-            "",
-            "## 下图序列（成员短热分位，按日）",
-            "",
-            "### 群A",
-            _member_series(a_codes, view["member_series"]),
-            "",
-            "### 群B",
-            _member_series(b_codes, view["member_series"]),
-        ]
-    )
-    if sat:
-        lines.extend(
-            [
-                "",
-                "### 卫星",
-                _member_series(
-                    [(sat["board_code"], sat["board_name"])],
-                    view["member_series"],
-                ),
-            ]
-        )
-    return "\n".join(lines)
-
-
-def _group_excess_summary(view: dict, price_by_code: dict) -> list[str]:
-    lines = []
-    for label, members in (("群A", view["members_a"]), ("群B", view["members_b"])):
-        excesses = []
-        for member in members:
-            row = price_by_code.get(member["board_code"]) or {}
-            if row.get("excess") is not None:
-                excesses.append(float(row["excess"]))
-        if excesses:
-            lines.append(f"{label}平均超额：{_fmt(mean(excesses), 2)}")
-    return lines
-
-
-def _member_table(members: list[dict]) -> str:
-    rows = ["概念\t短热\t分位\t窗口变热\t角色"]
-    for member in members:
-        rows.append(
-            "\t".join(
-                [
-                    member["board_name"],
-                    _fmt(member.get("heat_short"), 1),
-                    _fmt(member.get("percentile"), 3),
-                    _fmt(member.get("delta"), 1),
-                    member.get("role") or "",
-                ]
-            )
-        )
-    return "\n".join(rows)
-
-
-def _series_line(points: list[dict], label: str) -> str:
-    bits = [f"{p['trade_date']}:{_fmt(p.get('value'), 3)}" for p in points]
-    return label + "\t" + " ".join(bits)
-
-
-def _member_series(
-    codes_names: list[tuple[str, str]],
-    member_series: dict,
-) -> str:
-    lines = []
-    for code, name in codes_names:
-        points = (member_series.get(code) or {}).get("points") or []
-        bits = [
-            f"{p['trade_date']}:{_fmt(p.get('percentile'), 3)}" for p in points
-        ]
-        lines.append(name + "\t" + " ".join(bits))
-    return "\n".join(lines)

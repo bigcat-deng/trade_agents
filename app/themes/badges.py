@@ -237,6 +237,12 @@ def judge_group_a(members: Sequence[MemberWindow], theme: ThemeConfig) -> GroupB
     return GroupBadge("平稳", "多数落在平坦带", group_delta, spread0, spread1, co_move)
 
 
+def short_group_label(label: str) -> str:
+    if "·" in label:
+        return label.split("·", 1)[1].strip()
+    return label
+
+
 def judge_pair(
     delta_a: float | None,
     delta_b: float | None,
@@ -262,12 +268,14 @@ def judge_pair(
         else abs(pct_a_as_of - pct_b_as_of)
     )
     delta_gap = None if gap0 is None or gap1 is None else gap1 - gap0
+    name_a = short_group_label(theme.group_a_label)
+    name_b = short_group_label(theme.group_b_label)
 
     if s_a == SIGN_HOT and s_b == SIGN_COLD:
         return PairBadge(
             "A热B冷",
             None,
-            "制药主线变热，消费医疗变冷",
+            f"{name_a}变热，{name_b}变冷",
             delta_a,
             delta_b,
             gap0,
@@ -277,7 +285,7 @@ def judge_pair(
         return PairBadge(
             "A冷B热",
             None,
-            "制药主线变冷，消费医疗变热",
+            f"{name_a}变冷，{name_b}变热",
             delta_a,
             delta_b,
             gap0,

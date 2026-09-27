@@ -8,9 +8,9 @@ from plotly.subplots import make_subplots
 
 _A_COLORS = ("#1d4ed8", "#3b82f6", "#93c5fd")
 _B_COLORS = ("#b45309", "#d97706", "#fbbf24")
+_SAT_COLORS = ("#78716c", "#a8a29e", "#57534e")
 _GROUP_A = "#1e3a8a"
 _GROUP_B = "#92400e"
-_SAT = "#78716c"
 
 
 def render_theme_charts(
@@ -20,22 +20,33 @@ def render_theme_charts(
     series_b: list[float | None],
     members_a: list[dict],
     members_b: list[dict],
-    satellite: dict | None,
+    satellites: list[dict] | None = None,
+    label_a: str = "群A",
+    label_b: str = "群B",
     include_plotlyjs: bool = True,
+    # Back-compat for callers that still pass a single satellite.
+    satellite: dict | None = None,
 ) -> tuple[str, str]:
     """Return (group chart HTML, member chart HTML).
 
     Series values are market percentiles (0=hottest). Y axis is reversed.
     ``members_*`` items: {name, values: list[float|None]}
-    ``satellite``: {name, values} or None.
+    ``satellites``: list of {name, values}.
     """
+    sat_list = list(satellites or [])
+    if not sat_list and satellite is not None:
+        sat_list = [satellite]
+
+    short_a = label_a.split("·", 1)[-1].strip() if "·" in label_a else label_a
+    short_b = label_b.split("·", 1)[-1].strip() if "·" in label_b else label_b
+
     group_fig = go.Figure()
     group_fig.add_trace(
         go.Scatter(
             x=dates,
             y=series_a,
             mode="lines+markers",
-            name="群A 中位",
+            name=f"{short_a} 中位",
             line=dict(color=_GROUP_A, width=2.5),
             marker=dict(size=6),
         )
@@ -45,7 +56,7 @@ def render_theme_charts(
             x=dates,
             y=series_b,
             mode="lines+markers",
-            name="群B 中位",
+            name=f"{short_b} 中位",
             line=dict(color=_GROUP_B, width=2.5),
             marker=dict(size=6),
         )
@@ -62,7 +73,7 @@ def render_theme_charts(
         cols=1,
         shared_xaxes=True,
         vertical_spacing=0.14,
-        subplot_titles=("群A 成员短热分位", "群B 与卫星"),
+        subplot_titles=(f"{short_a} 成员短热分位", f"{short_b} 与卫星"),
         row_heights=[0.55, 0.45],
     )
     for index, member in enumerate(members_a):
@@ -89,14 +100,18 @@ def render_theme_charts(
             row=2,
             col=1,
         )
-    if satellite is not None:
+    for index, sat in enumerate(sat_list):
         member_fig.add_trace(
             go.Scatter(
                 x=dates,
-                y=satellite["values"],
+                y=sat["values"],
                 mode="lines",
-                name=satellite["name"],
-                line=dict(color=_SAT, width=1.6, dash="dot"),
+                name=sat["name"],
+                line=dict(
+                    color=_SAT_COLORS[index % len(_SAT_COLORS)],
+                    width=1.6,
+                    dash="dot",
+                ),
             ),
             row=2,
             col=1,

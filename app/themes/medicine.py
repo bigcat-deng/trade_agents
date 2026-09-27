@@ -38,4 +38,5 @@ MEDICINE_THEME = ThemeConfig(
         "重叠过高视为近重复只留代表；过低不连边。"
         "医药是主题域，先拆成稍松的群，再看热度与价格是否同向。"
     ),
+    interpret_template="medicine-theme-reading",
 )

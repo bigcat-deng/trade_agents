@@ -96,6 +96,8 @@ class PairBadgeTests(unittest.TestCase):
     def test_a_hot_b_cold(self) -> None:
         badge = judge_pair(12.0, -10.0, 0.4, 0.2, 0.3, 0.5, MEDICINE_THEME)
         self.assertEqual(badge.label, "A热B冷")
+        self.assertIn("制药主线", badge.detail)
+        self.assertIn("消费医疗", badge.detail)
 
     def test_same_direction_with_gap_sublabel(self) -> None:
         badge = judge_pair(12.0, 10.0, 0.2, 0.1, 0.25, 0.45, MEDICINE_THEME)
