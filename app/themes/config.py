@@ -19,6 +19,13 @@ class ThemeConfig:
     group_a: tuple[ThemeBoard, ...]
     group_b: tuple[ThemeBoard, ...]
     satellites: tuple[ThemeBoard, ...]
+    group_a_label: str = "群A"
+    group_b_label: str = "群B"
+    satellite_label: str = "卫星"
+    group_a_reason: str = ""
+    group_b_reason: str = ""
+    satellite_reason: str = ""
+    grouping_note: str = ""
     window_trading_days: int = 20
     # Window Δ flat band (heat_short rank units).
     epsilon: float = 5.0

@@ -15,6 +15,7 @@ from app.interpret.industry_heat import (
     normalize_reading,
 )
 from app.interpret.medicine_theme import (
+    TEMPLATE_NAME as MEDICINE_THEME_TEMPLATE,
     build_medicine_theme_prompt,
     interpret_prose,
     prose_reading,
@@ -32,7 +33,7 @@ def _heat_builder(template_name: str):
 BUILDERS = {
     "industry-heat-rotation": _heat_builder("industry-heat-rotation"),
     "concept-heat-rotation": _heat_builder("concept-heat-rotation"),
-    "medicine-theme-heat": build_medicine_theme_prompt,
+    MEDICINE_THEME_TEMPLATE: build_medicine_theme_prompt,
 }
 
 
@@ -76,7 +77,7 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
             raise UnknownTemplate(template_name) from exc
         raise UnknownTemplate(template_name)
 
-    if template_name == "medicine-theme-heat":
+    if template_name == MEDICINE_THEME_TEMPLATE:
         return _interpret_prose(template_name, builder, as_of)
 
     template, prompt, resolved, latest, summaries = builder(as_of)

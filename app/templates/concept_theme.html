@@ -172,6 +172,54 @@
       font-size: 0.88rem;
       color: var(--muted);
     }
+    .grouping {
+      margin: 0 0 1rem;
+      padding: 1rem 1.1rem 1.05rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .grouping h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.1rem;
+    }
+    .grouping > .meta {
+      margin: 0 0 0.75rem;
+    }
+    .grouping-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    .grouping-card {
+      padding: 0.7rem 0.8rem;
+      border-left: 3px solid var(--line);
+      background: #fafaf9;
+    }
+    .grouping-card.a { border-left-color: var(--a); }
+    .grouping-card.b { border-left-color: var(--b); }
+    .grouping-card.sat { border-left-color: #78716c; }
+    .grouping-card .kind {
+      margin: 0 0 0.25rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .grouping-card .members {
+      margin: 0 0 0.4rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      line-height: 1.45;
+    }
+    .grouping-card .reason {
+      margin: 0;
+      font-size: 0.86rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    @media (max-width: 900px) {
+      .grouping-grid {
+        grid-template-columns: 1fr;
+      }
+    }
     .reading {
       margin: 1rem 0 0;
       padding: 1rem 1.1rem 1.15rem;
@@ -186,6 +234,74 @@
       margin: 0.65rem 0 0;
       line-height: 1.7;
       white-space: pre-wrap;
+    }
+    .mini-klines {
+      margin: 1rem 0 0;
+      padding: 1rem 1.1rem 1.15rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .mini-klines h2 {
+      margin: 0 0 0.25rem;
+      font-size: 1.1rem;
+    }
+    .mini-klines > .meta {
+      margin: 0 0 0.85rem;
+    }
+    .mini-row {
+      margin: 0 0 1rem;
+    }
+    .mini-row:last-child {
+      margin-bottom: 0;
+    }
+    .mini-row h3 {
+      margin: 0 0 0.45rem;
+      font-size: 0.95rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.65rem;
+    }
+    .mini-cell {
+      border: 1px solid var(--line);
+      background: #fffdf8;
+      overflow: hidden;
+    }
+    .mini-cell .mini-link {
+      display: block;
+      padding: 0.4rem 0.55rem 0;
+      color: #1d4ed8;
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .mini-cell .mini-link:hover {
+      text-decoration: underline;
+    }
+    .mini-cell.mini-spacer {
+      border: none;
+      background: transparent;
+      pointer-events: none;
+    }
+    .mini-empty {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.35rem;
+      min-height: 240px;
+      padding: 0.85rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    @media (max-width: 900px) {
+      .mini-grid {
+        grid-template-columns: 1fr;
+      }
+      .mini-cell.mini-spacer {
+        display: none;
+      }
     }
   </style>
   <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
@@ -262,6 +378,33 @@
       });
     }
 
+    function groupingHtml(data) {
+      const g = data.grouping;
+      if (!g) return "";
+      const cards = [
+        ["a", g.group_a],
+        ["b", g.group_b],
+        ["sat", g.satellite],
+      ].filter((item) => item[1] && item[1].members && item[1].members.length);
+      const cardHtml = cards.map(([cls, card]) => {
+        const names = (card.members || [])
+          .map((m) => boardLink(m.board_code, m.board_name))
+          .join(" · ");
+        return `
+          <div class="grouping-card ${cls}">
+            <p class="kind">${card.label || ""}</p>
+            <p class="members">${names}</p>
+            <p class="reason">${card.reason || ""}</p>
+          </div>`;
+      }).join("");
+      return `
+        <section class="grouping">
+          <h2>分群说明</h2>
+          <p class="meta">${g.note || ""}</p>
+          <div class="grouping-grid">${cardHtml}</div>
+        </section>`;
+    }
+
     function renderBody(data) {
       if (data.empty_message) {
         body.innerHTML = `<p class="empty">${data.empty_message}</p>`;
@@ -294,6 +437,7 @@
         .join(" · ");
 
       body.innerHTML = `
+        ${groupingHtml(data)}
         <div class="badges">
           <div class="badge a" id="badge-a">
             <p class="kind">群A · 制药主线</p>
@@ -348,6 +492,7 @@
             ${satHtml}
           </div>
         </section>
+        ${data.mini_kline_html || ""}
         <section class="reading" id="chart-reading">
           <h2>图的解析</h2>
           <p class="meta" id="reading-meta">正在解读…</p>

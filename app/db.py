@@ -382,6 +382,45 @@ def fetch_board_daily_bars_from_db(
     ]
 
 
+def fetch_board_daily_bars_many(
+    board_type: str,
+    board_codes: list[str],
+    start: date,
+    end: date,
+) -> dict[str, list[dict[str, object]]]:
+    """Daily bars for several boards in [start, end], keyed by board_code."""
+    if not board_codes:
+        return {}
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT board_code, trade_date, open, high, low, close, volume
+                FROM board_daily_bar
+                WHERE board_type = %s
+                  AND board_code = ANY(%s)
+                  AND trade_date >= %s
+                  AND trade_date <= %s
+                ORDER BY board_code, trade_date
+                """,
+                (board_type, board_codes, start, end),
+            )
+            rows = cur.fetchall()
+    grouped: dict[str, list[dict[str, object]]] = {code: [] for code in board_codes}
+    for row in rows:
+        grouped.setdefault(row[0], []).append(
+            {
+                "trade_date": row[1],
+                "open": row[2],
+                "high": row[3],
+                "low": row[4],
+                "close": row[5],
+                "volume": row[6],
+            }
+        )
+    return grouped
+
+
 def fetch_board_name(board_type: str, board_code: str) -> str | None:
     """Latest known name for one board."""
     with psycopg.connect(database_url()) as conn:

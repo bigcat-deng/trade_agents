@@ -9,9 +9,11 @@ from pydantic import BaseModel, Field
 
 from app.charts.board_rotation import render_board_rotation
 from app.charts.kline import render_kline
+from app.charts.mini_kline import render_mini_kline
 from app.charts.theme_heat import render_theme_charts
 from app.db import (
     fetch_board_daily_bars_from_db,
+    fetch_board_daily_bars_many,
     fetch_board_heat_series,
     fetch_board_name,
     fetch_board_rotation,
@@ -31,10 +33,14 @@ from app.interpret.service import (
     interpret,
 )
 from app.market_data.board_heat import top_short_heat_keys
+from app.market_data.csi500 import fetch_csi500_closes
 from app.market_data.providers import baostock_kline
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
 from app.themes import build_theme_view, get_theme
+from app.themes.config import ThemeConfig, theme_board_codes
+
+MINI_KLINE_TRADING_DAYS = 60
 
 load_env()
 
@@ -355,7 +361,7 @@ def _theme_page_payload(
         "kline_prefix": "/boards/concept",
         "back_href": "/boards/concept/rotation",
         "back_label": "概念热度轮转",
-        "interpret_template": "medicine-theme-heat",
+        "interpret_template": "medicine-theme-reading",
         "initial": data,
     }
 
@@ -397,6 +403,7 @@ def _theme_payload(
         view["meta_line"] = "还没有概念热度。先同步概念日 K，再运行概念热度计算。"
         view["group_chart_html"] = ""
         view["member_chart_html"] = ""
+        view["mini_kline_html"] = ""
         return view
 
     window_dates = fetch_heat_dates_ending(
@@ -419,6 +426,7 @@ def _theme_payload(
     view["group_chart_html"], view["member_chart_html"] = _theme_charts(
         view, include_plotlyjs=include_plotlyjs
     )
+    view["mini_kline_html"] = _theme_mini_klines(theme, selected)
     return view
 
 
@@ -432,6 +440,60 @@ def _theme_meta_line(view: dict) -> str:
         f"概念主题域 · 窗口 {start} → {as_of}（{days} 日）"
         " · 分位 0=当日全市场概念中最热 · 热度越小越热"
     )
+
+
+def _theme_mini_klines(theme: ThemeConfig, as_of: date) -> str:
+    kline_dates = fetch_heat_dates_ending(
+        theme.board_type, as_of, MINI_KLINE_TRADING_DAYS
+    )
+    if not kline_dates:
+        return ""
+    start, end = kline_dates[0], kline_dates[-1]
+    codes = theme_board_codes(theme)
+    bars_by_code = fetch_board_daily_bars_many(theme.board_type, codes, start, end)
+    benchmark = dict(fetch_csi500_closes(start, end))
+    sections = [
+        ("群A", theme.group_a),
+        ("群B", theme.group_b),
+        ("卫星", theme.satellites),
+    ]
+    bench_note = (
+        " · 灰底为中证500同期走势（已按本图高低对齐）"
+        if benchmark
+        else " · 中证500背景暂缺"
+    )
+    parts = [
+        '<section class="mini-klines">',
+        "<h2>近 60 日 K 线</h2>",
+        (
+            f'<p class="meta">{start.isoformat()} → {end.isoformat()}'
+            f" · 仅蜡烛 · 日期轴按月{bench_note}</p>"
+        ),
+    ]
+    for title, boards in sections:
+        parts.append('<div class="mini-row">')
+        parts.append(f"<h3>{title}</h3>")
+        parts.append('<div class="mini-grid">')
+        for board in boards:
+            href = f"/boards/{theme.board_type}/{board.board_code}/kline"
+            chart = render_mini_kline(
+                bars_by_code.get(board.board_code) or [],
+                title=board.board_name,
+                include_plotlyjs=False,
+                benchmark_closes=benchmark or None,
+            )
+            parts.append(
+                '<div class="mini-cell">'
+                f'<a class="mini-link" href="{href}">{board.board_name} →</a>'
+                f'<div class="mini-chart">{chart}</div>'
+                "</div>"
+            )
+        # Keep a 3-column grid even when a row has fewer than 3 boards.
+        for _ in range(3 - len(boards)):
+            parts.append('<div class="mini-cell mini-spacer" aria-hidden="true"></div>')
+        parts.append("</div></div>")
+    parts.append("</section>")
+    return "".join(parts)
 
 
 def _theme_charts(view: dict, *, include_plotlyjs: bool) -> tuple[str, str]:

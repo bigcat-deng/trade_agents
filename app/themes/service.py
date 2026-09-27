@@ -188,6 +188,7 @@ def build_theme_view(
         "member_series": member_series,
         "group_a_names": [b.board_name for b in theme.group_a],
         "group_b_names": [b.board_name for b in theme.group_b],
+        "grouping": _grouping_payload(theme),
         "constants": [
             {"name": name, "value": value}
             for name, value in constants_footnote(theme)
@@ -258,10 +259,41 @@ def _empty_view(
         "member_series": {},
         "group_a_names": [b.board_name for b in theme.group_a],
         "group_b_names": [b.board_name for b in theme.group_b],
+        "grouping": _grouping_payload(theme),
         "constants": [
             {"name": name, "value": value}
             for name, value in constants_footnote(theme)
         ],
         "membership_note": "",
         "empty_message": message,
+    }
+
+
+def _grouping_payload(theme: ThemeConfig) -> dict:
+    return {
+        "note": theme.grouping_note,
+        "group_a": {
+            "label": theme.group_a_label,
+            "members": [
+                {"board_code": b.board_code, "board_name": b.board_name}
+                for b in theme.group_a
+            ],
+            "reason": theme.group_a_reason,
+        },
+        "group_b": {
+            "label": theme.group_b_label,
+            "members": [
+                {"board_code": b.board_code, "board_name": b.board_name}
+                for b in theme.group_b
+            ],
+            "reason": theme.group_b_reason,
+        },
+        "satellite": {
+            "label": theme.satellite_label,
+            "members": [
+                {"board_code": b.board_code, "board_name": b.board_name}
+                for b in theme.satellites
+            ],
+            "reason": theme.satellite_reason,
+        },
     }
