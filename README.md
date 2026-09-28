@@ -246,16 +246,23 @@ Use `--limit 5` for a trial, `--resume` if a run was interrupted.
 
 ### 5. Cron (weekday example)
 
-Edit with `crontab -e`. Adjust the project path and times to your timezone:
+Evening market update (board K → heat → stock K), weekdays 21:00 Asia/Shanghai:
+
+```cron
+0 21 * * 1-5 /home/YOU/trade_agents/scripts/evening_market_sync.sh
+```
+
+The script logs to `logs/evening_market_sync.log` and skips if a previous run is still locked.
+
+Optional earlier jobs (universe / constituents), adjust path and times:
 
 ```cron
 30 16 * * 1-5 cd /home/YOU/trade_agents && .venv/bin/python -m app.jobs.sync_stock_universe --day "$(date -d yesterday +\%F)" >> logs/sync_stock_universe.log 2>&1
-0 17 * * 1-5 cd /home/YOU/trade_agents && .venv/bin/python -m app.jobs.sync_stock_daily_bars --trading-days 5 >> logs/sync_stock_daily_bars.log 2>&1
 10 17 * * 1-5 cd /home/YOU/trade_agents && .venv/bin/python -m app.jobs.sync_board_universe >> logs/sync_board_universe.log 2>&1
 20 17 * * 1-5 cd /home/YOU/trade_agents && .venv/bin/python -m app.jobs.sync_board_constituents >> logs/sync_board_constituents.log 2>&1
-30 17 * * 1-5 cd /home/YOU/trade_agents && .venv/bin/python -m app.jobs.sync_board_daily_bars --trading-days 5 >> logs/sync_board_daily_bars.log 2>&1
-45 17 * * 1-5 cd /home/YOU/trade_agents && .venv/bin/python -m app.jobs.compute_board_heat >> logs/compute_board_heat.log 2>&1
 ```
+
+Edit with `crontab -e`.
 
 ### 6. Start the web service
 
