@@ -16,8 +16,11 @@ from app.themes.badges import (
 )
 from app.themes.ai import AI_THEME
 from app.themes.config import ThemeConfig, constants_footnote, theme_board_codes
+from app.themes.defense import DEFENSE_THEME
+from app.themes.energy import ENERGY_THEME
 from app.themes.medicine import MEDICINE_THEME
 from app.themes.metals import METALS_THEME
+from app.themes.renewables import RENEWABLES_THEME
 from app.themes.semiconductor import SEMICONDUCTOR_THEME
 
 _THEMES: dict[str, ThemeConfig] = {
@@ -25,6 +28,9 @@ _THEMES: dict[str, ThemeConfig] = {
     AI_THEME.theme_id: AI_THEME,
     SEMICONDUCTOR_THEME.theme_id: SEMICONDUCTOR_THEME,
     METALS_THEME.theme_id: METALS_THEME,
+    ENERGY_THEME.theme_id: ENERGY_THEME,
+    DEFENSE_THEME.theme_id: DEFENSE_THEME,
+    RENEWABLES_THEME.theme_id: RENEWABLES_THEME,
 }
 
 

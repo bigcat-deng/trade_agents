@@ -17,8 +17,11 @@ from app.interpret.industry_heat import (
 from app.interpret.medicine_theme import (
     PROSE_THEME_TEMPLATES,
     build_ai_theme_prompt,
+    build_defense_theme_prompt,
+    build_energy_theme_prompt,
     build_medicine_theme_prompt,
     build_metals_theme_prompt,
+    build_renewables_theme_prompt,
     build_semiconductor_theme_prompt,
     interpret_prose,
     prose_reading,
@@ -40,6 +43,9 @@ BUILDERS = {
     "ai-theme-reading": build_ai_theme_prompt,
     "semiconductor-theme-reading": build_semiconductor_theme_prompt,
     "metals-theme-reading": build_metals_theme_prompt,
+    "energy-theme-reading": build_energy_theme_prompt,
+    "defense-theme-reading": build_defense_theme_prompt,
+    "renewables-theme-reading": build_renewables_theme_prompt,
 }
 
 
