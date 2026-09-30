@@ -390,6 +390,17 @@ def _pct_trend_word(
     return "升温" if delta < 0 else "降温"
 
 
+def _near_word_from_vals(near_vals: list[float]) -> str | None:
+    """Endpoint move, or rebound from the coldest point inside the near window."""
+    if len(near_vals) < 2:
+        return None
+    endpoint = _pct_trend_word(near_vals[0], near_vals[-1])
+    trough = _pct_trend_word(max(near_vals), near_vals[-1])
+    if trough == "升温" and endpoint != "升温":
+        return "升温"
+    return endpoint
+
+
 def _series_trend_slice(
     points: list[dict],
     *,
@@ -405,7 +416,9 @@ def _series_trend_slice(
         return None
     first_date, first_v = vals[0]
     last_date, last_v = vals[-1]
-    near_date, near_v = vals[max(0, len(vals) - k)]
+    near_start = max(0, len(vals) - k)
+    near_date, near_v = vals[near_start]
+    near_vals = [v for _, v in vals[near_start:]]
     return {
         "first_date": first_date,
         "first": first_v,
@@ -413,22 +426,37 @@ def _series_trend_slice(
         "near": near_v,
         "last_date": last_date,
         "last": last_v,
-        "near_word": _pct_trend_word(near_v, last_v),
+        "near_word": _near_word_from_vals(near_vals),
         "window_word": _pct_trend_word(first_v, last_v),
     }
+
+
+def _ab_near_relation(word_a: str | None, word_b: str | None) -> str | None:
+    if word_a is None or word_b is None:
+        return None
+    if word_a == "升温" and word_b == "升温":
+        return "同热（同向）"
+    if word_a == "降温" and word_b == "降温":
+        return "同冷（同向）"
+    if {word_a, word_b} == {"升温", "降温"}:
+        return "分叉（一侧升温一侧降温）"
+    if word_a == word_b == "走平":
+        return "双平"
+    return f"不同步（A近端{word_a}、B近端{word_b}）"
 
 
 def _near_end_block(view: dict, label_a: str, label_b: str) -> list[str]:
     """Explicit near-end vs full-window direction so total领 cannot miss a rebound."""
     lines = [
         "",
-        "## 近端趋势（定性总领的「趋势」以此为准；与整窗冲突时整窗只作背景）",
+        "## 近端趋势（定性总领的「趋势」与 A↔B 同热/同冷以此为准；与整窗冲突时整窗只作背景）",
         (
             f"分位越小越热；近{_NEAR_END_K}日分位下降=升温，上升=降温。"
-            "上图线上行（朝向 0）=升温。"
+            "上图线上行（朝向 0）=升温；近端含自谷底回升。"
         ),
     ]
     conflicts: list[str] = []
+    near_words: dict[str, str | None] = {}
     for label, key in (
         (label_a, "series_group_a"),
         (label_b, "series_group_b"),
@@ -436,9 +464,11 @@ def _near_end_block(view: dict, label_a: str, label_b: str) -> list[str]:
         slice_ = _series_trend_slice(view.get(key) or [])
         if slice_ is None:
             lines.append(f"{label}中位：序列不足")
+            near_words[label] = None
             continue
         near_word = slice_["near_word"] or "不足"
         window_word = slice_["window_word"] or "不足"
+        near_words[label] = slice_["near_word"]
         lines.append(
             (
                 f"{label}中位：近{_NEAR_END_K}日 "
@@ -456,6 +486,22 @@ def _near_end_block(view: dict, label_a: str, label_b: str) -> list[str]:
             and near_word != window_word
         ):
             conflicts.append(label)
+
+    ab_near = _ab_near_relation(near_words.get(label_a), near_words.get(label_b))
+    ab = view.get("badge_ab") or {}
+    ab_label = ab.get("label") or ""
+    ab_detail = ab.get("detail") or ""
+    ab_window = ab_label
+    if ab.get("sublabel"):
+        ab_window = f"{ab_label}·{ab['sublabel']}"
+    if ab_detail:
+        ab_window = f"{ab_window}—{ab_detail}" if ab_window else ab_detail
+    if ab_near:
+        lines.append(
+            f"A↔B近端：{ab_near}；整窗徽章：{ab_window or '不足'}"
+            "（仅整窗背景；近端同升时禁止写成「同冷」同向）"
+        )
+
     if conflicts:
         names = "、".join(conflicts)
         lines.append(
