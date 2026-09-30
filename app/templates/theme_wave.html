@@ -180,6 +180,45 @@
       background: #f5f5f4;
       font-weight: 650;
     }
+    .shape-glossary {
+      margin: 0.55rem 0 0.15rem;
+      padding: 0.55rem 0.7rem 0.65rem;
+      background: #fafaf9;
+      border: 1px solid var(--line);
+    }
+    .shape-glossary > p {
+      margin: 0 0 0.4rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+    .shape-glossary dl {
+      margin: 0;
+      display: grid;
+      gap: 0.35rem 0.85rem;
+    }
+    .shape-glossary .term {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 5.5rem minmax(0, 1fr);
+      gap: 0.35rem 0.65rem;
+      align-items: start;
+    }
+    .shape-glossary dt {
+      margin: 0;
+      font-weight: 650;
+      font-size: 0.88rem;
+      color: var(--ink);
+    }
+    .shape-glossary dd {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+    .reading .shape-glossary {
+      margin: 0.35rem 0 0.65rem;
+    }
     .foot {
       color: var(--muted);
       font-size: 0.86rem;
@@ -233,8 +272,37 @@
 
     <h2>行业板块热度</h2>
     {% if industry_short_html %}
-    <p class="meta">{{ industry_axis_note }} 共 {{ industry_board_count }} 个行业板块。</p>
+    <p class="meta">{{ industry_axis_note }} 共 {{ industry_board_count }} 个行业板块。读图时优先看时间形态，不要只盯截止日最热那一列。</p>
     <div class="panel">{{ industry_short_html | safe }}</div>
+    <aside class="shape-glossary" aria-label="行业时间形态读法说明">
+      <p>行业时间形态 · 读法说明（解读表「读法」列同义）</p>
+      <dl>
+        <div class="term">
+          <dt>长红柱</dt>
+          <dd>窗口内高热天数多或均值高：注意力占位久，不是单日尖峰。</dd>
+        </div>
+        <div class="term">
+          <dt>主线占位</dt>
+          <dd>长红柱且截止日仍偏热：占得久、现在还守着，先看能否继续守住。</dd>
+        </div>
+        <div class="term">
+          <dt>占位回落</dt>
+          <dd>曾是长红柱，但截止热度已明显低于窗内均值：以前占位久，近端在退热。</dd>
+        </div>
+        <div class="term">
+          <dt>二波回补</dt>
+          <dd>先高、中段冷却、近端再抬：更像第二波回补，不是一次性脉冲。</dd>
+        </div>
+        <div class="term">
+          <dt>候补龙头</dt>
+          <dd>截止日还不是最热，但近端升温靠前且已进前列；盯它会不会超过当前最热行业。</dd>
+        </div>
+        <div class="term">
+          <dt>脉冲</dt>
+          <dd>只有截止日尖一下，无长柱、无二波：局部脉冲，不按候补龙头写。</dd>
+        </div>
+      </dl>
+    </aside>
     {% else %}
     <p class="meta">还没有行业板块热度可画。</p>
     {% endif %}
@@ -383,6 +451,22 @@
         }
       }
 
+      function appendShapeGlossary(wrap) {
+        const aside = document.createElement("aside");
+        aside.className = "shape-glossary";
+        aside.setAttribute("aria-label", "行业时间形态读法说明");
+        aside.innerHTML = [
+          "<p>读法列说明</p>",
+          "<dl>",
+          '<div class="term"><dt>主线占位</dt><dd>长红柱且截止日仍偏热：占得久、现在还守着。</dd></div>',
+          '<div class="term"><dt>占位回落</dt><dd>曾是长红柱，但截止热度已明显低于窗内均值：近端在退热。</dd></div>',
+          '<div class="term"><dt>二波回补</dt><dd>先高、中段冷却、近端再抬：更像第二波。</dd></div>',
+          '<div class="term"><dt>候补龙头</dt><dd>截止非最热，但近端升温靠前且已进前列；盯会否超过当前最热。</dd></div>',
+          "</dl>",
+        ].join("");
+        wrap.appendChild(aside);
+      }
+
       function renderProseReading(text, bodyEl) {
         bodyEl.replaceChildren();
         const blocks = String(text || "")
@@ -401,6 +485,7 @@
             const rest = lines.slice(1).join("\n").trim();
             if (rest) {
               if (title === "行业时间形态") {
+                appendShapeGlossary(wrap);
                 appendMarkdownTables(rest, wrap);
               } else {
                 const p = document.createElement("p");
