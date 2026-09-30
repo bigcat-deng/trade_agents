@@ -22,6 +22,8 @@ from app.themes.config import theme_board_codes
 from app.themes.service import build_theme_view
 
 DEFAULT_PRICE_DAYS = 60
+_NEAR_END_K = 5
+_NEAR_END_PCT_EPS = 0.03
 PROSE_THEME_TEMPLATES = frozenset(
     {
         "medicine-theme-reading",
@@ -225,8 +227,9 @@ def _data_block(view: dict, price_stats: dict) -> str:
             f"（{price_stats.get('days') or 0} 个交易日）"
         ),
         f"成员：{view.get('membership_note') or ''}",
+        *_near_end_block(view, label_a, label_b),
         "",
-        "## 徽章",
+        "## 徽章（整窗净变化；detail 里「近k日」才是近端）",
         f"{label_a}：{view['badge_a']['label']} — {view['badge_a'].get('detail') or ''}",
         (
             f"  群窗口变热中位≈{view['badge_a'].get('delta')}；"
@@ -370,6 +373,96 @@ def _member_table(members: list[dict]) -> str:
             )
         )
     return "\n".join(rows)
+
+
+def _pct_trend_word(
+    earlier: float | None,
+    later: float | None,
+    *,
+    eps: float = _NEAR_END_PCT_EPS,
+) -> str | None:
+    """Percentile trend: smaller = hotter → 升温; larger = colder → 降温."""
+    if earlier is None or later is None:
+        return None
+    delta = float(later) - float(earlier)
+    if abs(delta) <= eps:
+        return "走平"
+    return "升温" if delta < 0 else "降温"
+
+
+def _series_trend_slice(
+    points: list[dict],
+    *,
+    k: int = _NEAR_END_K,
+) -> dict | None:
+    vals: list[tuple[str, float]] = []
+    for point in points:
+        value = point.get("value")
+        if value is None:
+            continue
+        vals.append((str(point.get("trade_date") or ""), float(value)))
+    if len(vals) < 2:
+        return None
+    first_date, first_v = vals[0]
+    last_date, last_v = vals[-1]
+    near_date, near_v = vals[max(0, len(vals) - k)]
+    return {
+        "first_date": first_date,
+        "first": first_v,
+        "near_date": near_date,
+        "near": near_v,
+        "last_date": last_date,
+        "last": last_v,
+        "near_word": _pct_trend_word(near_v, last_v),
+        "window_word": _pct_trend_word(first_v, last_v),
+    }
+
+
+def _near_end_block(view: dict, label_a: str, label_b: str) -> list[str]:
+    """Explicit near-end vs full-window direction so total领 cannot miss a rebound."""
+    lines = [
+        "",
+        "## 近端趋势（定性总领的「趋势」以此为准；与整窗冲突时整窗只作背景）",
+        (
+            f"分位越小越热；近{_NEAR_END_K}日分位下降=升温，上升=降温。"
+            "上图线上行（朝向 0）=升温。"
+        ),
+    ]
+    conflicts: list[str] = []
+    for label, key in (
+        (label_a, "series_group_a"),
+        (label_b, "series_group_b"),
+    ):
+        slice_ = _series_trend_slice(view.get(key) or [])
+        if slice_ is None:
+            lines.append(f"{label}中位：序列不足")
+            continue
+        near_word = slice_["near_word"] or "不足"
+        window_word = slice_["window_word"] or "不足"
+        lines.append(
+            (
+                f"{label}中位：近{_NEAR_END_K}日 "
+                f"{slice_['near_date']}:{_fmt(slice_['near'], 3)}"
+                f" → {slice_['last_date']}:{_fmt(slice_['last'], 3)}"
+                f"（{near_word}）；"
+                f"整窗 {slice_['first_date']}:{_fmt(slice_['first'], 3)}"
+                f" → {slice_['last_date']}:{_fmt(slice_['last'], 3)}"
+                f"（{window_word}）"
+            )
+        )
+        if (
+            near_word in {"升温", "降温"}
+            and window_word in {"升温", "降温"}
+            and near_word != window_word
+        ):
+            conflicts.append(label)
+    if conflicts:
+        names = "、".join(conflicts)
+        lines.append(
+            f"冲突提示：{names} 近端与整窗方向相反——"
+            "总领趋势写近端，整窗仅作对照，禁止写成「整体仍在降温/升温」。"
+        )
+    return lines
 
 
 def _series_line(points: list[dict], label: str) -> str:
