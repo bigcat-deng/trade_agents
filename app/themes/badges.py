@@ -3,6 +3,10 @@
 Heat is heat_short (smaller = hotter). Window change:
   Δ = heat(d0) − heat(as_of); >0 means getting hotter.
 Percentile p in [0, 1]: 0 = hottest that day among non-null concept heats.
+
+Group A and A↔B direction badges (同热/同冷/同向) prefer near-end
+heat_short OLS slopes over the last trend_k days when series are available;
+window Δ remains in numeric fields and may appear as a contrast note.
 """
 
 from __future__ import annotations
@@ -220,6 +224,41 @@ def warming_slope_from_heats(
     return -raw
 
 
+def sign_from_warming_slope(
+    warming: float | None,
+    epsilon_slope: float,
+) -> int | None:
+    """Map near-end warming slope to SIGN_*; >0 means getting hotter."""
+    if warming is None:
+        return None
+    if abs(warming) <= epsilon_slope:
+        return SIGN_FLAT
+    return SIGN_HOT if warming > 0 else SIGN_COLD
+
+
+def near_end_sign_from_heats(
+    heats: Sequence[float | None],
+    theme: ThemeConfig,
+) -> int | None:
+    return sign_from_warming_slope(
+        warming_slope_from_heats(heats, k=theme.trend_k),
+        theme.epsilon_slope,
+    )
+
+
+def _member_near_slopes(
+    members: Sequence[MemberWindow],
+    heat_by_code: Mapping[str, Sequence[float | None]],
+    theme: ThemeConfig,
+) -> dict[str, float | None]:
+    return {
+        m.board_code: warming_slope_from_heats(
+            heat_by_code.get(m.board_code, ()), k=theme.trend_k
+        )
+        for m in members
+    }
+
+
 def _trend_word(
     warming: float | None,
     *,
@@ -310,18 +349,55 @@ def judge_group_a(
     if len(valid) < 2:
         return GroupBadge("数据不足", "有效成员不足 2 个", None)
 
-    n_hot = sum(1 for m in valid if m.sign == SIGN_HOT)
-    n_cold = sum(1 for m in valid if m.sign == SIGN_COLD)
     deltas = [m.delta for m in valid if m.delta is not None]
-    leader = max(valid, key=lambda m: m.delta if m.delta is not None else float("-inf"))
-    others = [m for m in valid if m.board_code != leader.board_code]
     spread0 = _spread([m.pct_d0 for m in valid])
     spread1 = _spread([m.pct_as_of for m in valid])
     delta_spread = (
         None if spread0 is None or spread1 is None else spread1 - spread0
     )
-    co_move = max(n_hot, n_cold) / len(valid)
     group_delta = group_median(deltas)
+
+    near_slopes = (
+        _member_near_slopes(valid, heat_by_code, theme) if heat_by_code else {}
+    )
+    near_signs = {
+        code: sign_from_warming_slope(slope, theme.epsilon_slope)
+        for code, slope in near_slopes.items()
+    }
+    use_near = bool(near_signs) and all(
+        near_signs.get(m.board_code) is not None for m in valid
+    )
+
+    if use_near:
+        signs = {m.board_code: near_signs[m.board_code] for m in valid}
+        leader = max(
+            valid,
+            key=lambda m: (
+                near_slopes.get(m.board_code)
+                if near_slopes.get(m.board_code) is not None
+                else float("-inf")
+            ),
+        )
+    else:
+        signs = {m.board_code: m.sign for m in valid}
+        leader = max(
+            valid, key=lambda m: m.delta if m.delta is not None else float("-inf")
+        )
+
+    others = [m for m in valid if m.board_code != leader.board_code]
+    n_hot = sum(1 for m in valid if signs.get(m.board_code) == SIGN_HOT)
+    n_cold = sum(1 for m in valid if signs.get(m.board_code) == SIGN_COLD)
+    co_move = max(n_hot, n_cold) / len(valid)
+
+    def _window_contrast() -> str:
+        if not use_near or group_delta is None:
+            return ""
+        window_sign = sign_delta(group_delta, theme.epsilon)
+        if window_sign == SIGN_COLD and n_hot >= 2 and n_cold == 0:
+            return "（整窗净变化仍偏冷）"
+        if window_sign == SIGN_HOT and n_cold >= 2 and n_hot == 0:
+            return "（整窗净变化仍偏热）"
+        return ""
 
     def _badge(label: str, detail: str) -> GroupBadge:
         return GroupBadge(
@@ -333,7 +409,22 @@ def judge_group_a(
             co_move,
         )
 
-    if (
+    # 仅龙头热：近端用斜率领涨+其余走平；否则退回整窗 Δ 规则。
+    if use_near:
+        leader_slope = near_slopes.get(leader.board_code)
+        others_flat = others and all(
+            signs.get(m.board_code) == SIGN_FLAT for m in others
+        )
+        if (
+            leader_slope is not None
+            and signs.get(leader.board_code) == SIGN_HOT
+            and others_flat
+        ):
+            return _badge(
+                "仅龙头热",
+                f"{leader.board_name} 近端升温，其余未跟上{_window_contrast()}",
+            )
+    elif (
         leader.delta is not None
         and leader.delta >= theme.lambda_lead
         and others
@@ -347,21 +438,30 @@ def judge_group_a(
     if (n_hot >= 1 and n_cold >= 1) or (
         delta_spread is not None and delta_spread >= theme.sigma_spread
     ):
+        scope = "近端" if use_near else "窗口"
         if n_hot and n_cold:
-            detail = "成员方向对立"
+            detail = f"成员{scope}方向对立"
         elif n_hot >= 2 and n_cold == 0:
-            detail = "均在变热，但成员分位离散明显拉大"
+            detail = f"均在变热，但成员分位离散明显拉大{_window_contrast()}"
         elif n_cold >= 2 and n_hot == 0:
-            detail = "均在变冷，但成员分位离散明显拉大"
+            detail = f"均在变冷，但成员分位离散明显拉大{_window_contrast()}"
         else:
             detail = "分位离散明显拉大"
         return _badge("拆开", detail)
 
     if n_hot >= 2 and n_cold == 0:
-        return _badge("同热", f"{n_hot}/{len(valid)} 成员窗口变热")
+        scope = "近端" if use_near else "窗口"
+        return _badge(
+            "同热",
+            f"{n_hot}/{len(valid)} 成员{scope}变热{_window_contrast()}",
+        )
 
     if n_cold >= 2 and n_hot == 0:
-        return _badge("同冷", f"{n_cold}/{len(valid)} 成员窗口变冷")
+        scope = "近端" if use_near else "窗口"
+        return _badge(
+            "同冷",
+            f"{n_cold}/{len(valid)} 成员{scope}变冷{_window_contrast()}",
+        )
 
     return _badge("平稳", "多数落在平坦带")
 
@@ -380,12 +480,18 @@ def judge_pair(
     pct_b_d0: float | None,
     pct_b_as_of: float | None,
     theme: ThemeConfig,
+    *,
+    near_sign_a: int | None = None,
+    near_sign_b: int | None = None,
 ) -> PairBadge:
     if delta_a is None or delta_b is None:
         return PairBadge("数据不足", None, "群热度窗口不完整", None, None, None, None)
 
-    s_a = sign_delta(delta_a, theme.epsilon)
-    s_b = sign_delta(delta_b, theme.epsilon)
+    window_s_a = sign_delta(delta_a, theme.epsilon)
+    window_s_b = sign_delta(delta_b, theme.epsilon)
+    use_near = near_sign_a is not None and near_sign_b is not None
+    s_a = near_sign_a if use_near else window_s_a
+    s_b = near_sign_b if use_near else window_s_b
     gap0 = (
         None
         if pct_a_d0 is None or pct_b_d0 is None
@@ -399,6 +505,23 @@ def judge_pair(
     delta_gap = None if gap0 is None or gap1 is None else gap1 - gap0
     name_a = short_group_label(theme.group_a_label)
     name_b = short_group_label(theme.group_b_label)
+
+    def _pair_contrast(direction: str) -> str:
+        if not use_near:
+            return direction
+        if (
+            direction == "同热"
+            and window_s_a == SIGN_COLD
+            and window_s_b == SIGN_COLD
+        ):
+            return "同热（整窗仍同冷）"
+        if (
+            direction == "同冷"
+            and window_s_a == SIGN_HOT
+            and window_s_b == SIGN_HOT
+        ):
+            return "同冷（整窗仍同热）"
+        return direction
 
     if s_a == SIGN_HOT and s_b == SIGN_COLD:
         return PairBadge(
@@ -444,7 +567,7 @@ def judge_pair(
         return PairBadge(
             "同向",
             sub,
-            direction,
+            _pair_contrast(direction),
             delta_a,
             delta_b,
             gap0,

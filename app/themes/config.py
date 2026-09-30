@@ -65,4 +65,5 @@ def constants_footnote(theme: ThemeConfig) -> list[tuple[str, str]]:
         ("λ_sat / μ", f"{theme.lambda_sat} / {theme.mu_sat}"),
         ("近端拟合", f"{theme.trend_k} 日"),
         ("ε_slope 近端平坦", str(theme.epsilon_slope)),
+        ("徽章同热/同冷", "近端斜率优先"),
     ]

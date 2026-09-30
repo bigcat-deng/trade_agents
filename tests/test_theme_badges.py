@@ -144,6 +144,52 @@ class PairBadgeTests(unittest.TestCase):
         self.assertEqual(badge.sublabel, "缺口扩大")
         self.assertEqual(badge.detail, "同热")
 
+    def test_near_end_overrides_window_cold(self) -> None:
+        # Whole window both cold, but near-end both hot → 同热.
+        badge = judge_pair(
+            -48.0,
+            -50.0,
+            0.1,
+            0.3,
+            0.4,
+            0.66,
+            MEDICINE_THEME,
+            near_sign_a=SIGN_HOT,
+            near_sign_b=SIGN_HOT,
+        )
+        self.assertEqual(badge.label, "同向")
+        self.assertEqual(badge.detail, "同热（整窗仍同冷）")
+
+
+class GroupANearEndTests(unittest.TestCase):
+    def test_near_warming_overrides_window_cold_split_detail(self) -> None:
+        boards = [
+            ("308014", "创新药"),
+            ("308572", "仿制药一致性评价"),
+        ]
+        # Window: both cold.
+        heat_d0 = {"308014": 50.0, "308572": 50.0}
+        heat_as = {"308014": 100.0, "308572": 110.0}
+        pct_d0 = {"308014": 0.2, "308572": 0.22}
+        pct_as = {"308014": 0.3, "308572": 0.55}
+        members = build_members(
+            boards, heat_d0, heat_as, pct_d0, pct_as, MEDICINE_THEME.epsilon
+        )
+        # Near-end: both warming strongly.
+        heat_by_code = {
+            "308014": [200.0, 180.0, 160.0, 140.0, 120.0],
+            "308572": [210.0, 195.0, 180.0, 165.0, 150.0],
+        }
+        badge = judge_group_a(
+            members,
+            MEDICINE_THEME,
+            heat_by_code=heat_by_code,
+            window_days=20,
+        )
+        self.assertEqual(badge.label, "拆开")
+        self.assertIn("均在变热", badge.detail)
+        self.assertIn("整窗净变化仍偏冷", badge.detail)
+
 
 class SatelliteTests(unittest.TestCase):
     def test_burst_by_percentile(self) -> None:

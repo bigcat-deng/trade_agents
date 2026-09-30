@@ -229,7 +229,7 @@ def _data_block(view: dict, price_stats: dict) -> str:
         f"成员：{view.get('membership_note') or ''}",
         *_near_end_block(view, label_a, label_b),
         "",
-        "## 徽章（整窗净变化；detail 里「近k日」才是近端）",
+        "## 徽章（同热/同冷按近端；窗口变热数字仅背景）",
         f"{label_a}：{view['badge_a']['label']} — {view['badge_a'].get('detail') or ''}",
         (
             f"  群窗口变热中位≈{view['badge_a'].get('delta')}；"
@@ -449,7 +449,7 @@ def _near_end_block(view: dict, label_a: str, label_b: str) -> list[str]:
     """Explicit near-end vs full-window direction so total领 cannot miss a rebound."""
     lines = [
         "",
-        "## 近端趋势（定性总领的「趋势」与 A↔B 同热/同冷以此为准；与整窗冲突时整窗只作背景）",
+        "## 近端趋势（定性总领的「趋势」与徽章同热/同冷一致；整窗Δ只作背景）",
         (
             f"分位越小越热；近{_NEAR_END_K}日分位下降=升温，上升=降温。"
             "上图线上行（朝向 0）=升温；近端含自谷底回升。"
@@ -498,15 +498,15 @@ def _near_end_block(view: dict, label_a: str, label_b: str) -> list[str]:
         ab_window = f"{ab_window}—{ab_detail}" if ab_window else ab_detail
     if ab_near:
         lines.append(
-            f"A↔B近端：{ab_near}；整窗徽章：{ab_window or '不足'}"
-            "（仅整窗背景；近端同升时禁止写成「同冷」同向）"
+            f"A↔B近端：{ab_near}；徽章：{ab_window or '不足'}"
+            "（徽章已按近端；整窗Δ数字仅背景）"
         )
 
     if conflicts:
         names = "、".join(conflicts)
         lines.append(
             f"冲突提示：{names} 近端与整窗方向相反——"
-            "总领趋势写近端，整窗仅作对照，禁止写成「整体仍在降温/升温」。"
+            "总领与徽章跟近端，整窗仅作对照，禁止写成「整体仍在降温/升温」。"
         )
     return lines
 

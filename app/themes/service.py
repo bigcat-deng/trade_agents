@@ -11,6 +11,7 @@ from app.themes.badges import (
     judge_group_a,
     judge_pair,
     judge_satellite,
+    near_end_sign_from_heats,
     percentiles_from_heats,
     window_delta,
 )
@@ -135,6 +136,8 @@ def build_theme_view(
         series_b_heat[0][1] if series_b_heat else None,
         series_b_heat[-1][1] if series_b_heat else None,
     )
+    heats_a = [value for _, value in series_a_heat]
+    heats_b = [value for _, value in series_b_heat]
     badge_ab = judge_pair(
         delta_a,
         delta_b,
@@ -143,6 +146,8 @@ def build_theme_view(
         series_b_pct[0][1] if series_b_pct else None,
         series_b_pct[-1][1] if series_b_pct else None,
         theme,
+        near_sign_a=near_end_sign_from_heats(heats_a, theme),
+        near_sign_b=near_end_sign_from_heats(heats_b, theme),
     )
 
     domain_deltas = [m.delta for m in members_a + members_b]

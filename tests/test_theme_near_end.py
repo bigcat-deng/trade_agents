@@ -81,8 +81,8 @@ class NearEndTrendTests(unittest.TestCase):
             )
         )
         self.assertIn("A↔B近端：同热（同向）", block)
-        self.assertIn("整窗徽章：同向—同冷", block)
-        self.assertIn("禁止写成「同冷」同向", block)
+        self.assertIn("徽章：同向—同冷", block)
+        self.assertIn("徽章已按近端", block)
 
 
 if __name__ == "__main__":
