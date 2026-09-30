@@ -32,6 +32,8 @@ from app.interpret.medicine_theme import (
     prose_reading,
 )
 from app.interpret.theme_wave import build_theme_wave_reading_prompt
+from app.interpret.concept_wavelet import build_concept_wavelet_reading_prompt
+from app.interpret.industry_wavelet import build_industry_wavelet_reading_prompt
 from app.prompts.template import load_prompt
 
 
@@ -58,6 +60,8 @@ BUILDERS = {
     "finance-theme-reading": build_finance_theme_prompt,
     "property-theme-reading": build_property_theme_prompt,
     "theme-wave-reading": build_theme_wave_reading_prompt,
+    "concept-wavelet-reading": build_concept_wavelet_reading_prompt,
+    "industry-wavelet-reading": build_industry_wavelet_reading_prompt,
 }
 
 

@@ -101,6 +101,23 @@
       color: var(--muted);
       font-size: 0.84rem;
     }
+    .wavelet-link {
+      margin: 0.75rem 0 0;
+    }
+    .wavelet-link a {
+      display: inline-block;
+      font: inherit;
+      font-size: 0.92rem;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      text-decoration: none;
+    }
+    .wavelet-link a:hover {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
     .reading {
       margin: 1.1rem 0 0.35rem;
       padding: 0.75rem 0.85rem 0.95rem;
@@ -303,6 +320,9 @@
         </div>
       </dl>
     </aside>
+    {% if industry_wavelet_href %}
+    <p class="wavelet-link"><a href="{{ industry_wavelet_href }}">二维小波分析 →</a></p>
+    {% endif %}
     {% else %}
     <p class="meta">还没有行业板块热度可画。</p>
     {% endif %}
@@ -321,6 +341,9 @@
       </select>
       <span class="hint" id="concept-theme-hint"></span>
     </div>
+    {% if wavelet_href %}
+    <p class="wavelet-link"><a href="{{ wavelet_href }}">二维小波分析 →</a></p>
+    {% endif %}
     {% else %}
     <p class="meta">还没有概念短热 Top 可画。</p>
     {% endif %}

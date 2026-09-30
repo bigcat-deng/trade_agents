@@ -39,6 +39,8 @@ PROSE_THEME_TEMPLATES = frozenset(
         "finance-theme-reading",
         "property-theme-reading",
         "theme-wave-reading",
+        "concept-wavelet-reading",
+        "industry-wavelet-reading",
     }
 )
 

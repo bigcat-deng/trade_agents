@@ -15,6 +15,10 @@ from app.charts.theme_wave import (
     render_theme_wave_contour,
     render_theme_wave_surface,
 )
+from app.charts.concept_wavelet import (
+    render_wavelet_energy,
+    render_wavelet_multiscale,
+)
 from app.charts.theme_heat import render_theme_charts, render_theme_group_chart
 from app.db import (
     fetch_board_daily_bars_from_db,
@@ -46,6 +50,8 @@ from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
 from app.themes import build_theme_view, get_theme, list_themes
 from app.themes.concept_wave import build_concept_top_heat_payload
+from app.themes.concept_wavelet import FEATURE_TOP_N, build_concept_wavelet_payload
+from app.themes.industry_wavelet import build_industry_wavelet_payload
 from app.themes.config import ThemeConfig, theme_board_codes
 from app.themes.industry_wave import build_industry_board_heat_payload
 from app.themes.wave_surface import build_theme_wave_payload
@@ -361,6 +367,24 @@ def concept_themes_wave_page(
     return templates.TemplateResponse(request, "theme_wave.html", payload)
 
 
+@app.get("/boards/concept/themes/wave/wavelet", response_class=HTMLResponse)
+def concept_themes_wave_wavelet_page(
+    request: Request,
+    days: int = Query(60, ge=20, le=180),
+) -> HTMLResponse:
+    payload = _themes_wave_wavelet_page_payload(scope="concept", days=days)
+    return templates.TemplateResponse(request, "theme_wave_wavelet.html", payload)
+
+
+@app.get("/boards/concept/themes/wave/industry-wavelet", response_class=HTMLResponse)
+def concept_themes_wave_industry_wavelet_page(
+    request: Request,
+    days: int = Query(60, ge=20, le=180),
+) -> HTMLResponse:
+    payload = _themes_wave_wavelet_page_payload(scope="industry", days=days)
+    return templates.TemplateResponse(request, "theme_wave_wavelet.html", payload)
+
+
 @app.get("/api/boards/concept/themes")
 def concept_themes_hub_api(as_of: str = Query(...)) -> dict:
     try:
@@ -429,6 +453,8 @@ def _themes_wave_empty(
         "ranked_map_html": "",
         "industry_short_html": "",
         "concept_short_html": "",
+        "wavelet_href": "/boards/concept/themes/wave/wavelet",
+        "industry_wavelet_href": "/boards/concept/themes/wave/industry-wavelet",
         "spectrum_links": [],
         "ranked_links": [],
         "empty_message": empty_message,
@@ -611,9 +637,214 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
         "ranked_map_html": ranked_map_html,
         "industry_short_html": industry_short_html,
         "concept_short_html": concept_short_html,
+        "wavelet_href": f"/boards/concept/themes/wave/wavelet?days={days}",
+        "industry_wavelet_href": f"/boards/concept/themes/wave/industry-wavelet?days={days}",
         "spectrum_links": list(zip(spectrum["theme_labels"], spectrum["theme_hrefs"])),
         "ranked_links": list(zip(ranked["theme_labels"], ranked["theme_hrefs"])),
         "empty_message": None,
+    }
+
+
+def _wavelet_page_empty(
+    *,
+    title: str,
+    empty_message: str,
+    interpret_template: str,
+    entity_label: str,
+    reading_heading: str,
+    map_heading: str,
+    map_section_title: str,
+    roster_note: str,
+) -> dict:
+    return {
+        "title": title,
+        "empty_message": empty_message,
+        "as_of": None,
+        "dates": [],
+        "window_days": 0,
+        "top_n": 0,
+        "late_days": 0,
+        "extremum_days": 0,
+        "select_from": None,
+        "select_to": None,
+        "axis_note": "",
+        "multiscale_html": "",
+        "energy_html": "",
+        "energy": [],
+        "directions": [],
+        "band_extrema": [],
+        "feature_blocks": [],
+        "feature_top_n": FEATURE_TOP_N,
+        "interpret_template": interpret_template,
+        "entity_label": entity_label,
+        "reading_heading": reading_heading,
+        "map_heading": map_heading,
+        "map_section_title": map_section_title,
+        "roster_note": roster_note,
+    }
+
+
+def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
+    if scope == "industry":
+        board_type = "industry"
+        title = "行业板块短热 · 二维小波"
+        interpret_template = "industry-wavelet-reading"
+        entity_label = "行业"
+        reading_heading = "行业映射解读"
+        map_heading = "行业映射表"
+        map_section_title = "行业映射"
+        roster_note = (
+            f"与上方全部行业叶序一致；每类按特征分排序取前 {FEATURE_TOP_N}。"
+            "解读须点名本表行业。"
+        )
+        empty_no_data = "还没有行业热度。"
+    else:
+        board_type = "concept"
+        title = "概念短热 · 二维小波"
+        interpret_template = "concept-wavelet-reading"
+        entity_label = "概念"
+        reading_heading = "概念映射解读"
+        map_heading = "概念映射表"
+        map_section_title = "概念映射"
+        roster_note = (
+            f"与上方 Top 叶序一致；每类按特征分排序取前 {FEATURE_TOP_N}。"
+            "解读须点名本表概念。"
+        )
+        empty_no_data = "还没有概念热度。"
+
+    slider_dates = fetch_rotation_dates(board_type, 10)
+    selected = slider_dates[-1] if slider_dates else None
+    if selected is None:
+        return _wavelet_page_empty(
+            title=title,
+            empty_message=empty_no_data,
+            interpret_template=interpret_template,
+            entity_label=entity_label,
+            reading_heading=reading_heading,
+            map_heading=map_heading,
+            map_section_title=map_section_title,
+            roster_note=roster_note,
+        )
+    window_dates = fetch_heat_dates_ending(board_type, selected, days)
+    if not window_dates:
+        return _wavelet_page_empty(
+            title=title,
+            empty_message="窗口内没有热度日期",
+            interpret_template=interpret_template,
+            entity_label=entity_label,
+            reading_heading=reading_heading,
+            map_heading=map_heading,
+            map_section_title=map_section_title,
+            roster_note=roster_note,
+        )
+
+    if scope == "industry":
+        payload = build_industry_wavelet_payload(
+            window_dates=window_dates,
+            heat_rows=fetch_industry_heat_window(
+                window_dates[0], window_dates[-1]
+            ),
+        )
+    else:
+        payload = build_concept_wavelet_payload(
+            window_dates=window_dates,
+            heat_rows=fetch_concept_heat_named_window(
+                window_dates[0], window_dates[-1]
+            ),
+        )
+    if payload.get("empty_message"):
+        return _wavelet_page_empty(
+            title=title,
+            empty_message=payload["empty_message"],
+            interpret_template=interpret_template,
+            entity_label=entity_label,
+            reading_heading=reading_heading,
+            map_heading=map_heading,
+            map_section_title=map_section_title,
+            roster_note=roster_note,
+        )
+
+    bands = payload["bands"]
+    multiscale_html = render_wavelet_multiscale(
+        dates=payload["dates"],
+        names=payload["board_names"],
+        z_short=payload["z_short"],
+        approx=bands["approx"],
+        d3=bands["d3"],
+        d1=bands["d1"],
+        as_of=payload["as_of"],
+        include_plotlyjs=True,
+        entity_label=entity_label,
+    )
+    energy_html = render_wavelet_energy(
+        energy=payload["energy"],
+        directions=payload["directions"],
+        as_of=payload["as_of"],
+        top_n=payload["top_n"] or payload["board_count"],
+        include_plotlyjs=False,
+    )
+    feature_blocks = [
+        {
+            "title": "主线占位",
+            "note": "A3 高且近端仍热",
+            "rows": payload["features"]["occupancy"],
+        },
+        {
+            "title": "占位回落",
+            "note": "窗内曾热、近端回落",
+            "rows": payload["features"]["fade"],
+        },
+        {
+            "title": "二波回补",
+            "note": "D3 中段偏冷、近段偏热",
+            "rows": payload["features"]["rewarm"],
+        },
+        {
+            "title": "中粗活跃",
+            "note": "D3 能量高（起伏大）",
+            "rows": payload["features"]["mid_active"],
+        },
+        {
+            "title": "细脉冲",
+            "note": "D1 相对粗结构偏高",
+            "rows": payload["features"]["pulse"],
+        },
+    ]
+    if scope == "industry":
+        roster_note = (
+            f"与上方全部 {payload['board_count']} 个行业叶序一致；"
+            f"每类按特征分排序取前 {FEATURE_TOP_N}。解读须点名本表行业。"
+        )
+    else:
+        roster_note = (
+            f"与上方 Top{payload['top_n']} 叶序一致；"
+            f"每类按特征分排序取前 {FEATURE_TOP_N}。解读须点名本表概念。"
+        )
+    return {
+        "title": title,
+        "empty_message": None,
+        "as_of": payload["as_of"],
+        "dates": payload["dates"],
+        "window_days": payload["window_days"],
+        "top_n": payload["top_n"],
+        "late_days": payload["late_days"],
+        "extremum_days": payload.get("extremum_days") or 0,
+        "select_from": payload.get("select_from"),
+        "select_to": payload.get("select_to"),
+        "axis_note": payload["axis_note"],
+        "multiscale_html": multiscale_html,
+        "energy_html": energy_html,
+        "energy": payload["energy"],
+        "directions": payload["directions"],
+        "band_extrema": payload.get("band_extrema") or [],
+        "feature_blocks": feature_blocks,
+        "feature_top_n": FEATURE_TOP_N,
+        "interpret_template": interpret_template,
+        "entity_label": entity_label,
+        "reading_heading": reading_heading,
+        "map_heading": map_heading,
+        "map_section_title": map_section_title,
+        "roster_note": roster_note,
     }
 
 

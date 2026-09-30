@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.65rem;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      margin: 1.25rem 0 0.4rem;
+      font-size: 1.12rem;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.85rem;
+      line-height: 1.55;
+    }
+    .panel {
+      margin: 0 0 0.75rem;
+      padding: 0.55rem 0.7rem 0.75rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      min-width: 0;
+      overflow-x: auto;
+    }
+    .shape-glossary {
+      margin: 0.55rem 0 0.85rem;
+      padding: 0.55rem 0.7rem 0.65rem;
+      background: #fafaf9;
+      border: 1px solid var(--line);
+    }
+    .shape-glossary > p {
+      margin: 0 0 0.4rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+    .shape-glossary dl {
+      margin: 0;
+      display: grid;
+      gap: 0.35rem 0.85rem;
+    }
+    .shape-glossary .term {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 5.5rem minmax(0, 1fr);
+      gap: 0.35rem 0.65rem;
+      align-items: start;
+    }
+    .shape-glossary.band-reading .term {
+      grid-template-columns: 7.2rem minmax(0, 1fr);
+    }
+    .shape-glossary dt {
+      margin: 0;
+      font-weight: 650;
+      font-size: 0.88rem;
+    }
+    .shape-glossary dd {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 0.65rem;
+      margin: 0.5rem 0 0.85rem;
+    }
+    .feature-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.55rem 0.65rem 0.7rem;
+      overflow-x: auto;
+    }
+    .feature-card h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.95rem;
+    }
+    .feature-card p.note {
+      margin: 0 0 0.4rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+    table.feat {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.82rem;
+    }
+    table.feat th, table.feat td {
+      border: 1px solid var(--line);
+      padding: 0.22rem 0.35rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+    table.feat th { background: #f5f5f4; font-weight: 650; }
+    .reading {
+      margin: 1.1rem 0 0.35rem;
+      padding: 0.75rem 0.85rem 0.95rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .reading-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin: 0 0 0.35rem;
+    }
+    .reading-head h2 { margin: 0; }
+    .reading-head button {
+      font: inherit;
+      font-size: 0.88rem;
+      padding: 0.3rem 0.65rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .reading-head button:hover:not(:disabled) {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+    .reading-head button:disabled { opacity: 0.55; cursor: default; }
+    .reading .reading-block { margin: 0 0 0.85rem; }
+    .reading .reading-title {
+      margin: 0 0 0.28rem;
+      color: #b91c1c;
+      font-weight: 700;
+      font-size: 0.98rem;
+    }
+    .reading .reading-para {
+      margin: 0;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .reading .reading-table-wrap {
+      margin: 0.45rem 0 0.7rem;
+      overflow-x: auto;
+    }
+    .reading table.reading-table {
+      border-collapse: collapse;
+      width: max-content;
+      min-width: 100%;
+      font-size: 0.88rem;
+    }
+    .reading table.reading-table th,
+    .reading table.reading-table td {
+      border: 1px solid var(--line);
+      padding: 0.28rem 0.45rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .reading table.reading-table th {
+      background: #f5f5f4;
+      font-weight: 650;
+    }
+    .reading .shape-glossary { margin: 0.35rem 0 0.65rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="/boards/concept/themes/wave">← 主题热度水面</a>
+    <h1>{{ title }}</h1>
+    {% if empty_message %}
+    <p class="meta">{{ empty_message }}</p>
+    {% else %}
+    <p class="meta">{{ axis_note }} 窗口 {{ dates[0] if dates else "—" }} → {{ dates[-1] if dates else "—" }}（{{ window_days }} 日）{% if select_from and select_to %}· 入选 {{ select_from }} → {{ select_to }}{% endif %} · 结构近端 {{ late_days }} 日{% if extremum_days %} · 读图极值 {{ extremum_days }} 日{% endif %}</p>
+
+    <aside class="shape-glossary" aria-label="小波读法说明">
+      <p>读法说明（注意力尺度，不是短炒/中线/长线）</p>
+      <dl>
+        <div class="term"><dt>原图</dt><dd>短热翻转平面本身；对照基准，不单独定调。</dd></div>
+        <div class="term"><dt>A3 粗结构</dt><dd>主线/占位背景；近端仍高=占位，近端明显回落=占位回落。</dd></div>
+        <div class="term"><dt>D3 中粗</dt><dd>团块级起伏；中段偏冷近段偏热≈二波回补感。</dd></div>
+        <div class="term"><dt>D1 细尺度</dt><dd>局部脉冲/尖峰；近端可以很热，但不等于主线。</dd></div>
+        <div class="term"><dt>D2</dt><dd>能量柱有占比，四宫格不单独成图（过渡带）。</dd></div>
+        <div class="term"><dt>水平/垂直/对角</dt><dd>时间向起伏 / 叶序团块边界 / 斜向迁移感（叶序≠产业链）。</dd></div>
+      </dl>
+    </aside>
+
+    <section class="reading" id="chart-reading">
+      <div class="reading-head">
+        <h2>{{ reading_heading }}</h2>
+        <button type="button" id="reread-btn">重新解读</button>
+      </div>
+      <p class="meta" id="reading-meta">正在解读…</p>
+      <div class="conclusion" id="reading-body"></div>
+    </section>
+
+    <h2>多尺度分解</h2>
+    <div class="panel">{{ multiscale_html | safe }}</div>
+
+    <aside class="shape-glossary band-reading" aria-label="四图读法与极值">
+      <p>四图读法（对着上方四宫格；尺度=注意力粗细，不是短/中/长线）</p>
+      <dl>
+        <div class="term">
+          <dt>原图</dt>
+          <dd>短热翻转平面「长什么样」：整场偏热/偏冷、是否成带。只作对照，定调看下方能量里 A3 与各 D 的占比。</dd>
+        </div>
+        <div class="term">
+          <dt>A3 粗结构</dt>
+          <dd>慢变背景：宽带是否还在。高且结构近端仍高→占位；窗内高、结构近端掉→占位回落。不等于买卖或长线判断。</dd>
+        </div>
+        <div class="term">
+          <dt>D3 中粗</dt>
+          <dd>团块级起伏：谁在波动、中段冷近段热是否像回补。能量高=中粗活跃；「二波回补」是启发式，活跃≠当前仍热。</dd>
+        </div>
+        <div class="term">
+          <dt>D1 细尺度</dt>
+          <dd>局部尖峰：谁在闪。近端可以很热，不得升格成主线，除非同名也出现在主线占位表。</dd>
+        </div>
+        <div class="term">
+          <dt>D2（仅能量）</dt>
+          <dd>三层分解里有 D2，下方能量柱会给出占比；四宫格与极值表都不单独做 D2。</dd>
+        </div>
+      </dl>
+      {% if band_extrema %}
+      <p style="margin:0.75rem 0 0.35rem;color:var(--muted);font-size:0.86rem;line-height:1.5;">
+        读图极值 · 最近 {{ extremum_days }} 个交易日均值（高 3 + 低 3；与上方「结构近端 {{ late_days }} 日」分开，结构近端只服务映射表标签）
+      </p>
+      <div class="feature-grid" style="margin:0.35rem 0 0;">
+        {% for block in band_extrema %}
+        <div class="feature-card">
+          <h3>{{ block.title }}</h3>
+          <p class="note">{{ block.note }}{% if block.date_from and block.date_to %} · {{ block.date_from }} → {{ block.date_to }}{% endif %}</p>
+          <table class="feat">
+            <thead>
+              <tr>
+                <th>端</th>
+                <th>{{ entity_label }}</th>
+                <th>{{ block.value_label }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in block.rows %}
+              <tr>
+                <td>{{ row.side }}</td>
+                <td>{{ row.board_name }}</td>
+                <td>{{ row.value }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </aside>
+
+    <h2>能量结构</h2>
+    <div class="panel">{{ energy_html | safe }}</div>
+    {% if energy %}
+    <p class="meta">
+      {% for row in energy %}{{ row.label }} {{ '%.1f'|format(row.share_pct) }}%{% if not loop.last %} · {% endif %}{% endfor %}
+      ；方向
+      {% for row in directions %}{{ row.label }} {{ '%.1f'|format(row.share_pct) }}%{% if not loop.last %} · {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+
+    <h2>{{ map_heading }}</h2>
+    <p class="meta">{{ roster_note }}</p>
+    <div class="feature-grid">
+      {% for block in feature_blocks %}
+      <div class="feature-card">
+        <h3>{{ block.title }}</h3>
+        <p class="note">{{ block.note }}</p>
+        <table class="feat">
+          <thead>
+            <tr>
+              <th>{{ entity_label }}</th>
+              <th>A3近</th>
+              <th>原近</th>
+              <th>D3E</th>
+              <th>D1E</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in block.rows %}
+            <tr>
+              <td>{{ row.board_name }}</td>
+              <td>{{ '%.3f'|format(row.a3_late) }}</td>
+              <td>{{ '%.3f'|format(row.z_late) }}</td>
+              <td>{{ '%.4f'|format(row.d3_energy) }}</td>
+              <td>{{ '%.4f'|format(row.d1_energy) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </main>
+  <script>
+    (function () {
+      const interpretTemplate = {{ interpret_template | tojson }};
+      const readingAsOf = {{ as_of | tojson }};
+      const mapSectionTitle = {{ map_section_title | tojson }};
+      let interpretRequestId = 0;
+      const READING_TITLES = new Set([
+        "定性总领",
+        "能量结构",
+        mapSectionTitle,
+        "误读提醒",
+        "继续观察",
+      ]);
+
+      function normalizeReadingTitle(line) {
+        return line.trim()
+          .replace(/^[0-9０-９]+[、.．)）]\s*/, "")
+          .replace(/[：:]\s*$/, "")
+          .replace(/\s+/g, "");
+      }
+      function isReadingTitle(line) {
+        const raw = line.trim().replace(/[：:]\s*$/, "");
+        if (READING_TITLES.has(raw)) return raw;
+        const compact = normalizeReadingTitle(line);
+        for (const title of READING_TITLES) {
+          if (normalizeReadingTitle(title) === compact) return title;
+        }
+        return null;
+      }
+      function isMarkdownTableLine(line) {
+        return /^\s*\|.+\|\s*$/.test(line);
+      }
+      function isMarkdownSeparator(line) {
+        return /^\s*\|?\s*:?-{3,}.*\|\s*$/.test(line);
+      }
+      function splitMarkdownRow(line) {
+        const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+        return trimmed.split("|").map((cell) => cell.trim());
+      }
+      function appendMarkdownTables(text, wrap) {
+        const lines = String(text || "").split("\n");
+        let i = 0;
+        while (i < lines.length) {
+          while (i < lines.length && !lines[i].trim()) i += 1;
+          if (i >= lines.length) break;
+          if (!isMarkdownTableLine(lines[i])) {
+            const paraLines = [];
+            while (i < lines.length && !isMarkdownTableLine(lines[i])) {
+              if (lines[i].trim()) paraLines.push(lines[i]);
+              i += 1;
+            }
+            if (paraLines.length) {
+              const p = document.createElement("p");
+              p.className = "reading-para";
+              p.textContent = paraLines.join("\n");
+              wrap.appendChild(p);
+            }
+            continue;
+          }
+          const tableLines = [];
+          while (i < lines.length && isMarkdownTableLine(lines[i])) {
+            tableLines.push(lines[i]);
+            i += 1;
+          }
+          if (tableLines.length < 2) {
+            const p = document.createElement("p");
+            p.className = "reading-para";
+            p.textContent = tableLines.join("\n");
+            wrap.appendChild(p);
+            continue;
+          }
+          const header = splitMarkdownRow(tableLines[0]);
+          let dataStart = 1;
+          if (isMarkdownSeparator(tableLines[1])) dataStart = 2;
+          const bodyRows = tableLines.slice(dataStart).map(splitMarkdownRow)
+            .filter((row) => row.some((cell) => cell));
+          const box = document.createElement("div");
+          box.className = "reading-table-wrap";
+          const table = document.createElement("table");
+          table.className = "reading-table";
+          const thead = document.createElement("thead");
+          const headTr = document.createElement("tr");
+          header.forEach((cell) => {
+            const th = document.createElement("th");
+            th.textContent = cell;
+            headTr.appendChild(th);
+          });
+          thead.appendChild(headTr);
+          table.appendChild(thead);
+          const tbody = document.createElement("tbody");
+          bodyRows.forEach((row) => {
+            const tr = document.createElement("tr");
+            for (let c = 0; c < header.length; c += 1) {
+              const td = document.createElement("td");
+              td.textContent = row[c] || "";
+              tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          box.appendChild(table);
+          wrap.appendChild(box);
+        }
+      }
+      function appendMapGlossary(wrap) {
+        const aside = document.createElement("aside");
+        aside.className = "shape-glossary";
+        aside.innerHTML = [
+          "<p>读法列说明</p><dl>",
+          '<div class="term"><dt>主线占位</dt><dd>A3 高且近端仍热：宽带守位。</dd></div>',
+          '<div class="term"><dt>占位回落</dt><dd>窗内曾热、近端回落：让位中。</dd></div>',
+          '<div class="term"><dt>二波回补</dt><dd>中段偏冷近段再热：回补感。</dd></div>',
+          '<div class="term"><dt>中粗活跃</dt><dd>团块起伏大，不等于当前最热。</dd></div>',
+          '<div class="term"><dt>细脉冲</dt><dd>尖峰/边界；勿升格主线。</dd></div>',
+          "</dl>",
+        ].join("");
+        wrap.appendChild(aside);
+      }
+      function renderProseReading(text, bodyEl) {
+        bodyEl.replaceChildren();
+        const blocks = String(text || "").trim().split(/\n\s*\n/);
+        for (const block of blocks) {
+          const lines = block.split("\n");
+          const title = isReadingTitle(lines[0] || "");
+          const wrap = document.createElement("div");
+          wrap.className = "reading-block";
+          if (title) {
+            const h = document.createElement("p");
+            h.className = "reading-title";
+            h.textContent = title;
+            wrap.appendChild(h);
+            const rest = lines.slice(1).join("\n").trim();
+            if (rest) {
+              if (title === mapSectionTitle) {
+                appendMapGlossary(wrap);
+                appendMarkdownTables(rest, wrap);
+              } else {
+                const p = document.createElement("p");
+                p.className = "reading-para";
+                p.textContent = rest;
+                wrap.appendChild(p);
+              }
+            }
+          } else if (block.includes("|")) {
+            appendMarkdownTables(block, wrap);
+          } else {
+            const p = document.createElement("p");
+            p.className = "reading-para";
+            p.textContent = block;
+            wrap.appendChild(p);
+          }
+          bodyEl.appendChild(wrap);
+        }
+      }
+      async function loadReading(asOf, force) {
+        const metaEl = document.getElementById("reading-meta");
+        const bodyEl = document.getElementById("reading-body");
+        const rereadBtn = document.getElementById("reread-btn");
+        if (!metaEl || !bodyEl || !interpretTemplate || !asOf) return;
+        const ticket = ++interpretRequestId;
+        metaEl.textContent = force ? "正在重新解读…" : "正在解读…";
+        bodyEl.replaceChildren();
+        if (rereadBtn) rereadBtn.disabled = true;
+        try {
+          const response = await fetch("/api/interpret/" + interpretTemplate, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ as_of: asOf, force: !!force }),
+          });
+          const payload = await response.json();
+          if (ticket !== interpretRequestId) return;
+          if (!response.ok) {
+            metaEl.textContent = "解读失败";
+            bodyEl.textContent = payload.detail || "解读失败";
+            return;
+          }
+          const cached = payload.cached ? " · 缓存" : "";
+          metaEl.textContent = "截至 " + payload.as_of + " · " + payload.model + cached;
+          const conclusion = (payload.reading && payload.reading.conclusion) || "";
+          if (!conclusion) {
+            bodyEl.textContent = "解读失败";
+            return;
+          }
+          renderProseReading(conclusion, bodyEl);
+        } catch (err) {
+          if (ticket !== interpretRequestId) return;
+          metaEl.textContent = "解读失败";
+          bodyEl.textContent = "解读失败";
+        } finally {
+          if (ticket === interpretRequestId && rereadBtn) rereadBtn.disabled = false;
+        }
+      }
+      const rereadBtn = document.getElementById("reread-btn");
+      if (rereadBtn) {
+        rereadBtn.addEventListener("click", () => loadReading(readingAsOf, true));
+      }
+      if (readingAsOf) loadReading(readingAsOf, false);
+      else {
+        const metaEl = document.getElementById("reading-meta");
+        if (metaEl) metaEl.textContent = "暂无截止日，无法解读";
+      }
+    })();
+  </script>
+</body>
+</html>
