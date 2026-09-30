@@ -216,7 +216,7 @@
           controls += `<label>日期 <input type="date" value="${dayVal}" data-day="${item.job_id}" required></label>`;
         }
         if (item.supports_trading_days) {
-          const daysVal = saved[`days:${item.job_id}`] || "200";
+          const daysVal = saved[`days:${item.job_id}`] || "5";
           controls += `<label>天数 <input type="number" min="1" value="${daysVal}" data-days="${item.job_id}"></label>`;
         }
         if (item.supports_resume) {
@@ -266,7 +266,7 @@
         }
         body.day = dayInput.value;
       }
-      if (daysInput) body.trading_days = Number(daysInput.value || 200);
+      if (daysInput) body.trading_days = Number(daysInput.value || 5);
       if (resumeInput) body.resume = !!resumeInput.checked;
       else body.resume = true;
 
