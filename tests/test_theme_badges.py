@@ -14,6 +14,7 @@ from app.themes.badges import (
     judge_satellite,
     percentiles_from_heats,
     sign_delta,
+    warming_slope_from_heats,
     window_delta,
 )
 from app.themes.medicine import MEDICINE_THEME
@@ -33,6 +34,26 @@ class SignTests(unittest.TestCase):
         self.assertEqual(sign_delta(10.0, 5.0), SIGN_HOT)
         self.assertEqual(sign_delta(3.0, 5.0), SIGN_FLAT)
         self.assertEqual(sign_delta(-8.0, 5.0), SIGN_COLD)
+
+
+class WarmingSlopeTests(unittest.TestCase):
+    def test_falling_heat_is_positive_warming(self) -> None:
+        # heat_short 30 → 10 over 5 days → warming
+        heats = [30.0, 25.0, 20.0, 15.0, 10.0]
+        slope = warming_slope_from_heats(heats, k=5)
+        self.assertIsNotNone(slope)
+        assert slope is not None
+        self.assertGreater(slope, 4.0)
+
+    def test_flat_near_zero(self) -> None:
+        heats = [20.0, 20.0, 20.0, 20.0, 20.0]
+        slope = warming_slope_from_heats(heats, k=5)
+        self.assertIsNotNone(slope)
+        assert slope is not None
+        self.assertAlmostEqual(slope, 0.0)
+
+    def test_too_few_points(self) -> None:
+        self.assertIsNone(warming_slope_from_heats([1.0, 2.0, 3.0], k=5))
 
 
 class GroupABadgeTests(unittest.TestCase):
@@ -71,6 +92,24 @@ class GroupABadgeTests(unittest.TestCase):
     def test_leader_only(self) -> None:
         badge = judge_group_a(self._members([20.0, 2.0, 1.0]), MEDICINE_THEME)
         self.assertEqual(badge.label, "仅龙头热")
+
+    def test_leader_only_appends_recent_trend(self) -> None:
+        members = self._members([20.0, 2.0, 1.0])
+        # Leader 创新药 still warming; others flat near end.
+        heat_by_code = {
+            "308014": [40.0, 35.0, 30.0, 25.0, 20.0],
+            "308572": [30.0, 30.0, 30.0, 30.0, 30.0],
+            "301565": [28.0, 28.0, 28.0, 28.0, 28.0],
+        }
+        badge = judge_group_a(
+            members,
+            MEDICINE_THEME,
+            heat_by_code=heat_by_code,
+            window_days=20,
+        )
+        self.assertEqual(badge.label, "仅龙头热")
+        self.assertIn("近5日创新药仍升温", badge.detail)
+        self.assertIn("其余走平", badge.detail)
 
     def test_split_by_direction(self) -> None:
         badge = judge_group_a(self._members([12.0, -10.0, 2.0]), MEDICINE_THEME)

@@ -15,12 +15,17 @@ from app.themes.badges import (
     window_delta,
 )
 from app.themes.ai import AI_THEME
+from app.themes.battery import BATTERY_THEME
 from app.themes.config import ThemeConfig, constants_footnote, theme_board_codes
 from app.themes.defense import DEFENSE_THEME
 from app.themes.energy import ENERGY_THEME
+from app.themes.finance import FINANCE_THEME
+from app.themes.food import FOOD_THEME
 from app.themes.medicine import MEDICINE_THEME
 from app.themes.metals import METALS_THEME
+from app.themes.property import PROPERTY_THEME
 from app.themes.renewables import RENEWABLES_THEME
+from app.themes.robots import ROBOTS_THEME
 from app.themes.semiconductor import SEMICONDUCTOR_THEME
 
 _THEMES: dict[str, ThemeConfig] = {
@@ -31,6 +36,11 @@ _THEMES: dict[str, ThemeConfig] = {
     ENERGY_THEME.theme_id: ENERGY_THEME,
     DEFENSE_THEME.theme_id: DEFENSE_THEME,
     RENEWABLES_THEME.theme_id: RENEWABLES_THEME,
+    BATTERY_THEME.theme_id: BATTERY_THEME,
+    ROBOTS_THEME.theme_id: ROBOTS_THEME,
+    FOOD_THEME.theme_id: FOOD_THEME,
+    FINANCE_THEME.theme_id: FINANCE_THEME,
+    PROPERTY_THEME.theme_id: PROPERTY_THEME,
 }
 
 
@@ -96,10 +106,18 @@ def build_theme_view(
     members_a = build_members(a_boards, heat_d0, heat_as, pct_d0, pct_as, theme.epsilon)
     members_b = build_members(b_boards, heat_d0, heat_as, pct_d0, pct_as, theme.epsilon)
 
-    badge_a = judge_group_a(members_a, theme)
-
     a_codes = [b.board_code for b in theme.group_a]
     b_codes = [b.board_code for b in theme.group_b]
+    heat_series_a = {
+        code: [heat_by_day.get(day, {}).get(code) for day in window_dates]
+        for code in a_codes
+    }
+    badge_a = judge_group_a(
+        members_a,
+        theme,
+        heat_by_code=heat_series_a,
+        window_days=len(window_dates),
+    )
     series_a_heat = daily_group_median_series(window_dates, a_codes, heat_by_day, False)
     series_b_heat = daily_group_median_series(window_dates, b_codes, heat_by_day, False)
     series_a_pct = daily_group_median_series(

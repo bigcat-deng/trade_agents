@@ -116,6 +116,35 @@
       margin: 0 0 0.35rem;
       font-size: 1.15rem;
     }
+    .reading-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin: 0 0 0.35rem;
+    }
+    .reading-head h2 {
+      margin: 0;
+    }
+    .reading-head button {
+      flex: 0 0 auto;
+      padding: 0.3rem 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.88rem;
+      cursor: pointer;
+    }
+    .reading-head button:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .reading-head button:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
     .reading .conclusion {
       margin: 0.75rem 0 0;
       line-height: 1.65;
@@ -206,7 +235,10 @@
       <p class="note" id="pick-message"></p>
     </form>
     <section class="reading" id="heat-reading">
-      <h2>热度解读</h2>
+      <div class="reading-head">
+        <h2>热度解读</h2>
+        <button type="button" id="reread-btn">重新解读</button>
+      </div>
       <p class="meta" id="reading-meta"></p>
       <div id="reading-body">正在解读…</div>
     </section>
@@ -306,32 +338,48 @@
       const readingAsOf = dates[dates.length - 1];
       const readingMeta = document.getElementById("reading-meta");
       const readingBody = document.getElementById("reading-body");
-      readingMeta.textContent = "截至 " + readingAsOf;
-      fetch("/api/interpret/" + interpretTemplate, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({as_of: readingAsOf}),
-      }).then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok) {
-          readingBody.textContent = payload.detail || "解读失败";
-          return;
-        }
-        readingMeta.textContent = "截至 " + payload.as_of + " · " + payload.model;
-        renderReading(payload.reading);
-        if (!showAllLabels && payload.reading) {
-          const names = [];
-          for (const section of payload.reading.sections || []) {
-            for (const row of section.rows || []) {
-              if (row.board) names.push(row.board);
-            }
+      const rereadBtn = document.getElementById("reread-btn");
+
+      async function loadReading(force) {
+        if (!interpretTemplate || !readingAsOf) return;
+        readingMeta.textContent = force ? "正在重新解读…" : "截至 " + readingAsOf;
+        if (!force) readingBody.textContent = "正在解读…";
+        if (rereadBtn) rereadBtn.disabled = true;
+        try {
+          const response = await fetch("/api/interpret/" + interpretTemplate, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({as_of: readingAsOf, force: !!force}),
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            readingBody.textContent = payload.detail || "解读失败";
+            return;
           }
-          labeledNames = [...new Set(names)];
-          loadDate(Number(slider.value));
+          const cached = payload.cached ? " · 缓存" : "";
+          readingMeta.textContent = "截至 " + payload.as_of + " · " + payload.model + cached;
+          renderReading(payload.reading);
+          if (!showAllLabels && payload.reading) {
+            const names = [];
+            for (const section of payload.reading.sections || []) {
+              for (const row of section.rows || []) {
+                if (row.board) names.push(row.board);
+              }
+            }
+            labeledNames = [...new Set(names)];
+            loadDate(Number(slider.value));
+          }
+        } catch (err) {
+          readingBody.textContent = "解读失败";
+        } finally {
+          if (rereadBtn) rereadBtn.disabled = false;
         }
-      }).catch(() => {
-        readingBody.textContent = "解读失败";
-      });
+      }
+
+      if (rereadBtn) {
+        rereadBtn.addEventListener("click", () => loadReading(true));
+      }
+      loadReading(false);
 
       function renderReading(reading) {
         readingBody.replaceChildren();

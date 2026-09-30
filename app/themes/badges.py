@@ -182,7 +182,130 @@ def _assign_roles(members: list[MemberWindow], epsilon: float) -> list[MemberWin
     return out
 
 
-def judge_group_a(members: Sequence[MemberWindow], theme: ThemeConfig) -> GroupBadge:
+def _ols_slope(xs: Sequence[float], ys: Sequence[float]) -> float | None:
+    n = len(xs)
+    if n < 2:
+        return None
+    x_mean = sum(xs) / n
+    y_mean = sum(ys) / n
+    var_x = sum((x - x_mean) ** 2 for x in xs)
+    if var_x == 0:
+        return None
+    cov = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
+    return cov / var_x
+
+
+def warming_slope_from_heats(
+    heats: Sequence[float | None],
+    *,
+    k: int = 5,
+    min_points: int = 4,
+) -> float | None:
+    """OLS on last k heat_short points; return −β so >0 means warming."""
+    if k < 2:
+        return None
+    window = list(heats)[-k:]
+    xs: list[float] = []
+    ys: list[float] = []
+    for index, heat in enumerate(window):
+        if heat is None:
+            continue
+        xs.append(float(index))
+        ys.append(float(heat))
+    if len(xs) < min_points:
+        return None
+    raw = _ols_slope(xs, ys)
+    if raw is None:
+        return None
+    return -raw
+
+
+def _trend_word(
+    warming: float | None,
+    *,
+    epsilon_slope: float,
+    window_delta: float | None,
+    window_days: int,
+) -> str | None:
+    if warming is None:
+        return None
+    if abs(warming) <= epsilon_slope:
+        return "走平"
+    if warming < 0:
+        return "回落"
+    if (
+        window_delta is not None
+        and window_days > 1
+        and window_delta > 0
+    ):
+        avg_daily = window_delta / (window_days - 1)
+        if avg_daily > epsilon_slope and warming < 0.5 * avg_daily:
+            return "升温放缓"
+    return "仍升温"
+
+
+def _others_trend_phrase(
+    slopes: Sequence[float | None],
+    epsilon_slope: float,
+) -> str:
+    present = [slope for slope in slopes if slope is not None]
+    if not present:
+        return "其余近端不足"
+    n_up = sum(1 for slope in present if slope > epsilon_slope)
+    n_down = sum(1 for slope in present if slope < -epsilon_slope)
+    if n_up == 0 and n_down == 0:
+        return "其余走平"
+    if n_up > 0 and n_down == 0:
+        return "其余跟上升温"
+    if n_down > 0 and n_up == 0:
+        return "其余回落"
+    return "其余近端分化"
+
+
+def _append_recent_trend(
+    detail: str,
+    members: Sequence[MemberWindow],
+    theme: ThemeConfig,
+    heat_by_code: Mapping[str, Sequence[float | None]] | None,
+    window_days: int | None,
+) -> str:
+    if not heat_by_code:
+        return detail
+    valid = [m for m in members if m.sign is not None and m.delta is not None]
+    if len(valid) < 2:
+        return detail
+    leader = max(valid, key=lambda m: m.delta if m.delta is not None else float("-inf"))
+    others = [m for m in valid if m.board_code != leader.board_code]
+    k = theme.trend_k
+    days = window_days if window_days is not None else theme.window_trading_days
+    leader_slope = warming_slope_from_heats(
+        heat_by_code.get(leader.board_code, ()), k=k
+    )
+    word = _trend_word(
+        leader_slope,
+        epsilon_slope=theme.epsilon_slope,
+        window_delta=leader.delta,
+        window_days=days,
+    )
+    other_slopes = [
+        warming_slope_from_heats(heat_by_code.get(m.board_code, ()), k=k)
+        for m in others
+    ]
+    others_phrase = _others_trend_phrase(other_slopes, theme.epsilon_slope)
+    if word is None:
+        if all(slope is None for slope in other_slopes):
+            return f"{detail}；近{k}日趋势不足"
+        return f"{detail}；近{k}日{leader.board_name}近端不足，{others_phrase}"
+    return f"{detail}；近{k}日{leader.board_name}{word}，{others_phrase}"
+
+
+def judge_group_a(
+    members: Sequence[MemberWindow],
+    theme: ThemeConfig,
+    *,
+    heat_by_code: Mapping[str, Sequence[float | None]] | None = None,
+    window_days: int | None = None,
+) -> GroupBadge:
     valid = [m for m in members if m.sign is not None and m.delta is not None]
     if len(valid) < 2:
         return GroupBadge("数据不足", "有效成员不足 2 个", None)
@@ -200,19 +323,25 @@ def judge_group_a(members: Sequence[MemberWindow], theme: ThemeConfig) -> GroupB
     co_move = max(n_hot, n_cold) / len(valid)
     group_delta = group_median(deltas)
 
+    def _badge(label: str, detail: str) -> GroupBadge:
+        return GroupBadge(
+            label,
+            _append_recent_trend(detail, members, theme, heat_by_code, window_days),
+            group_delta,
+            spread0,
+            spread1,
+            co_move,
+        )
+
     if (
         leader.delta is not None
         and leader.delta >= theme.lambda_lead
         and others
         and all(m.delta is not None and m.delta <= theme.epsilon for m in others)
     ):
-        return GroupBadge(
+        return _badge(
             "仅龙头热",
             f"{leader.board_name} 窗口变热 {leader.delta:.1f}，其余未跟上",
-            group_delta,
-            spread0,
-            spread1,
-            co_move,
         )
 
     if (n_hot >= 1 and n_cold >= 1) or (
@@ -226,15 +355,15 @@ def judge_group_a(members: Sequence[MemberWindow], theme: ThemeConfig) -> GroupB
             detail = "均在变冷，但成员分位离散明显拉大"
         else:
             detail = "分位离散明显拉大"
-        return GroupBadge("拆开", detail, group_delta, spread0, spread1, co_move)
+        return _badge("拆开", detail)
 
     if n_hot >= 2 and n_cold == 0:
-        return GroupBadge("同热", f"{n_hot}/{len(valid)} 成员窗口变热", group_delta, spread0, spread1, co_move)
+        return _badge("同热", f"{n_hot}/{len(valid)} 成员窗口变热")
 
     if n_cold >= 2 and n_hot == 0:
-        return GroupBadge("同冷", f"{n_cold}/{len(valid)} 成员窗口变冷", group_delta, spread0, spread1, co_move)
+        return _badge("同冷", f"{n_cold}/{len(valid)} 成员窗口变冷")
 
-    return GroupBadge("平稳", "多数落在平坦带", group_delta, spread0, spread1, co_move)
+    return _badge("平稳", "多数落在平坦带")
 
 
 def short_group_label(label: str) -> str:

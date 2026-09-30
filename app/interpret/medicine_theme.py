@@ -31,6 +31,12 @@ PROSE_THEME_TEMPLATES = frozenset(
         "energy-theme-reading",
         "defense-theme-reading",
         "renewables-theme-reading",
+        "battery-theme-reading",
+        "robots-theme-reading",
+        "food-theme-reading",
+        "finance-theme-reading",
+        "property-theme-reading",
+        "theme-wave-reading",
     }
 )
 
@@ -119,6 +125,36 @@ def build_renewables_theme_prompt(
     as_of: date | None = None,
 ) -> tuple[PromptTemplate, str, date]:
     return build_theme_reading_prompt("renewables-theme-reading", as_of)
+
+
+def build_battery_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("battery-theme-reading", as_of)
+
+
+def build_robots_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("robots-theme-reading", as_of)
+
+
+def build_food_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("food-theme-reading", as_of)
+
+
+def build_finance_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("finance-theme-reading", as_of)
+
+
+def build_property_theme_prompt(
+    as_of: date | None = None,
+) -> tuple[PromptTemplate, str, date]:
+    return build_theme_reading_prompt("property-theme-reading", as_of)
 
 
 def interpret_prose(prompt: str, settings: dict[str, str]) -> tuple[str, str]:

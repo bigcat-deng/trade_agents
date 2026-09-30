@@ -17,15 +17,21 @@ from app.interpret.industry_heat import (
 from app.interpret.medicine_theme import (
     PROSE_THEME_TEMPLATES,
     build_ai_theme_prompt,
+    build_battery_theme_prompt,
     build_defense_theme_prompt,
     build_energy_theme_prompt,
+    build_finance_theme_prompt,
+    build_food_theme_prompt,
     build_medicine_theme_prompt,
     build_metals_theme_prompt,
+    build_property_theme_prompt,
     build_renewables_theme_prompt,
+    build_robots_theme_prompt,
     build_semiconductor_theme_prompt,
     interpret_prose,
     prose_reading,
 )
+from app.interpret.theme_wave import build_theme_wave_reading_prompt
 from app.prompts.template import load_prompt
 
 
@@ -46,6 +52,12 @@ BUILDERS = {
     "energy-theme-reading": build_energy_theme_prompt,
     "defense-theme-reading": build_defense_theme_prompt,
     "renewables-theme-reading": build_renewables_theme_prompt,
+    "battery-theme-reading": build_battery_theme_prompt,
+    "robots-theme-reading": build_robots_theme_prompt,
+    "food-theme-reading": build_food_theme_prompt,
+    "finance-theme-reading": build_finance_theme_prompt,
+    "property-theme-reading": build_property_theme_prompt,
+    "theme-wave-reading": build_theme_wave_reading_prompt,
 }
 
 
@@ -79,7 +91,12 @@ class Interpretation:
     cached: bool
 
 
-def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
+def interpret(
+    template_name: str,
+    as_of: date | None = None,
+    *,
+    force: bool = False,
+) -> Interpretation:
     """Fill one prompt template and return the model reading, using a saved result when present."""
     builder = BUILDERS.get(template_name)
     if builder is None:
@@ -90,7 +107,7 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
         raise UnknownTemplate(template_name)
 
     if template_name in PROSE_THEME_TEMPLATES:
-        return _interpret_prose(template_name, builder, as_of)
+        return _interpret_prose(template_name, builder, as_of, force=force)
 
     template, prompt, resolved, latest, summaries = builder(as_of)
     board_type = str(template.config.get("board_type") or "industry")
@@ -108,19 +125,20 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
         raise InterpretConfigError(missing)
 
     request_model = settings["model"]
-    stored = fetch_interpret_result(template.name, resolved, request_model)
-    if stored is not None:
-        response_model, content = stored
-        reading = normalize_reading(content, latest, summaries)
-        if reading is not None:
-            return Interpretation(
-                template=template.name,
-                as_of=resolved,
-                model=response_model,
-                content=json.dumps(reading, ensure_ascii=False),
-                reading=attach_cross_stats(reading, resolved, board_type),
-                cached=True,
-            )
+    if not force:
+        stored = fetch_interpret_result(template.name, resolved, request_model)
+        if stored is not None:
+            response_model, content = stored
+            reading = normalize_reading(content, latest, summaries)
+            if reading is not None:
+                return Interpretation(
+                    template=template.name,
+                    as_of=resolved,
+                    model=response_model,
+                    content=json.dumps(reading, ensure_ascii=False),
+                    reading=attach_cross_stats(reading, resolved, board_type),
+                    cached=True,
+                )
 
     content, response_model = interpret_industry_heat(prompt, settings)
     reading = normalize_reading(content, latest, summaries)
@@ -151,7 +169,13 @@ def interpret(template_name: str, as_of: date | None = None) -> Interpretation:
     )
 
 
-def _interpret_prose(template_name: str, builder, as_of: date | None) -> Interpretation:
+def _interpret_prose(
+    template_name: str,
+    builder,
+    as_of: date | None,
+    *,
+    force: bool = False,
+) -> Interpretation:
     template, prompt, resolved = builder(as_of)
     settings = model_settings(template)
     missing = [
@@ -167,19 +191,20 @@ def _interpret_prose(template_name: str, builder, as_of: date | None) -> Interpr
         raise InterpretConfigError(missing)
 
     request_model = settings["model"]
-    stored = fetch_interpret_result(template.name, resolved, request_model)
-    if stored is not None:
-        response_model, content = stored
-        reading = prose_reading(content)
-        if reading.get("conclusion"):
-            return Interpretation(
-                template=template.name,
-                as_of=resolved,
-                model=response_model,
-                content=json.dumps(reading, ensure_ascii=False),
-                reading=reading,
-                cached=True,
-            )
+    if not force:
+        stored = fetch_interpret_result(template.name, resolved, request_model)
+        if stored is not None:
+            response_model, content = stored
+            reading = prose_reading(content)
+            if reading.get("conclusion"):
+                return Interpretation(
+                    template=template.name,
+                    as_of=resolved,
+                    model=response_model,
+                    content=json.dumps(reading, ensure_ascii=False),
+                    reading=reading,
+                    cached=True,
+                )
 
     text, response_model = interpret_prose(prompt, settings)
     reading = prose_reading(text)

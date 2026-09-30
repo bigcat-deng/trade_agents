@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      margin: 1.35rem 0 0.4rem;
+      font-size: 1.15rem;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.85rem;
+      line-height: 1.55;
+    }
+    .wave-pair {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+      gap: 0.65rem;
+      align-items: stretch;
+    }
+    @media (max-width: 980px) {
+      .wave-pair { grid-template-columns: 1fr; }
+    }
+    .panel {
+      margin: 0;
+      padding: 0.6rem 0.75rem 0.85rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      min-width: 0;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 0.75rem;
+      margin: 0.5rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .legend a {
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 0.88rem;
+      border-bottom: 1px dotted var(--line);
+    }
+    .legend a:hover { border-color: #1d4ed8; color: #1d4ed8; }
+    .concept-theme-picker {
+      margin: 0.65rem 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.75rem;
+    }
+    .concept-theme-picker label {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .concept-theme-picker select {
+      font: inherit;
+      font-size: 0.92rem;
+      color: var(--ink);
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.35rem 0.55rem;
+      min-width: min(16rem, 100%);
+    }
+    .concept-theme-picker .hint {
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+    .reading {
+      margin: 1.1rem 0 0.35rem;
+      padding: 0.75rem 0.85rem 0.95rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .reading-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin: 0 0 0.35rem;
+    }
+    .reading-head h2 {
+      margin: 0;
+    }
+    .reading-head button {
+      font: inherit;
+      font-size: 0.88rem;
+      padding: 0.3rem 0.65rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .reading-head button:hover:not(:disabled) {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+    .reading-head button:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+    .reading .conclusion {
+      margin-top: 0.35rem;
+    }
+    .reading .reading-block {
+      margin: 0 0 0.85rem;
+    }
+    .reading .reading-block:last-child {
+      margin-bottom: 0;
+    }
+    .reading .reading-title {
+      margin: 0 0 0.28rem;
+      color: #b91c1c;
+      font-weight: 700;
+      font-size: 0.98rem;
+    }
+    .reading .reading-para {
+      margin: 0;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .reading .reading-table-wrap {
+      margin: 0.45rem 0 0.7rem;
+      overflow-x: auto;
+    }
+    .reading .reading-table-caption {
+      margin: 0 0 0.25rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    .reading table.reading-table {
+      border-collapse: collapse;
+      width: max-content;
+      min-width: 100%;
+      font-size: 0.88rem;
+    }
+    .reading table.reading-table th,
+    .reading table.reading-table td {
+      border: 1px solid var(--line);
+      padding: 0.28rem 0.45rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .reading table.reading-table th {
+      background: #f5f5f4;
+      font-weight: 650;
+    }
+    .foot {
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+      margin: 0.75rem 0 0;
+    }
+  </style>
+  <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
+</head>
+<body>
+  <main>
+    <a class="back" href="/boards/concept/themes">← 主题域</a>
+    <h1>{{ title }}</h1>
+    {% if empty_message %}
+    <p class="meta">{{ empty_message }}</p>
+    {% else %}
+    <p class="meta">窗口 {{ dates[0] if dates else "—" }} → {{ dates[-1] if dates else "—" }}（{{ dates|length }} 个交易日）· 高度为各主题群 A 热度分位翻转为「越高越热」· 主题之间已插值成连续水面 · 默认俯视</p>
+
+    <section class="reading" id="chart-reading">
+      <div class="reading-head">
+        <h2>轮转解读</h2>
+        <button type="button" id="reread-btn">重新解读</button>
+      </div>
+      <p class="meta" id="reading-meta">正在解读…</p>
+      <div class="conclusion" id="reading-body"></div>
+    </section>
+
+    <h2>光谱水面</h2>
+    <p class="meta">{{ axis_note }}</p>
+    <div class="wave-pair" data-wave-pair="spectrum">
+      <div class="panel" data-role="surface">{{ spectrum_chart_html | safe }}</div>
+      <div class="panel" data-role="contour">{{ spectrum_map_html | safe }}</div>
+    </div>
+    <ul class="legend">
+      {% for label, href in spectrum_links %}
+      <li><a href="{{ href }}">{{ label }}</a></li>
+      {% endfor %}
+    </ul>
+
+    <h2>近热排序水面</h2>
+    <p class="meta">{{ rank_axis_note }} 排序基准日 {{ rank_as_of }}。</p>
+    <div class="wave-pair" data-wave-pair="ranked">
+      <div class="panel" data-role="surface">{{ ranked_chart_html | safe }}</div>
+      <div class="panel" data-role="contour">{{ ranked_map_html | safe }}</div>
+    </div>
+    <ul class="legend">
+      {% for label, href in ranked_links %}
+      <li><a href="{{ href }}">{{ loop.index }}. {{ label }}</a></li>
+      {% endfor %}
+    </ul>
+
+    <h2>行业板块热度</h2>
+    {% if industry_short_html %}
+    <p class="meta">{{ industry_axis_note }} 共 {{ industry_board_count }} 个行业板块。</p>
+    <div class="panel">{{ industry_short_html | safe }}</div>
+    {% else %}
+    <p class="meta">还没有行业板块热度可画。</p>
+    {% endif %}
+
+    <h2>概念短热 Top{{ concept_board_count or 200 }}</h2>
+    {% if concept_short_html %}
+    <p class="meta">{{ concept_axis_note }} 筛选段 {{ concept_select_from }} → {{ concept_select_to }} · 共 {{ concept_board_count }} 个概念。</p>
+    <div class="panel" id="concept-top-chart">{{ concept_short_html | safe }}</div>
+    <div class="concept-theme-picker">
+      <label for="concept-theme-select">主题高亮</label>
+      <select id="concept-theme-select">
+        <option value="">默认（无阴影）</option>
+        {% for opt in concept_theme_options %}
+        <option value="{{ opt.id }}">{{ opt.label }}（{{ opt.hit_count }}/{{ opt.member_count }}）</option>
+        {% endfor %}
+      </select>
+      <span class="hint" id="concept-theme-hint"></span>
+    </div>
+    {% else %}
+    <p class="meta">还没有概念短热 Top 可画。</p>
+    {% endif %}
+
+    <p class="foot">主题组：右侧平面图单击后左侧 3D 用红点标出同一位置，再单击清除。行业/概念组：悬停查看短热（分位翻转，越高越热）。概念图可用下方下拉按主题阴影标出成员列。</p>
+    {% endif %}
+  </main>
+  <script>
+    (function () {
+      const MARKER_TRACE = 1;
+      let markerPair = null;
+      const bound = new WeakSet();
+      const conceptThemeOptions = {{ concept_theme_options | tojson }};
+      const interpretTemplate = {{ interpret_template | tojson }};
+      const readingAsOf = {{ as_of | tojson }};
+      let interpretRequestId = 0;
+
+      const READING_TITLES = new Set([
+        "定性总领",
+        "当前冷热",
+        "行业时间形态",
+        "三层轮转",
+        "热度衔接",
+        "下文推演",
+        "继续观察",
+      ]);
+
+      function normalizeReadingTitle(line) {
+        return line
+          .trim()
+          .replace(/^[0-9０-９]+[、.．)）]\s*/, "")
+          .replace(/[：:]\s*$/, "")
+          .replace(/\s+/g, "");
+      }
+
+      function isReadingTitle(line) {
+        const raw = line.trim().replace(/[：:]\s*$/, "");
+        if (READING_TITLES.has(raw)) return raw;
+        const compact = normalizeReadingTitle(line);
+        for (const title of READING_TITLES) {
+          if (normalizeReadingTitle(title) === compact) return title;
+        }
+        return null;
+      }
+
+      function isMarkdownTableLine(line) {
+        return /^\s*\|.+\|\s*$/.test(line);
+      }
+
+      function isMarkdownSeparator(line) {
+        return /^\s*\|?\s*:?-{3,}.*\|\s*$/.test(line);
+      }
+
+      function splitMarkdownRow(line) {
+        const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+        return trimmed.split("|").map((cell) => cell.trim());
+      }
+
+      function appendMarkdownTables(text, wrap) {
+        const lines = String(text || "").split("\n");
+        let i = 0;
+        while (i < lines.length) {
+          while (i < lines.length && !lines[i].trim()) i += 1;
+          if (i >= lines.length) break;
+
+          if (!isMarkdownTableLine(lines[i])) {
+            const paraLines = [];
+            while (i < lines.length && !isMarkdownTableLine(lines[i])) {
+              if (lines[i].trim()) paraLines.push(lines[i]);
+              i += 1;
+            }
+            if (paraLines.length) {
+              const p = document.createElement("p");
+              p.className = "reading-para";
+              p.textContent = paraLines.join("\n");
+              wrap.appendChild(p);
+            }
+            continue;
+          }
+
+          const tableLines = [];
+          while (i < lines.length && isMarkdownTableLine(lines[i])) {
+            tableLines.push(lines[i]);
+            i += 1;
+          }
+          if (tableLines.length < 2) {
+            const p = document.createElement("p");
+            p.className = "reading-para";
+            p.textContent = tableLines.join("\n");
+            wrap.appendChild(p);
+            continue;
+          }
+
+          const header = splitMarkdownRow(tableLines[0]);
+          let dataStart = 1;
+          if (isMarkdownSeparator(tableLines[1])) dataStart = 2;
+          const bodyRows = tableLines
+            .slice(dataStart)
+            .map(splitMarkdownRow)
+            .filter((row) => row.some((cell) => cell));
+
+          const box = document.createElement("div");
+          box.className = "reading-table-wrap";
+          const table = document.createElement("table");
+          table.className = "reading-table";
+          const thead = document.createElement("thead");
+          const headTr = document.createElement("tr");
+          header.forEach((cell) => {
+            const th = document.createElement("th");
+            th.textContent = cell;
+            headTr.appendChild(th);
+          });
+          thead.appendChild(headTr);
+          table.appendChild(thead);
+          const tbody = document.createElement("tbody");
+          bodyRows.forEach((row) => {
+            const tr = document.createElement("tr");
+            for (let c = 0; c < header.length; c += 1) {
+              const td = document.createElement("td");
+              td.textContent = row[c] || "";
+              tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          box.appendChild(table);
+          wrap.appendChild(box);
+        }
+      }
+
+      function renderProseReading(text, bodyEl) {
+        bodyEl.replaceChildren();
+        const blocks = String(text || "")
+          .trim()
+          .split(/\n\s*\n/);
+        for (const block of blocks) {
+          const lines = block.split("\n");
+          const title = isReadingTitle(lines[0] || "");
+          const wrap = document.createElement("div");
+          wrap.className = "reading-block";
+          if (title) {
+            const h = document.createElement("p");
+            h.className = "reading-title";
+            h.textContent = title;
+            wrap.appendChild(h);
+            const rest = lines.slice(1).join("\n").trim();
+            if (rest) {
+              if (title === "行业时间形态") {
+                appendMarkdownTables(rest, wrap);
+              } else {
+                const p = document.createElement("p");
+                p.className = "reading-para";
+                p.textContent = rest;
+                wrap.appendChild(p);
+              }
+            }
+          } else if (block.includes("|")) {
+            appendMarkdownTables(block, wrap);
+          } else {
+            const p = document.createElement("p");
+            p.className = "reading-para";
+            p.textContent = block;
+            wrap.appendChild(p);
+          }
+          bodyEl.appendChild(wrap);
+        }
+      }
+
+      async function loadReading(asOf, force) {
+        const metaEl = document.getElementById("reading-meta");
+        const bodyEl = document.getElementById("reading-body");
+        const rereadBtn = document.getElementById("reread-btn");
+        if (!metaEl || !bodyEl || !interpretTemplate || !asOf) return;
+        const ticket = ++interpretRequestId;
+        metaEl.textContent = force ? "正在重新解读…" : "正在解读…";
+        bodyEl.replaceChildren();
+        if (rereadBtn) rereadBtn.disabled = true;
+        try {
+          const response = await fetch("/api/interpret/" + interpretTemplate, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ as_of: asOf, force: !!force }),
+          });
+          const payload = await response.json();
+          if (ticket !== interpretRequestId) return;
+          if (!response.ok) {
+            metaEl.textContent = "解读失败";
+            bodyEl.textContent = payload.detail || "解读失败";
+            return;
+          }
+          const cached = payload.cached ? " · 缓存" : "";
+          metaEl.textContent = "截至 " + payload.as_of + " · " + payload.model + cached;
+          const conclusion = (payload.reading && payload.reading.conclusion) || "";
+          if (!conclusion) {
+            bodyEl.textContent = "解读失败";
+            return;
+          }
+          renderProseReading(conclusion, bodyEl);
+        } catch (err) {
+          if (ticket !== interpretRequestId) return;
+          metaEl.textContent = "解读失败";
+          bodyEl.textContent = "解读失败";
+        } finally {
+          if (ticket === interpretRequestId && rereadBtn) {
+            rereadBtn.disabled = false;
+          }
+        }
+      }
+
+      const rereadBtn = document.getElementById("reread-btn");
+      if (rereadBtn) {
+        rereadBtn.addEventListener("click", () => {
+          loadReading(readingAsOf, true);
+        });
+      }
+      if (readingAsOf) {
+        loadReading(readingAsOf, false);
+      } else {
+        const metaEl = document.getElementById("reading-meta");
+        if (metaEl) metaEl.textContent = "暂无截止日，无法解读";
+      }
+
+      function nearestIndex(values, target) {
+        let best = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < values.length; i += 1) {
+          const dist = Math.abs(Number(values[i]) - target);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = i;
+          }
+        }
+        return best;
+      }
+
+      function plotIn(panel) {
+        return panel ? panel.querySelector(".js-plotly-plot") : null;
+      }
+
+      function pairPlots(pairEl) {
+        const surface = plotIn(pairEl.querySelector('[data-role="surface"]'));
+        const contour = plotIn(pairEl.querySelector('[data-role="contour"]'));
+        return { pairEl, surface, contour };
+      }
+
+      function lookupFromContourPoint(contourGd, point) {
+        const xs = contourGd.data[0].x;
+        const ys = contourGd.data[0].y;
+        const zs = contourGd.data[0].z;
+        if (!xs || !ys || !zs) return null;
+
+        const xi = nearestIndex(xs, Number(point.x));
+        const yi = nearestIndex(ys, Number(point.y));
+        const row = zs[yi];
+        const heat = row ? row[xi] : null;
+        if (heat == null || Number.isNaN(Number(heat))) return null;
+
+        return {
+          x: Number(xs[xi]),
+          y: Number(ys[yi]),
+          z: Number(heat),
+        };
+      }
+
+      function clearMarker(surfaceGd) {
+        if (!surfaceGd || typeof Plotly === "undefined") return;
+        if (!surfaceGd.data || !surfaceGd.data[MARKER_TRACE]) return;
+        Plotly.restyle(surfaceGd, { x: [[null]], y: [[null]], z: [[null]] }, [MARKER_TRACE]);
+      }
+
+      function setMarker(surfaceGd, info) {
+        if (!surfaceGd || typeof Plotly === "undefined") return;
+        if (!surfaceGd.data || !surfaceGd.data[MARKER_TRACE]) return;
+        Plotly.restyle(
+          surfaceGd,
+          { x: [[info.x]], y: [[info.y]], z: [[info.z]] },
+          [MARKER_TRACE]
+        );
+      }
+
+      function onContourClick(pair, eventData) {
+        if (markerPair === pair) {
+          clearMarker(pair.surface);
+          markerPair = null;
+          return;
+        }
+        if (markerPair && markerPair !== pair) {
+          clearMarker(markerPair.surface);
+          markerPair = null;
+        }
+        const point = eventData && eventData.points && eventData.points[0];
+        if (!point) return;
+        const info = lookupFromContourPoint(pair.contour, point);
+        if (!info) return;
+        setMarker(pair.surface, info);
+        markerPair = pair;
+      }
+
+      function bindPair(pairEl) {
+        const pair = pairPlots(pairEl);
+        if (!pair.contour || !pair.surface) return false;
+        if (bound.has(pair.contour)) return true;
+        bound.add(pair.contour);
+
+        if (typeof pair.contour.on === "function") {
+          pair.contour.on("plotly_click", (eventData) => {
+            onContourClick(pair, eventData);
+          });
+        }
+        return true;
+      }
+
+      function bindAll() {
+        let ready = 0;
+        document.querySelectorAll(".wave-pair").forEach((el) => {
+          if (bindPair(el)) ready += 1;
+        });
+        return ready;
+      }
+
+      function conceptPlot() {
+        return plotIn(document.getElementById("concept-top-chart"));
+      }
+
+      function shapesForIndices(indices) {
+        return (indices || []).map((i) => ({
+          type: "rect",
+          xref: "x",
+          yref: "paper",
+          x0: Number(i) - 0.5,
+          x1: Number(i) + 0.5,
+          y0: 0,
+          y1: 1,
+          fillcolor: "rgba(220, 38, 38, 0.22)",
+          line: { width: 1, color: "rgba(220, 38, 38, 0.55)" },
+          layer: "above",
+        }));
+      }
+
+      function conceptTickNames(gd) {
+        const full = gd._fullLayout && gd._fullLayout.xaxis;
+        const layout = gd.layout && gd.layout.xaxis;
+        const ticktext =
+          (full && full.ticktext) ||
+          (layout && layout.ticktext) ||
+          [];
+        return ticktext.map((name) => String(name));
+      }
+
+      function colorConceptTickLabels(gd, indices) {
+        const names = conceptTickNames(gd);
+        const hitNames = new Set();
+        (indices || []).forEach((i) => {
+          const name = names[Number(i)];
+          if (name != null && name !== "") hitNames.add(name);
+        });
+        const ticks = gd.querySelectorAll(".xtick text");
+        ticks.forEach((node) => {
+          const label = (node.textContent || "").trim();
+          if (hitNames.has(label)) {
+            node.style.fill = "#dc2626";
+            node.style.fontWeight = "700";
+          } else {
+            node.style.fill = "";
+            node.style.fontWeight = "";
+          }
+        });
+      }
+
+      function refreshConceptTickColors(gd, indices) {
+        colorConceptTickLabels(gd, indices);
+        requestAnimationFrame(() => {
+          colorConceptTickLabels(gd, indices);
+          requestAnimationFrame(() => colorConceptTickLabels(gd, indices));
+        });
+      }
+
+      function applyConceptThemeHighlight(themeId) {
+        const gd = conceptPlot();
+        const hint = document.getElementById("concept-theme-hint");
+        if (!gd || typeof Plotly === "undefined") return;
+
+        let indices = [];
+        if (themeId) {
+          const opt = (conceptThemeOptions || []).find((item) => item.id === themeId);
+          indices = (opt && opt.indices) || [];
+        }
+
+        const done = () => {
+          refreshConceptTickColors(gd, themeId ? indices : []);
+          if (hint) {
+            if (!themeId) {
+              hint.textContent = "";
+            } else if (indices.length) {
+              hint.textContent = `已高亮 ${indices.length} 列（轴标签红色）`;
+            } else {
+              hint.textContent = "该主题成员未进入本图 Top 名单";
+            }
+          }
+        };
+
+        Plotly.relayout(gd, {
+          shapes: themeId ? shapesForIndices(indices) : [],
+        }).then(done, done);
+      }
+
+      function bindConceptThemePicker() {
+        const select = document.getElementById("concept-theme-select");
+        if (!select || select.dataset.bound === "1") return false;
+        const gd = conceptPlot();
+        if (!gd) return false;
+        select.dataset.bound = "1";
+
+        function currentIndices() {
+          const themeId = select.value;
+          if (!themeId) return [];
+          const opt = (conceptThemeOptions || []).find((item) => item.id === themeId);
+          return (opt && opt.indices) || [];
+        }
+
+        select.addEventListener("change", () => {
+          applyConceptThemeHighlight(select.value);
+        });
+        if (typeof gd.on === "function") {
+          const repaint = () => refreshConceptTickColors(gd, currentIndices());
+          gd.on("plotly_afterplot", repaint);
+          gd.on("plotly_relayout", repaint);
+          gd.on("plotly_relayouting", repaint);
+        }
+        applyConceptThemeHighlight(select.value);
+        return true;
+      }
+
+      const started = Date.now();
+      const timer = setInterval(() => {
+        const ready = bindAll();
+        const pickerReady = bindConceptThemePicker();
+        if ((ready >= 2 && pickerReady) || Date.now() - started > 8000) {
+          clearInterval(timer);
+          bindAll();
+          bindConceptThemePicker();
+        }
+      }, 120);
+    })();
+  </script>
+</body>
+</html>

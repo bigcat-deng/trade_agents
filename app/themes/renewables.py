@@ -39,7 +39,7 @@ RENEWABLES_THEME = ThemeConfig(
     ),
     grouping_note=(
         "分群依据成分股重叠，不用热度或名称相似建群。"
-        "本页是成长侧资本开支：光储 vs 风电绿电，不并锂电、新能源车。"
+        "本页是成长侧资本开支：光储 vs 风电绿电，不并锂电、新能源车；锂电另见电池主题域。"
         "煤炭&油气另页；不要做成「大新能源」杂烩。"
     ),
     interpret_template="renewables-theme-reading",

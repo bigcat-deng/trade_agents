@@ -230,8 +230,55 @@
       margin: 0 0 0.35rem;
       font-size: 1.1rem;
     }
+    .reading-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin: 0 0 0.35rem;
+    }
+    .reading-head h2 {
+      margin: 0;
+    }
+    .reading-head button {
+      flex: 0 0 auto;
+      padding: 0.3rem 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.88rem;
+      cursor: pointer;
+    }
+    .reading-head button:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .reading-head button:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
     .reading .conclusion {
       margin: 0.65rem 0 0;
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+    .reading .reading-block {
+      margin: 0 0 0.85rem;
+    }
+    .reading .reading-block:last-child {
+      margin-bottom: 0;
+    }
+    .reading .reading-title {
+      margin: 0 0 0.3rem;
+      color: #b91c1c;
+      font-weight: 650;
+      font-size: 1rem;
+      line-height: 1.4;
+    }
+    .reading .reading-para {
+      margin: 0;
       line-height: 1.7;
       white-space: pre-wrap;
     }
@@ -499,7 +546,10 @@
         </section>
         ${data.mini_kline_html || ""}
         <section class="reading" id="chart-reading">
-          <h2>图的解析</h2>
+          <div class="reading-head">
+            <h2>图的解析</h2>
+            <button type="button" id="reread-btn">重新解读</button>
+          </div>
           <p class="meta" id="reading-meta">正在解读…</p>
           <div class="conclusion" id="reading-body"></div>
         </section>
@@ -508,21 +558,29 @@
           阈值：${constants}
         </p>`;
       remountScripts(body);
-      loadReading(data.as_of);
+      const rereadBtn = document.getElementById("reread-btn");
+      if (rereadBtn) {
+        rereadBtn.addEventListener("click", () => {
+          loadReading(data.as_of, true);
+        });
+      }
+      loadReading(data.as_of, false);
     }
 
-    async function loadReading(asOf) {
+    async function loadReading(asOf, force) {
       const metaEl = document.getElementById("reading-meta");
       const bodyEl = document.getElementById("reading-body");
+      const rereadBtn = document.getElementById("reread-btn");
       if (!metaEl || !bodyEl || !interpretTemplate || !asOf) return;
       const ticket = ++interpretRequestId;
-      metaEl.textContent = "正在解读…";
-      bodyEl.textContent = "";
+      metaEl.textContent = force ? "正在重新解读…" : "正在解读…";
+      bodyEl.replaceChildren();
+      if (rereadBtn) rereadBtn.disabled = true;
       try {
         const response = await fetch("/api/interpret/" + interpretTemplate, {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({as_of: asOf}),
+          body: JSON.stringify({as_of: asOf, force: !!force}),
         });
         const payload = await response.json();
         if (ticket !== interpretRequestId) return;
@@ -533,11 +591,82 @@
         }
         const cached = payload.cached ? " · 缓存" : "";
         metaEl.textContent = "截至 " + payload.as_of + " · " + payload.model + cached;
-        bodyEl.textContent = (payload.reading && payload.reading.conclusion) || "解读失败";
+        const conclusion = (payload.reading && payload.reading.conclusion) || "";
+        if (!conclusion) {
+          bodyEl.textContent = "解读失败";
+          return;
+        }
+        renderProseReading(conclusion, bodyEl);
       } catch (err) {
         if (ticket !== interpretRequestId) return;
         metaEl.textContent = "解读失败";
         bodyEl.textContent = "解读失败";
+      } finally {
+        if (ticket === interpretRequestId && rereadBtn) {
+          rereadBtn.disabled = false;
+        }
+      }
+    }
+
+    const READING_TITLES = new Set([
+      "定性总领",
+      "主题域热度结构",
+      "价格相对中证500",
+      "热度 × 价格 × 指数",
+      "热度×价格×指数",
+      "信号判断",
+      "继续观察",
+    ]);
+
+    function normalizeReadingTitle(line) {
+      return line
+        .trim()
+        .replace(/^[0-9０-９]+[、.．)）]\s*/, "")
+        .replace(/[：:]\s*$/, "")
+        .replace(/\s+/g, "");
+    }
+
+    function isReadingTitle(line) {
+      const raw = line.trim().replace(/[：:]\s*$/, "");
+      if (READING_TITLES.has(raw)) return raw;
+      const compact = normalizeReadingTitle(line);
+      for (const title of READING_TITLES) {
+        if (normalizeReadingTitle(title) === compact) return title === "热度×价格×指数"
+          ? "热度 × 价格 × 指数"
+          : title;
+      }
+      return null;
+    }
+
+    function renderProseReading(text, bodyEl) {
+      bodyEl.replaceChildren();
+      const blocks = String(text || "")
+        .trim()
+        .split(/\n\s*\n/);
+      for (const block of blocks) {
+        const lines = block.split("\n");
+        const title = isReadingTitle(lines[0] || "");
+        const wrap = document.createElement("div");
+        wrap.className = "reading-block";
+        if (title) {
+          const h = document.createElement("p");
+          h.className = "reading-title";
+          h.textContent = title;
+          wrap.appendChild(h);
+          const rest = lines.slice(1).join("\n").trim();
+          if (rest) {
+            const p = document.createElement("p");
+            p.className = "reading-para";
+            p.textContent = rest;
+            wrap.appendChild(p);
+          }
+        } else {
+          const p = document.createElement("p");
+          p.className = "reading-para";
+          p.textContent = block;
+          wrap.appendChild(p);
+        }
+        bodyEl.appendChild(wrap);
       }
     }
 

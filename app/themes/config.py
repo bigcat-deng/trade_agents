@@ -41,6 +41,10 @@ class ThemeConfig:
     # Satellite burst: Δ and excess over domain median Δ.
     lambda_sat: float = 15.0
     mu_sat: float = 10.0
+    # Recent heat_short OLS window (trading days) for badge trend suffix.
+    trend_k: int = 5
+    # |warming slope| (rank units / day) flat band; >0 means getting hotter.
+    epsilon_slope: float = 0.5
 
 
 def theme_board_codes(theme: ThemeConfig) -> list[str]:
@@ -59,4 +63,6 @@ def constants_footnote(theme: ThemeConfig) -> list[tuple[str, str]]:
         ("γ A–B 缺口拉大", str(theme.gamma_gap)),
         ("卫星分位爆发", f"≤ {theme.satellite_percentile}"),
         ("λ_sat / μ", f"{theme.lambda_sat} / {theme.mu_sat}"),
+        ("近端拟合", f"{theme.trend_k} 日"),
+        ("ε_slope 近端平坦", str(theme.epsilon_slope)),
     ]

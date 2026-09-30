@@ -10,6 +10,11 @@ from pydantic import BaseModel, Field
 from app.charts.board_rotation import render_board_rotation
 from app.charts.kline import render_kline
 from app.charts.mini_kline import render_mini_kline
+from app.charts.theme_wave import (
+    render_board_heat_heatmap,
+    render_theme_wave_contour,
+    render_theme_wave_surface,
+)
 from app.charts.theme_heat import render_theme_charts, render_theme_group_chart
 from app.db import (
     fetch_board_daily_bars_from_db,
@@ -17,9 +22,11 @@ from app.db import (
     fetch_board_heat_series,
     fetch_board_name,
     fetch_board_rotation,
+    fetch_concept_heat_named_window,
     fetch_concept_heat_window,
     fetch_daily_bars_from_db,
     fetch_heat_dates_ending,
+    fetch_industry_heat_window,
     fetch_rotation_dates,
     fetch_trading_dates_ending,
     fetch_latest_trading_stocks,
@@ -38,7 +45,10 @@ from app.market_data.providers import baostock_kline
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
 from app.themes import build_theme_view, get_theme, list_themes
+from app.themes.concept_wave import build_concept_top_heat_payload
 from app.themes.config import ThemeConfig, theme_board_codes
+from app.themes.industry_wave import build_industry_board_heat_payload
+from app.themes.wave_surface import build_theme_wave_payload
 
 MINI_KLINE_TRADING_DAYS = 60
 
@@ -83,6 +93,7 @@ class SyncRunRequest(BaseModel):
 
 class InterpretRequest(BaseModel):
     as_of: str | None = None
+    force: bool = False
 
 
 @app.post("/api/interpret/{template_name}")
@@ -92,7 +103,11 @@ def interpret_api(template_name: str, body: InterpretRequest | None = None) -> d
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        result = interpret(template_name, requested)
+        result = interpret(
+            template_name,
+            requested,
+            force=bool(body.force) if body else False,
+        )
     except UnknownTemplate as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except InterpretConfigError as exc:
@@ -337,6 +352,15 @@ def concept_themes_hub_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "concept_themes_hub.html", payload)
 
 
+@app.get("/boards/concept/themes/wave", response_class=HTMLResponse)
+def concept_themes_wave_page(
+    request: Request,
+    days: int = Query(40, ge=20, le=180),
+) -> HTMLResponse:
+    payload = _themes_wave_page_payload(days=days, include_plotlyjs=False)
+    return templates.TemplateResponse(request, "theme_wave.html", payload)
+
+
 @app.get("/api/boards/concept/themes")
 def concept_themes_hub_api(as_of: str = Query(...)) -> dict:
     try:
@@ -375,6 +399,221 @@ def _themes_hub_page_payload(
         "back_href": "/",
         "back_label": "索引",
         "initial": data,
+    }
+
+
+def _themes_wave_empty(
+    *,
+    empty_message: str,
+    axis_note: str = "",
+    rank_axis_note: str = "",
+) -> dict:
+    return {
+        "title": "主题热度水面",
+        "axis_note": axis_note,
+        "rank_axis_note": rank_axis_note,
+        "industry_axis_note": "",
+        "concept_axis_note": "",
+        "dates": [],
+        "as_of": None,
+        "rank_as_of": None,
+        "industry_board_count": 0,
+        "concept_board_count": 0,
+        "concept_select_from": None,
+        "concept_select_to": None,
+        "concept_theme_options": [],
+        "interpret_template": "theme-wave-reading",
+        "spectrum_chart_html": "",
+        "spectrum_map_html": "",
+        "ranked_chart_html": "",
+        "ranked_map_html": "",
+        "industry_short_html": "",
+        "concept_short_html": "",
+        "spectrum_links": [],
+        "ranked_links": [],
+        "empty_message": empty_message,
+    }
+
+
+def _concept_theme_highlight_options(board_codes: list[str]) -> list[dict]:
+    """Themes → column indices that appear in the concept Top-N chart."""
+    if not board_codes:
+        return []
+    index_by_code = {code: i for i, code in enumerate(board_codes)}
+    options: list[dict] = []
+    for theme in list_themes():
+        member_codes = theme_board_codes(theme)
+        indices = sorted(
+            {
+                index_by_code[code]
+                for code in member_codes
+                if code in index_by_code
+            }
+        )
+        label = theme.title.replace("主题域", "").strip() or theme.theme_id
+        options.append(
+            {
+                "id": theme.theme_id,
+                "label": label,
+                "indices": indices,
+                "hit_count": len(indices),
+                "member_count": len(member_codes),
+            }
+        )
+    return options
+
+
+def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
+    slider_dates = fetch_rotation_dates("concept", 10)
+    selected = slider_dates[-1] if slider_dates else None
+    if selected is None:
+        return _themes_wave_empty(empty_message="还没有概念热度。")
+    window_dates = fetch_heat_dates_ending("concept", selected, days)
+    if not window_dates:
+        return _themes_wave_empty(empty_message="窗口内没有热度日期")
+    heat_rows = fetch_concept_heat_window(window_dates[0], window_dates[-1])
+    payload = build_theme_wave_payload(
+        window_dates=window_dates,
+        heat_rows=heat_rows,
+        densify=4,
+    )
+    if payload.get("empty_message") or not payload.get("spectrum") or not payload.get(
+        "ranked"
+    ):
+        return _themes_wave_empty(
+            empty_message=payload.get("empty_message") or "没有可绘制的曲面",
+            axis_note=payload.get("axis_note") or "",
+            rank_axis_note=payload.get("rank_axis_note") or "",
+        )
+    spectrum = payload["spectrum"]
+    ranked = payload["ranked"]
+    rank_as_of = payload.get("rank_as_of") or payload["as_of"]
+    spectrum_chart_html = render_theme_wave_surface(
+        dates=spectrum["dates"],
+        x=spectrum["x"],
+        z=spectrum["z"],
+        x_tickvals=spectrum["x_tickvals"],
+        x_ticktext=spectrum["x_ticktext"],
+        include_plotlyjs=include_plotlyjs,
+        title="光谱水面 · 可拖拽旋转",
+        xaxis_title="主题光谱（防守 → 科技）",
+    )
+    spectrum_map_html = render_theme_wave_contour(
+        dates=spectrum["dates"],
+        x=spectrum["x"],
+        z=spectrum["z"],
+        x_tickvals=spectrum["x_tickvals"],
+        x_ticktext=spectrum["x_ticktext"],
+        include_plotlyjs=False,
+        title="光谱等位图 · 点击取点",
+        xaxis_title="主题光谱（防守 → 科技）",
+    )
+    ranked_chart_html = render_theme_wave_surface(
+        dates=ranked["dates"],
+        x=ranked["x"],
+        z=ranked["z"],
+        x_tickvals=ranked["x_tickvals"],
+        x_ticktext=ranked["x_ticktext"],
+        include_plotlyjs=False,
+        title=f"近热排序水面 · 中间日 {rank_as_of} 热度从高到低",
+        xaxis_title="近热排序（高 → 低）",
+    )
+    ranked_map_html = render_theme_wave_contour(
+        dates=ranked["dates"],
+        x=ranked["x"],
+        z=ranked["z"],
+        x_tickvals=ranked["x_tickvals"],
+        x_ticktext=ranked["x_ticktext"],
+        include_plotlyjs=False,
+        title="近热排序等位图 · 点击取点",
+        xaxis_title="近热排序（高 → 低）",
+    )
+
+    industry_short_html = ""
+    industry_axis_note = ""
+    industry_board_count = 0
+    industry_dates = fetch_heat_dates_ending("industry", selected, days)
+    if industry_dates:
+        industry_rows = fetch_industry_heat_window(
+            industry_dates[0], industry_dates[-1]
+        )
+        industry = build_industry_board_heat_payload(
+            window_dates=industry_dates,
+            heat_rows=industry_rows,
+        )
+        if not industry.get("empty_message"):
+            industry_axis_note = industry["axis_note"]
+            industry_board_count = industry["board_count"]
+            industry_short_html = render_board_heat_heatmap(
+                dates=industry["dates"],
+                x=industry["x"],
+                z=industry["z_short"],
+                x_tickvals=industry["x_tickvals"],
+                x_ticktext=industry["x_ticktext"],
+                include_plotlyjs=False,
+                height=620,
+                title="行业短热 · 轨迹聚类叶序",
+                xaxis_title="行业板块（共动近 → 相邻）",
+            )
+
+    concept_short_html = ""
+    concept_axis_note = ""
+    concept_board_count = 0
+    concept_select_from = None
+    concept_select_to = None
+    concept_theme_options: list[dict] = []
+    concept_named_rows = fetch_concept_heat_named_window(
+        window_dates[0], window_dates[-1]
+    )
+    concept_top = build_concept_top_heat_payload(
+        window_dates=window_dates,
+        heat_rows=concept_named_rows,
+    )
+    if not concept_top.get("empty_message"):
+        concept_axis_note = concept_top["axis_note"]
+        concept_board_count = concept_top["board_count"]
+        concept_select_from = concept_top["select_from"]
+        concept_select_to = concept_top["select_to"]
+        concept_theme_options = _concept_theme_highlight_options(
+            concept_top["board_codes"]
+        )
+        concept_short_html = render_board_heat_heatmap(
+            dates=concept_top["dates"],
+            x=concept_top["x"],
+            z=concept_top["z_short"],
+            x_tickvals=concept_top["x_tickvals"],
+            x_ticktext=concept_top["x_ticktext"],
+            include_plotlyjs=False,
+            height=620,
+            title=f"概念短热 Top{concept_top['top_n']} · 轨迹聚类叶序",
+            xaxis_title="概念（共动近 → 相邻）",
+            entity_label="概念",
+        )
+
+    return {
+        "title": "主题热度水面",
+        "axis_note": payload["axis_note"],
+        "rank_axis_note": payload["rank_axis_note"],
+        "industry_axis_note": industry_axis_note,
+        "concept_axis_note": concept_axis_note,
+        "dates": payload["dates"],
+        "as_of": payload["as_of"],
+        "rank_as_of": rank_as_of,
+        "industry_board_count": industry_board_count,
+        "concept_board_count": concept_board_count,
+        "concept_select_from": concept_select_from,
+        "concept_select_to": concept_select_to,
+        "concept_theme_options": concept_theme_options,
+        "interpret_template": "theme-wave-reading",
+        "spectrum_chart_html": spectrum_chart_html,
+        "spectrum_map_html": spectrum_map_html,
+        "ranked_chart_html": ranked_chart_html,
+        "ranked_map_html": ranked_map_html,
+        "industry_short_html": industry_short_html,
+        "concept_short_html": concept_short_html,
+        "spectrum_links": list(zip(spectrum["theme_labels"], spectrum["theme_hrefs"])),
+        "ranked_links": list(zip(ranked["theme_labels"], ranked["theme_hrefs"])),
+        "empty_message": None,
     }
 
 

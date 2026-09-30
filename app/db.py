@@ -1429,3 +1429,57 @@ def fetch_concept_heat_window(
             )
             return [(row[0], row[1], row[2]) for row in cur.fetchall()]
 
+
+def fetch_board_type_heat_window(
+    board_type: str,
+    start: date,
+    end: date,
+) -> list[tuple[date, str, str, object | None, object | None]]:
+    """All heat_short/heat_long rows for one board type in [start, end], with names."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH names AS (
+                    SELECT DISTINCT ON (board_code)
+                        board_code,
+                        board_name
+                    FROM board_universe_daily
+                    WHERE board_type = %s
+                    ORDER BY board_code, trade_date DESC
+                )
+                SELECT
+                    h.trade_date,
+                    h.board_code,
+                    COALESCE(n.board_name, h.board_code) AS board_name,
+                    h.heat_short,
+                    h.heat_long
+                FROM board_heat_daily AS h
+                LEFT JOIN names AS n ON n.board_code = h.board_code
+                WHERE h.board_type = %s
+                  AND h.trade_date >= %s
+                  AND h.trade_date <= %s
+                ORDER BY h.trade_date, h.board_code
+                """,
+                (board_type, board_type, start, end),
+            )
+            return [
+                (row[0], row[1], row[2], row[3], row[4]) for row in cur.fetchall()
+            ]
+
+
+def fetch_industry_heat_window(
+    start: date,
+    end: date,
+) -> list[tuple[date, str, str, object | None, object | None]]:
+    """All industry heat_short/heat_long rows in [start, end], with names."""
+    return fetch_board_type_heat_window("industry", start, end)
+
+
+def fetch_concept_heat_named_window(
+    start: date,
+    end: date,
+) -> list[tuple[date, str, str, object | None, object | None]]:
+    """All concept heat_short/heat_long rows in [start, end], with names."""
+    return fetch_board_type_heat_window("concept", start, end)
+
