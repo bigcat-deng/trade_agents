@@ -392,7 +392,7 @@
         conclusion.textContent = reading.conclusion;
         readingBody.appendChild(conclusion);
         const columns = [
-          ["board", "板块"],
+          ["board", kindLabel === "概念" ? "概念" : "板块"],
           ["heat_short", "短期热度"],
           ["heat_long", "长期热度"],
           ["heat_short_change", "短期变化"],
@@ -401,6 +401,7 @@
           ["judgment", "判断"],
           ["note", "说明"],
           ["cross_stats", "统计"],
+          ["range_stats", "10日位置"],
         ];
         for (const section of reading.sections || []) {
           const heading = document.createElement("h3");
@@ -410,7 +411,7 @@
           if (!rows.length) {
             const empty = document.createElement("p");
             empty.className = "empty-section";
-            empty.textContent = "没有符合条件的板块";
+            empty.textContent = "没有符合条件的" + (kindLabel === "概念" ? "概念" : "板块");
             readingBody.appendChild(empty);
             continue;
           }
@@ -434,6 +435,9 @@
               if (key === "cross_stats") {
                 cell.className = "stats";
                 appendStats(cell, row.cross_stats);
+              } else if (key === "range_stats") {
+                cell.className = "stats";
+                appendRangeStats(cell, row.range_stats);
               } else if (key === "board" && row.board_code) {
                 const link = document.createElement("a");
                 link.href = klinePrefix + "/" + encodeURIComponent(row.board_code) + "/kline";
@@ -474,6 +478,20 @@
           }
           cell.appendChild(line);
         }
+      }
+
+      function appendRangeStats(cell, stats) {
+        const value = stats || {};
+        const line = document.createElement("div");
+        for (const [name, key] of [["顶", "top"], ["中", "mid"], ["底", "bottom"]]) {
+          const count = value[key] || 0;
+          const piece = document.createElement("span");
+          piece.textContent = name + count;
+          if (count) piece.className = "hit";
+          line.append(piece);
+          if (name !== "底") line.append(" / ");
+        }
+        cell.appendChild(line);
       }
 
       function formatNum(value) {

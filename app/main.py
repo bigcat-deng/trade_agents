@@ -615,7 +615,10 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
             x_ticktext=concept_top["x_ticktext"],
             include_plotlyjs=False,
             height=620,
-            title=f"概念短热 Top{concept_top['top_n']} · 轨迹聚类叶序",
+            title=(
+                f"概念短热 Top{concept_top['top_n']}∪主题"
+                f"（{concept_top['board_count']}）· 轨迹聚类叶序"
+            ),
             xaxis_title="概念（共动近 → 相邻）",
             entity_label="概念",
         )
@@ -718,7 +721,8 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
         map_heading = "概念映射表"
         map_section_title = "概念映射"
         roster_note = (
-            f"与上方 Top 叶序一致；每类按特征分排序取前 {FEATURE_TOP_N}。"
+            f"与上方概念叶序一致（近端 Top∪主题）；"
+            f"每类按特征分排序取前 {FEATURE_TOP_N}。"
             "解读与本表同一窗口，只串读点名、不再制表。"
         )
         empty_no_data = "还没有概念热度。"
@@ -832,7 +836,7 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
         )
     else:
         roster_note = (
-            f"与上方 Top{payload['top_n']} 叶序一致；"
+            f"与上方概念叶序一致（近端 Top∪主题，共 {payload['board_count']} 列）；"
             f"每类按特征分排序取前 {FEATURE_TOP_N}。"
             "解读与本表同一窗口，只串读点名、不再制表。"
         )

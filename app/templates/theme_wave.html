@@ -327,7 +327,7 @@
     <p class="meta">还没有行业板块热度可画。</p>
     {% endif %}
 
-    <h2>概念短热 Top{{ concept_board_count or 200 }}</h2>
+    <h2>概念短热 Top200∪主题（{{ concept_board_count or "—" }}）</h2>
     {% if concept_short_html %}
     <p class="meta">{{ concept_axis_note }} 筛选段 {{ concept_select_from }} → {{ concept_select_to }} · 共 {{ concept_board_count }} 个概念。</p>
     <div class="panel" id="concept-top-chart">{{ concept_short_html | safe }}</div>

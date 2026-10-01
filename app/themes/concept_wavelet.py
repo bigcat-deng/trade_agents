@@ -41,7 +41,10 @@ def build_concept_wavelet_payload(
             "top_n": top_n,
         }
 
-    return analyze_heat_wavelet2d(
+    n = concept_top["board_count"]
+    base_top_n = concept_top.get("top_n") or CONCEPT_TOP_N
+    theme_added = int(concept_top.get("theme_added") or 0)
+    result = analyze_heat_wavelet2d(
         z_short=concept_top["z_short"],
         dates=concept_top["dates"],
         board_names=concept_top["board_names"],
@@ -49,10 +52,16 @@ def build_concept_wavelet_payload(
         as_of=concept_top["as_of"],
         select_from=concept_top.get("select_from"),
         select_to=concept_top.get("select_to"),
-        top_n=top_n,
+        top_n=n,
         axis_note=(
-            f"与概念短热 Top{top_n} 同一入选与叶序；"
-            f"二维小波 {WAVELET}×{LEVEL} 层；"
+            f"与概念短热同一入选与叶序"
+            f"（近端 Top{base_top_n}∪主题A+B+卫星，共 {n} 列"
+            + (f"，其中主题补入 {theme_added}" if theme_added else "")
+            + f"）；二维小波 {WAVELET}×{LEVEL} 层；"
             "横轴=共动叶序（非产业链），纵轴=交易日；颜色越高越热（翻转分位）。"
         ),
     )
+    result["top_n"] = base_top_n
+    result["top_count"] = concept_top.get("top_count")
+    result["theme_added"] = theme_added
+    return result

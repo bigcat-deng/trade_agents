@@ -52,7 +52,8 @@ def _data_block(payload: dict) -> str:
     lines = [
         f"截止日：{payload.get('as_of')}",
         f"窗口交易日数：{payload.get('window_days')}",
-        f"概念数 TopN：{payload.get('top_n')}（实际 {payload.get('board_count')}）",
+        f"概念数：近端 Top{payload.get('top_n')}∪主题"
+        f"（实际 {payload.get('board_count')}，主题补入 {payload.get('theme_added') or 0}）",
         f"入选段：{payload.get('select_from')} → {payload.get('select_to')}",
         f"小波：{payload.get('wavelet')} × {payload.get('level')} 层",
         f"近端天数：{payload.get('late_days')}",

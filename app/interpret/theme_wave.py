@@ -182,7 +182,10 @@ def _data_block(
             f"概念 Top 筛选段（靠后四分之一）："
             f"{late[0].isoformat() if late else ''} → {late[-1].isoformat() if late else ''}"
         ),
-        f"概念 TopN：{concept_top.get('top_n') or CONCEPT_TOP_N}",
+        f"概念 TopN：{concept_top.get('top_n') or CONCEPT_TOP_N}"
+        f"（实取 {concept_top.get('top_count') or concept_top.get('board_count') or 0}）"
+        f"∪主题补入 {concept_top.get('theme_added') or 0}"
+        f" → 合计 {concept_top.get('board_count') or 0}",
         "",
         "## 主题（光谱序）群A翻转热度",
         "主题\t起点热度\t中间日热度\t截止日热度",
@@ -297,8 +300,10 @@ def _data_block(
     lines.extend(
         [
             "",
-            f"## 概念短热 Top{concept_top.get('top_n') or CONCEPT_TOP_N}（截止日翻转热度代表）",
-            f"入选概念数：{concept_top.get('board_count') or len(con_names)}",
+            f"## 概念短热 Top{concept_top.get('top_n') or CONCEPT_TOP_N}∪主题"
+            f"（截止日翻转热度代表）",
+            f"入选概念数：{concept_top.get('board_count') or len(con_names)}"
+            f"（主题补入 {concept_top.get('theme_added') or 0}）",
         ]
     )
     for name, value in hot_con:
