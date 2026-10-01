@@ -726,6 +726,7 @@ def render_kline(
     bollinger: bool = True,
     macd: bool = True,
     heats: Sequence[Mapping[str, Any]] | None = None,
+    include_plotlyjs: bool | str = "cdn",
 ) -> str:
     """Return embeddable HTML for a candlestick chart."""
     figure = build_kline_figure(
@@ -743,7 +744,7 @@ def render_kline(
     )
     return figure.to_html(
         full_html=False,
-        include_plotlyjs="cdn",
+        include_plotlyjs=include_plotlyjs,
         config={"displayModeBar": False},
         post_script=post_script,
     )

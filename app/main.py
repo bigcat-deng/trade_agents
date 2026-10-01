@@ -659,12 +659,19 @@ def _wavelet_page_empty(
     map_heading: str,
     map_section_title: str,
     roster_note: str,
+    board_type: str = "concept",
 ) -> dict:
     return {
         "title": title,
         "empty_message": empty_message,
         "as_of": None,
         "dates": [],
+        "board_names": [],
+        "board_codes": [],
+        "date_count": 0,
+        "window_start": None,
+        "window_end": None,
+        "board_type": board_type,
         "window_days": 0,
         "top_n": 0,
         "late_days": 0,
@@ -728,6 +735,7 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
             map_heading=map_heading,
             map_section_title=map_section_title,
             roster_note=roster_note,
+            board_type=board_type,
         )
     window_dates = fetch_heat_dates_ending(board_type, selected, days)
     if not window_dates:
@@ -740,6 +748,7 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
             map_heading=map_heading,
             map_section_title=map_section_title,
             roster_note=roster_note,
+            board_type=board_type,
         )
 
     if scope == "industry":
@@ -766,6 +775,7 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
             map_heading=map_heading,
             map_section_title=map_section_title,
             roster_note=roster_note,
+            board_type=board_type,
         )
 
     bands = payload["bands"]
@@ -831,6 +841,12 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
         "empty_message": None,
         "as_of": payload["as_of"],
         "dates": payload["dates"],
+        "board_names": list(payload.get("board_names") or []),
+        "board_codes": list(payload.get("board_codes") or []),
+        "date_count": len(payload.get("dates") or []),
+        "window_start": (payload.get("dates") or [None])[0],
+        "window_end": (payload.get("dates") or [None])[-1],
+        "board_type": board_type,
         "window_days": payload["window_days"],
         "top_n": payload["top_n"],
         "late_days": payload["late_days"],
@@ -1234,6 +1250,65 @@ def _board_kline_page(
             "error": error,
         },
     )
+
+
+@app.get("/api/boards/{board_type}/{board_code}/kline-embed")
+def board_kline_embed_api(
+    board_type: str,
+    board_code: str,
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+) -> dict:
+    if board_type not in _ROTATION_PAGES:
+        raise HTTPException(status_code=404, detail="unknown board type")
+    page = _ROTATION_PAGES[board_type]
+    board_name = fetch_board_name(board_type, board_code)
+    if board_name is None:
+        raise HTTPException(status_code=404, detail=page["missing_board"])
+    try:
+        start = _parse_day(start_date, date.today())
+        end = _parse_day(end_date, date.today())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD") from exc
+    if start > end:
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
+
+    title = f"{board_name} {board_code}"
+    records = fetch_board_daily_bars_from_db(board_type, board_code, start, end)
+    if not records:
+        return {
+            "board_code": board_code,
+            "board_name": board_name,
+            "kind_label": page["kind_label"],
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "kline_href": f"{page['kline_prefix']}/{board_code}/kline"
+            f"?start_date={start.isoformat()}&end_date={end.isoformat()}",
+            "summary": f"{title} · 所选区间无数据",
+            "chart_html": None,
+            "error": None,
+        }
+
+    heats = fetch_board_heat_series(board_type, board_code, start, end)
+    chart_html = render_kline(
+        records,
+        title=title,
+        code=board_code,
+        heats=heats,
+        include_plotlyjs=False,
+    )
+    return {
+        "board_code": board_code,
+        "board_name": board_name,
+        "kind_label": page["kind_label"],
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "kline_href": f"{page['kline_prefix']}/{board_code}/kline"
+        f"?start_date={start.isoformat()}&end_date={end.isoformat()}",
+        "summary": f"{title} · {len(records)} 根K线 · {start} ~ {end}",
+        "chart_html": chart_html,
+        "error": None,
+    }
 
 
 @app.get("/boards/industry/{board_code}/kline", response_class=HTMLResponse)

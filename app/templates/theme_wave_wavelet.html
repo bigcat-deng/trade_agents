@@ -188,6 +188,155 @@
       font-weight: 650;
     }
     .reading .shape-glossary { margin: 0.35rem 0 0.65rem; }
+    .board-pick {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem;
+      margin: 0.15rem 0 0.85rem;
+      padding: 0.45rem 0.55rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .board-pick button,
+    .board-pick input {
+      font: inherit;
+      font-size: 0.9rem;
+    }
+    .board-pick button {
+      padding: 0.32rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .board-pick button:hover { border-color: #b91c1c; color: #b91c1c; }
+    .board-pick input[type="text"] {
+      flex: 1 1 14rem;
+      min-width: 10rem;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .board-pick .pick-status {
+      flex: 1 1 100%;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+    .board-pick .pick-status.err { color: #b91c1c; }
+    .board-pick .pick-status.ok { color: #b91c1c; font-weight: 650; }
+    .board-pick-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(28, 25, 23, 0.35);
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .board-pick-modal.open { display: flex; }
+    .board-pick-dialog {
+      width: min(420px, 100%);
+      max-height: min(70vh, 560px);
+      display: flex;
+      flex-direction: column;
+      background: var(--card);
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 40px rgba(28, 25, 23, 0.18);
+    }
+    .board-pick-dialog header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .board-pick-dialog header h3 {
+      margin: 0;
+      font-size: 0.98rem;
+    }
+    .board-pick-dialog header button {
+      font: inherit;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+    .board-pick-dialog .filter {
+      margin: 0.55rem 0.75rem 0.35rem;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid var(--line);
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .board-pick-dialog ul {
+      list-style: none;
+      margin: 0;
+      padding: 0.25rem 0 0.55rem;
+      overflow: auto;
+    }
+    .board-pick-dialog li button {
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      padding: 0.4rem 0.85rem;
+      font: inherit;
+      font-size: 0.88rem;
+      cursor: pointer;
+      color: var(--ink);
+    }
+    .board-pick-dialog li button:hover,
+    .board-pick-dialog li button:focus {
+      background: #fef2f2;
+      color: #b91c1c;
+      outline: none;
+    }
+    .board-kline-embed {
+      margin: 0 0 0.95rem;
+      padding: 0.65rem 0.75rem 0.85rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .board-kline-embed[hidden] { display: none; }
+    .board-kline-embed .kline-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.45rem 1rem;
+      margin: 0 0 0.45rem;
+    }
+    .board-kline-embed .kline-head h3 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+    .board-kline-embed .kline-head a {
+      color: #1d4ed8;
+      text-decoration: none;
+      font-size: 0.88rem;
+    }
+    .board-kline-embed .kline-meta {
+      margin: 0 0 0.55rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+    .board-kline-embed .kline-error {
+      margin: 0.4rem 0;
+      color: #b91c1c;
+    }
+    .board-kline-embed .kline-chart {
+      min-height: 120px;
+      overflow-x: auto;
+    }
   </style>
 </head>
 <body>
@@ -221,7 +370,35 @@
     </section>
 
     <h2>多尺度分解</h2>
-    <div class="panel">{{ multiscale_html | safe }}</div>
+    <div class="panel" id="multiscale-panel">{{ multiscale_html | safe }}</div>
+
+    <div class="board-pick" id="board-pick" aria-label="定位{{ entity_label }}">
+      <button type="button" id="board-pick-open">选择</button>
+      <input type="text" id="board-pick-name" placeholder="板块名称" autocomplete="off" spellcheck="false">
+      <button type="button" id="board-pick-confirm">确定</button>
+      <p class="pick-status" id="board-pick-status"></p>
+    </div>
+
+    <div class="board-pick-modal" id="board-pick-modal" aria-hidden="true">
+      <div class="board-pick-dialog" role="dialog" aria-modal="true" aria-labelledby="board-pick-title">
+        <header>
+          <h3 id="board-pick-title">选择{{ entity_label }}</h3>
+          <button type="button" id="board-pick-close" aria-label="关闭">×</button>
+        </header>
+        <input class="filter" type="search" id="board-pick-filter" placeholder="筛选名称…" autocomplete="off">
+        <ul id="board-pick-list"></ul>
+      </div>
+    </div>
+
+    <section class="board-kline-embed" id="board-kline-embed" hidden>
+      <div class="kline-head">
+        <h3 id="board-kline-title">K线</h3>
+        <a id="board-kline-link" href="#" target="_blank" rel="noopener">打开完整K线页 →</a>
+      </div>
+      <p class="kline-meta" id="board-kline-meta"></p>
+      <p class="kline-error" id="board-kline-error" hidden></p>
+      <div class="kline-chart" id="board-kline-chart"></div>
+    </section>
 
     <aside class="shape-glossary band-reading" aria-label="四图读法与极值">
       <p>四图读法（对着上方四宫格；尺度=注意力粗细，不是短/中/长线）</p>
@@ -325,6 +502,297 @@
     {% endif %}
   </main>
   <script>
+    (function () {
+      const boardNames = {{ (board_names or []) | tojson }};
+      const boardCodes = {{ (board_codes or []) | tojson }};
+      const dateCount = {{ date_count | default(0) | tojson }};
+      const entityLabel = {{ (entity_label or "板块") | tojson }};
+      const boardType = {{ (board_type or "concept") | tojson }};
+      const windowStart = {{ window_start | tojson }};
+      const windowEnd = {{ window_end | tojson }};
+      const openBtn = document.getElementById("board-pick-open");
+      const confirmBtn = document.getElementById("board-pick-confirm");
+      const nameInput = document.getElementById("board-pick-name");
+      const statusEl = document.getElementById("board-pick-status");
+      const modal = document.getElementById("board-pick-modal");
+      const closeBtn = document.getElementById("board-pick-close");
+      const filterInput = document.getElementById("board-pick-filter");
+      const listEl = document.getElementById("board-pick-list");
+      const klineEmbed = document.getElementById("board-kline-embed");
+      const klineTitle = document.getElementById("board-kline-title");
+      const klineMeta = document.getElementById("board-kline-meta");
+      const klineError = document.getElementById("board-kline-error");
+      const klineChart = document.getElementById("board-kline-chart");
+      const klineLink = document.getElementById("board-kline-link");
+      let baseAnnotations = null;
+      let baseShapes = null;
+      let klineRequestId = 0;
+
+      function setStatus(text, kind) {
+        if (!statusEl) return;
+        statusEl.textContent = text || "";
+        statusEl.className = "pick-status" + (kind ? " " + kind : "");
+      }
+
+      function findBoardIndex(raw) {
+        const q = String(raw || "").trim();
+        if (!q || !Array.isArray(boardNames) || !boardNames.length) return -1;
+        const exact = boardNames.findIndex((n) => n === q);
+        if (exact >= 0) return exact;
+        const lower = q.toLowerCase();
+        const ci = boardNames.findIndex((n) => String(n).toLowerCase() === lower);
+        if (ci >= 0) return ci;
+        const hits = [];
+        boardNames.forEach((n, i) => {
+          if (String(n).includes(q)) hits.push(i);
+        });
+        return hits.length === 1 ? hits[0] : -1;
+      }
+
+      function renderList(filterText) {
+        if (!listEl) return;
+        const q = String(filterText || "").trim();
+        listEl.replaceChildren();
+        (boardNames || []).forEach((name, idx) => {
+          if (q && !String(name).includes(q)) return;
+          const li = document.createElement("li");
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = idx + " · " + name;
+          btn.addEventListener("click", () => {
+            if (nameInput) nameInput.value = name;
+            closeModal();
+            if (nameInput) nameInput.focus();
+          });
+          li.appendChild(btn);
+          listEl.appendChild(li);
+        });
+      }
+
+      function openModal() {
+        if (!modal) return;
+        modal.classList.add("open");
+        modal.setAttribute("aria-hidden", "false");
+        renderList(filterInput ? filterInput.value : "");
+        if (filterInput) {
+          filterInput.value = "";
+          renderList("");
+          filterInput.focus();
+        }
+      }
+
+      function closeModal() {
+        if (!modal) return;
+        modal.classList.remove("open");
+        modal.setAttribute("aria-hidden", "true");
+      }
+
+      function getGraphDiv() {
+        return document.querySelector("#multiscale-panel .js-plotly-plot");
+      }
+
+      function ensureBaseLayout(gd) {
+        if (baseAnnotations === null) {
+          baseAnnotations = JSON.parse(JSON.stringify(gd.layout.annotations || []));
+        }
+        if (baseShapes === null) {
+          baseShapes = JSON.parse(JSON.stringify(gd.layout.shapes || []));
+        }
+      }
+
+      function highlightBoard(idx, name) {
+        const gd = getGraphDiv();
+        if (!gd || typeof Plotly === "undefined") {
+          setStatus("图尚未就绪，请稍后重试", "err");
+          return false;
+        }
+        ensureBaseLayout(gd);
+        const nDates = Math.max(1, Number(dateCount) || 1);
+        const axes = [
+          { x: "x", y: "y", shadow: true },
+          { x: "x2", y: "y2", shadow: false },
+          { x: "x3", y: "y3", shadow: false },
+          { x: "x4", y: "y4", shadow: false },
+        ];
+        const shapes = baseShapes.slice();
+        const annotations = baseAnnotations.slice();
+        axes.forEach((a) => {
+          if (a.shadow) {
+            shapes.push({
+              type: "rect",
+              xref: a.x,
+              yref: a.y,
+              x0: idx - 0.5,
+              x1: idx + 0.5,
+              y0: -0.5,
+              y1: nDates - 0.5,
+              fillcolor: "rgba(15, 23, 42, 0.30)",
+              line: { width: 0 },
+              layer: "above",
+            });
+          }
+          shapes.push({
+            type: "rect",
+            xref: a.x,
+            yref: a.y,
+            x0: idx - 0.5,
+            x1: idx + 0.5,
+            y0: -0.5,
+            y1: nDates - 0.5,
+            fillcolor: "rgba(0,0,0,0)",
+            line: { color: "#dc2626", width: 2.2 },
+            layer: "above",
+          });
+          annotations.push({
+            xref: a.x,
+            yref: a.y,
+            x: idx,
+            y: nDates - 0.5,
+            text: "<b>" + idx + "</b>",
+            showarrow: false,
+            font: {
+              color: "#dc2626",
+              size: 13,
+              family: "IBM Plex Sans, Noto Sans SC, sans-serif",
+            },
+            bgcolor: "rgba(255,253,248,0.82)",
+            borderpad: 2,
+            yanchor: "bottom",
+            yshift: 8,
+          });
+        });
+        Plotly.relayout(gd, { shapes: shapes, annotations: annotations });
+        setStatus("下标 " + idx + " · " + name, "ok");
+        return true;
+      }
+
+      function mountHtmlWithScripts(container, html) {
+        container.innerHTML = html;
+        container.querySelectorAll("script").forEach((oldScript) => {
+          const script = document.createElement("script");
+          for (const attr of oldScript.attributes) {
+            script.setAttribute(attr.name, attr.value);
+          }
+          script.text = oldScript.textContent || "";
+          oldScript.replaceWith(script);
+        });
+      }
+
+      async function loadBoardKline(idx, name) {
+        if (!klineEmbed || !klineChart) return;
+        const code = Array.isArray(boardCodes) ? boardCodes[idx] : null;
+        if (!code || !windowStart || !windowEnd) {
+          klineEmbed.hidden = false;
+          if (klineTitle) klineTitle.textContent = name;
+          if (klineMeta) klineMeta.textContent = "";
+          if (klineError) {
+            klineError.hidden = false;
+            klineError.textContent = "缺少代码或小波窗口日期，无法加载K线";
+          }
+          klineChart.replaceChildren();
+          return;
+        }
+        const ticket = ++klineRequestId;
+        klineEmbed.hidden = false;
+        if (klineTitle) klineTitle.textContent = name + " · " + code;
+        if (klineMeta) klineMeta.textContent = "正在加载 " + windowStart + " → " + windowEnd + " …";
+        if (klineError) {
+          klineError.hidden = true;
+          klineError.textContent = "";
+        }
+        klineChart.replaceChildren();
+        if (klineLink) {
+          klineLink.href =
+            "/boards/" + boardType + "/" + encodeURIComponent(code) +
+            "/kline?start_date=" + encodeURIComponent(windowStart) +
+            "&end_date=" + encodeURIComponent(windowEnd);
+        }
+        try {
+          const url =
+            "/api/boards/" + encodeURIComponent(boardType) + "/" +
+            encodeURIComponent(code) +
+            "/kline-embed?start_date=" + encodeURIComponent(windowStart) +
+            "&end_date=" + encodeURIComponent(windowEnd);
+          const response = await fetch(url);
+          const payload = await response.json();
+          if (ticket !== klineRequestId) return;
+          if (!response.ok) {
+            if (klineMeta) klineMeta.textContent = "";
+            if (klineError) {
+              klineError.hidden = false;
+              klineError.textContent = payload.detail || "K线加载失败";
+            }
+            return;
+          }
+          if (klineTitle) {
+            klineTitle.textContent = (payload.board_name || name) + " · " + (payload.board_code || code);
+          }
+          if (klineMeta) klineMeta.textContent = payload.summary || "";
+          if (klineLink && payload.kline_href) klineLink.href = payload.kline_href;
+          if (payload.chart_html) {
+            if (typeof Plotly === "undefined") {
+              if (klineError) {
+                klineError.hidden = false;
+                klineError.textContent = "Plotly 尚未加载，请刷新页面后重试";
+              }
+              return;
+            }
+            mountHtmlWithScripts(klineChart, payload.chart_html);
+          } else {
+            klineChart.replaceChildren();
+            if (klineError) {
+              klineError.hidden = false;
+              klineError.textContent = "所选区间无K线数据";
+            }
+          }
+        } catch (err) {
+          if (ticket !== klineRequestId) return;
+          if (klineMeta) klineMeta.textContent = "";
+          if (klineError) {
+            klineError.hidden = false;
+            klineError.textContent = "K线加载失败";
+          }
+        }
+      }
+
+      function confirmPick() {
+        const raw = nameInput ? nameInput.value : "";
+        const idx = findBoardIndex(raw);
+        if (idx < 0) {
+          setStatus("未找到唯一" + entityLabel + "，请用「选择」点名或输入全称", "err");
+          return;
+        }
+        if (nameInput) nameInput.value = boardNames[idx];
+        highlightBoard(idx, boardNames[idx]);
+        loadBoardKline(idx, boardNames[idx]);
+      }
+
+      if (openBtn) openBtn.addEventListener("click", openModal);
+      if (closeBtn) closeBtn.addEventListener("click", closeModal);
+      if (modal) {
+        modal.addEventListener("click", (ev) => {
+          if (ev.target === modal) closeModal();
+        });
+      }
+      if (filterInput) {
+        filterInput.addEventListener("input", () => renderList(filterInput.value));
+      }
+      if (confirmBtn) confirmBtn.addEventListener("click", confirmPick);
+      if (nameInput) {
+        nameInput.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            confirmPick();
+          }
+        });
+      }
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && modal && modal.classList.contains("open")) {
+          closeModal();
+        }
+      });
+    })();
+
     (function () {
       const interpretTemplate = {{ interpret_template | tojson }};
       const readingAsOf = {{ as_of | tojson }};
