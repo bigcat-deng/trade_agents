@@ -15,6 +15,19 @@ LATE_FRAC = 5  # late window = max(5, T // 5)
 EXTREMUM_DAYS = 3  # read-chart extrema: last ≤3 trading days (≠ structure late_n)
 EXTREMUM_TOP_N = 3
 
+# Hard structure flags for backtest filters (cross-section quantile thresholds).
+STRUCTURE_FLAG_KEYS = (
+    "a3_still_hot",
+    "a3_fading",
+    "d3_warming",
+    "d3_cooling",
+    "d1_pulse",
+)
+FLAG_OCCUPANCY_Q = 0.70
+FLAG_FADE_Q = 0.70
+FLAG_PULSE_Q = 0.80
+FLAG_FADE_CAP_Q = 0.50  # still_hot requires fade at/below this quantile
+
 
 def analyze_heat_wavelet2d(
     *,
@@ -76,6 +89,16 @@ def analyze_heat_wavelet2d(
         extremum_n=extremum_n,
         top_n=EXTREMUM_TOP_N,
     )
+    structure_flags = compute_structure_flags(
+        names=board_names,
+        codes=board_codes,
+        z=z,
+        a3=bands["approx"],
+        d3=bands["d3"],
+        d1=bands["d1"],
+        late_n=late_n,
+        as_of=as_of,
+    )
 
     return {
         "empty_message": None,
@@ -103,8 +126,77 @@ def analyze_heat_wavelet2d(
         "directions": directions,
         "features": features,
         "band_extrema": band_extrema,
+        "structure_flags": structure_flags,
         "axis_note": axis_note,
     }
+
+
+def compute_structure_flags(
+    *,
+    names: list[str],
+    codes: list[str],
+    z: np.ndarray,
+    a3: np.ndarray,
+    d3: np.ndarray,
+    d1: np.ndarray,
+    late_n: int,
+    as_of: str | None = None,
+    occupancy_q: float = FLAG_OCCUPANCY_Q,
+    fade_q: float = FLAG_FADE_Q,
+    pulse_q: float = FLAG_PULSE_Q,
+    fade_cap_q: float = FLAG_FADE_CAP_Q,
+) -> list[dict[str, Any]]:
+    """Per-board binary structure flags for the window's last day (`as_of`).
+
+    Thresholds are cross-sectional quantiles on that roster (same plane as the page).
+    These are hard events for later cross ∩ filter backtests — not LLM prose.
+    """
+    del z  # reserved for future z-based flags
+    t0 = int(a3.shape[0])
+    if t0 < 2 or a3.shape[1] == 0:
+        return []
+    late = max(1, min(late_n, t0))
+    mid = slice(t0 // 3, 2 * t0 // 3)
+
+    a3_mean = a3.mean(axis=0)
+    a3_late = a3[-late:].mean(axis=0)
+    fade = a3_mean - a3_late
+    occupancy = 0.5 * a3_mean + 0.5 * a3_late
+    d3_mid = d3[mid].mean(axis=0) if mid.stop > mid.start else d3.mean(axis=0)
+    d3_late = d3[-late:].mean(axis=0)
+    d1_energy = (d1**2).mean(axis=0)
+    pulse = d1_energy / (a3_mean + 0.15)
+
+    occ_cut = float(np.quantile(occupancy, occupancy_q))
+    fade_cut = float(np.quantile(fade, fade_q))
+    fade_cap = float(np.quantile(fade, fade_cap_q))
+    pulse_cut = float(np.quantile(pulse, pulse_q))
+
+    rows: list[dict[str, Any]] = []
+    for i, code in enumerate(codes):
+        a3_still_hot = bool(occupancy[i] >= occ_cut and fade[i] <= fade_cap)
+        a3_fading = bool(fade[i] >= fade_cut)
+        d3_warming = bool(d3_mid[i] < 0.0 and d3_late[i] > 0.0)
+        d3_cooling = bool(d3_mid[i] > 0.0 and d3_late[i] < 0.0)
+        d1_pulse = bool(pulse[i] >= pulse_cut)
+        rows.append(
+            {
+                "as_of": as_of,
+                "board_code": code,
+                "board_name": names[i] if i < len(names) else code,
+                "a3_still_hot": a3_still_hot,
+                "a3_fading": a3_fading,
+                "d3_warming": d3_warming,
+                "d3_cooling": d3_cooling,
+                "d1_pulse": d1_pulse,
+                "occupancy": round(float(occupancy[i]), 4),
+                "fade": round(float(fade[i]), 4),
+                "a3_late": round(float(a3_late[i]), 4),
+                "d3_late": round(float(d3_late[i]), 4),
+                "pulse": round(float(pulse[i]), 4),
+            }
+        )
+    return rows
 
 
 def _pad_to_power(arr: np.ndarray, level: int) -> np.ndarray:

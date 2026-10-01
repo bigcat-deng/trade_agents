@@ -179,6 +179,17 @@
     .reading td.stats .hit {
       color: #dc2626;
     }
+    .reading td.signal .trust {
+      color: #047857;
+      font-weight: 700;
+    }
+    .reading td.signal .warn {
+      color: #b45309;
+      font-weight: 600;
+    }
+    .reading td.signal .muted {
+      color: #78716c;
+    }
     .reading a {
       color: #1d4ed8;
       text-decoration: none;
@@ -402,6 +413,7 @@
           ["note", "说明"],
           ["cross_stats", "统计"],
           ["range_stats", "10日位置"],
+          ["signal_stats", "信号"],
         ];
         for (const section of reading.sections || []) {
           const heading = document.createElement("h3");
@@ -438,6 +450,9 @@
               } else if (key === "range_stats") {
                 cell.className = "stats";
                 appendRangeStats(cell, row.range_stats);
+              } else if (key === "signal_stats") {
+                cell.className = "signal";
+                appendSignalStats(cell, row.signal_stats);
               } else if (key === "board" && row.board_code) {
                 const link = document.createElement("a");
                 link.href = klinePrefix + "/" + encodeURIComponent(row.board_code) + "/kline";
@@ -492,6 +507,33 @@
           if (name !== "底") line.append(" / ");
         }
         cell.appendChild(line);
+      }
+
+      function appendSignalStats(cell, stats) {
+        const value = stats || {};
+        const label = value.label || "";
+        if (!label) {
+          cell.textContent = "—";
+          return;
+        }
+        const main = document.createElement("div");
+        main.textContent = label;
+        if (value.trusted_macd_up) main.className = "trust";
+        else if (label.indexOf("拥挤") >= 0 || label.indexOf("偏高位") >= 0) main.className = "warn";
+        else main.className = "muted";
+        cell.appendChild(main);
+        const bits = [];
+        if (value.near_warming) bits.push("升温");
+        if (value.near_cooling) bits.push("降温");
+        if (value.crowded_top) bits.push("拥挤顶");
+        if (value.in_hot_cluster) bits.push("热团");
+        if (value.range_high) bits.push("偏高位");
+        if (bits.length) {
+          const sub = document.createElement("div");
+          sub.className = "muted";
+          sub.textContent = bits.join(" · ");
+          cell.appendChild(sub);
+        }
       }
 
       function formatNum(value) {

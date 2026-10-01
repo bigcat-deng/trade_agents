@@ -17,6 +17,7 @@ from app.themes.heat_seriation import (
     order_by_trajectory_seriation,
     select_top_codes_by_late_short_heat,
 )
+from app.themes.heat_surface_flags import attach_surface_flags
 from app.themes.service import list_themes
 
 CONCEPT_TOP_N = 200
@@ -74,7 +75,7 @@ def build_concept_top_heat_payload(
         "empty_message": "没有可绘制的概念热度窗口",
     }
     if not window_dates:
-        return empty
+        return attach_surface_flags(empty)
 
     short_by_day: dict[date, dict[str, float]] = {}
     names: dict[str, str] = {}
@@ -89,7 +90,7 @@ def build_concept_top_heat_payload(
         {code for day_map in short_by_day.values() for code in day_map}
     )
     if not all_codes:
-        return empty
+        return attach_surface_flags(empty)
 
     for code in all_codes:
         names.setdefault(code, code)
@@ -102,7 +103,7 @@ def build_concept_top_heat_payload(
         top_n=top_n,
     )
     if not top_selected:
-        return empty
+        return attach_surface_flags(empty)
 
     selected_set = set(top_selected)
     theme_added_codes: list[str] = []
@@ -133,26 +134,28 @@ def build_concept_top_heat_payload(
     top_count = len(top_selected)
     theme_added = len(theme_added_codes)
     board_count = len(ordered_codes)
-    return {
-        "dates": [day.isoformat() for day in window_dates],
-        "board_codes": ordered_codes,
-        "board_names": board_names,
-        "x": theme_x,
-        "x_tickvals": theme_x,
-        "x_ticktext": board_names,
-        "z_short": z_short,
-        "axis_note": _axis_note(
-            top_n=top_n,
-            top_count=top_count,
-            theme_added=theme_added,
-            board_count=board_count,
-        ),
-        "as_of": as_of.isoformat(),
-        "select_from": late_days[0].isoformat() if late_days else None,
-        "select_to": late_days[-1].isoformat() if late_days else None,
-        "board_count": board_count,
-        "top_n": top_n,
-        "top_count": top_count,
-        "theme_added": theme_added,
-        "empty_message": None,
-    }
+    return attach_surface_flags(
+        {
+            "dates": [day.isoformat() for day in window_dates],
+            "board_codes": ordered_codes,
+            "board_names": board_names,
+            "x": theme_x,
+            "x_tickvals": theme_x,
+            "x_ticktext": board_names,
+            "z_short": z_short,
+            "axis_note": _axis_note(
+                top_n=top_n,
+                top_count=top_count,
+                theme_added=theme_added,
+                board_count=board_count,
+            ),
+            "as_of": as_of.isoformat(),
+            "select_from": late_days[0].isoformat() if late_days else None,
+            "select_to": late_days[-1].isoformat() if late_days else None,
+            "board_count": board_count,
+            "top_n": top_n,
+            "top_count": top_count,
+            "theme_added": theme_added,
+            "empty_message": None,
+        }
+    )
