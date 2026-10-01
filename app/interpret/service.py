@@ -95,11 +95,20 @@ class Interpretation:
     cached: bool
 
 
+WAVELET_READING_TEMPLATES = frozenset(
+    {
+        "concept-wavelet-reading",
+        "industry-wavelet-reading",
+    }
+)
+
+
 def interpret(
     template_name: str,
     as_of: date | None = None,
     *,
     force: bool = False,
+    window_trading_days: int | None = None,
 ) -> Interpretation:
     """Fill one prompt template and return the model reading, using a saved result when present."""
     builder = BUILDERS.get(template_name)
@@ -111,7 +120,18 @@ def interpret(
         raise UnknownTemplate(template_name)
 
     if template_name in PROSE_THEME_TEMPLATES:
-        return _interpret_prose(template_name, builder, as_of, force=force)
+        return _interpret_prose(
+            template_name,
+            builder,
+            as_of,
+            force=force,
+            window_trading_days=window_trading_days,
+        )
+
+    if window_trading_days is not None:
+        raise InterpretError(
+            f"window_trading_days is only supported for wavelet reading templates, not {template_name}"
+        )
 
     template, prompt, resolved, latest, summaries = builder(as_of)
     board_type = str(template.config.get("board_type") or "industry")
@@ -179,8 +199,26 @@ def _interpret_prose(
     as_of: date | None,
     *,
     force: bool = False,
+    window_trading_days: int | None = None,
 ) -> Interpretation:
-    template, prompt, resolved = builder(as_of)
+    if template_name in WAVELET_READING_TEMPLATES:
+        template, prompt, resolved = builder(
+            as_of, window_trading_days=window_trading_days
+        )
+        # Include window in cache key so ?days=40 and ?days=60 do not collide.
+        resolved_window = window_trading_days
+        if resolved_window is None:
+            resolved_window = int(template.config.get("window_trading_days") or 60)
+        resolved_window = max(20, min(180, int(resolved_window)))
+        cache_name = f"{template.name}#d{resolved_window}"
+    else:
+        if window_trading_days is not None:
+            raise InterpretError(
+                f"window_trading_days is not supported for template {template_name}"
+            )
+        template, prompt, resolved = builder(as_of)
+        cache_name = template.name
+
     settings = model_settings(template)
     missing = [
         name
@@ -196,7 +234,7 @@ def _interpret_prose(
 
     request_model = settings["model"]
     if not force:
-        stored = fetch_interpret_result(template.name, resolved, request_model)
+        stored = fetch_interpret_result(cache_name, resolved, request_model)
         if stored is not None:
             response_model, content = stored
             reading = prose_reading(content)
@@ -216,7 +254,7 @@ def _interpret_prose(
         raise InterpretFormatError("model reply is empty")
     saved = json.dumps(reading, ensure_ascii=False)
     save_interpret_result(
-        template.name,
+        cache_name,
         resolved,
         request_model,
         response_model,

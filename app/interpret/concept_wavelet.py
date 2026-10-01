@@ -70,7 +70,7 @@ def _data_block(payload: dict) -> str:
     lines.extend(
         [
             "",
-            "## 概念映射表（每类 Top10，数字从本表抄）",
+            "## 概念映射表（与页面同一份；每类 Top10；解读只点名、禁止再制表）",
             "标签含义：主线占位=A3高且近端仍高；占位回落=A3窗内高但近端回落；"
             "二波回补=D3中段偏冷近段偏热；中粗活跃=D3能量高；细脉冲=D1相对粗结构偏高。",
             "",
@@ -92,6 +92,7 @@ def _data_block(payload: dict) -> str:
             "- 横轴是轨迹聚类叶序，不是产业链距离。",
             "- 细脉冲近端可以很热，但不得升格成主线占位，除非同名也出现在主线占位表。",
             "- 能量%与概念名单必须来自上文，禁止编造未出现的概念。",
+            "- 禁止输出 Markdown 表格；映射名单已在页面展示。",
         ]
     )
     return "\n".join(lines)
@@ -99,9 +100,13 @@ def _data_block(payload: dict) -> str:
 
 def build_concept_wavelet_reading_prompt(
     as_of: date | None = None,
+    *,
+    window_trading_days: int | None = None,
 ) -> tuple[PromptTemplate, str, date]:
     template = load_prompt("concept-wavelet-reading")
-    window = int(template.config.get("window_trading_days") or DEFAULT_WINDOW_DAYS)
+    default_window = int(template.config.get("window_trading_days") or DEFAULT_WINDOW_DAYS)
+    window = int(window_trading_days) if window_trading_days is not None else default_window
+    window = max(20, min(180, window))
 
     slider_dates = fetch_rotation_dates("concept", 10)
     selected = as_of or (slider_dates[-1] if slider_dates else None)

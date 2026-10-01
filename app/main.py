@@ -100,6 +100,7 @@ class SyncRunRequest(BaseModel):
 class InterpretRequest(BaseModel):
     as_of: str | None = None
     force: bool = False
+    window_trading_days: int | None = Field(default=None, ge=20, le=180)
 
 
 @app.post("/api/interpret/{template_name}")
@@ -113,6 +114,9 @@ def interpret_api(template_name: str, body: InterpretRequest | None = None) -> d
             template_name,
             requested,
             force=bool(body.force) if body else False,
+            window_trading_days=(
+                body.window_trading_days if body else None
+            ),
         )
     except UnknownTemplate as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -695,7 +699,7 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
         map_section_title = "行业映射"
         roster_note = (
             f"与上方全部行业叶序一致；每类按特征分排序取前 {FEATURE_TOP_N}。"
-            "解读须点名本表行业。"
+            "解读与本表同一窗口，只串读点名、不再制表。"
         )
         empty_no_data = "还没有行业热度。"
     else:
@@ -708,7 +712,7 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
         map_section_title = "概念映射"
         roster_note = (
             f"与上方 Top 叶序一致；每类按特征分排序取前 {FEATURE_TOP_N}。"
-            "解读须点名本表概念。"
+            "解读与本表同一窗口，只串读点名、不再制表。"
         )
         empty_no_data = "还没有概念热度。"
 
@@ -813,12 +817,14 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
     if scope == "industry":
         roster_note = (
             f"与上方全部 {payload['board_count']} 个行业叶序一致；"
-            f"每类按特征分排序取前 {FEATURE_TOP_N}。解读须点名本表行业。"
+            f"每类按特征分排序取前 {FEATURE_TOP_N}。"
+            "解读与本表同一窗口，只串读点名、不再制表。"
         )
     else:
         roster_note = (
             f"与上方 Top{payload['top_n']} 叶序一致；"
-            f"每类按特征分排序取前 {FEATURE_TOP_N}。解读须点名本表概念。"
+            f"每类按特征分排序取前 {FEATURE_TOP_N}。"
+            "解读与本表同一窗口，只串读点名、不再制表。"
         )
     return {
         "title": title,

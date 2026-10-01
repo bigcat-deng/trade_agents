@@ -328,6 +328,7 @@
     (function () {
       const interpretTemplate = {{ interpret_template | tojson }};
       const readingAsOf = {{ as_of | tojson }};
+      const readingDays = {{ window_days | tojson }};
       const mapSectionTitle = {{ map_section_title | tojson }};
       let interpretRequestId = 0;
       const READING_TITLES = new Set([
@@ -491,7 +492,11 @@
           const response = await fetch("/api/interpret/" + interpretTemplate, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ as_of: asOf, force: !!force }),
+            body: JSON.stringify({
+              as_of: asOf,
+              force: !!force,
+              window_trading_days: readingDays || undefined,
+            }),
           });
           const payload = await response.json();
           if (ticket !== interpretRequestId) return;
