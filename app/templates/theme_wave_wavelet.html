@@ -341,12 +341,12 @@
 </head>
 <body>
   <main>
-    <a class="back" href="/boards/concept/themes/wave">← 主题热度水面</a>
+    <a class="back" href="{{ wave_back_href or '/boards/concept/themes/wave' }}">← 主题热度水面</a>
     <h1>{{ title }}</h1>
     {% if empty_message %}
     <p class="meta">{{ empty_message }}</p>
     {% else %}
-    <p class="meta">{{ axis_note }} 窗口 {{ dates[0] if dates else "—" }} → {{ dates[-1] if dates else "—" }}（{{ window_days }} 日）{% if select_from and select_to %}· 入选 {{ select_from }} → {{ select_to }}{% endif %} · 结构近端 {{ late_days }} 日{% if extremum_days %} · 读图极值 {{ extremum_days }} 日{% endif %}</p>
+    <p class="meta">{{ axis_note }} 窗口 {{ dates[0] if dates else "—" }} → {{ dates[-1] if dates else "—" }}（{{ window_days }} 日）{% if select_from and select_to %}· 入选 {{ select_from }} → {{ select_to }}{% endif %} · 结构近端 {{ late_days }} 日{% if extremum_days %} · 读图极值 {{ extremum_days }} 日{% endif %}{% if requested_as_of %} · 截止选择 {{ requested_as_of }} 23:59{% endif %}</p>
 
     <aside class="shape-glossary" aria-label="小波读法说明">
       <p>读法说明（注意力尺度，不是短炒/中线/长线）</p>

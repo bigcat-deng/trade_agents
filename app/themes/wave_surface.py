@@ -14,6 +14,90 @@ from app.themes.wave_order import (
     SPECTRUM_AXIS_NOTE,
     SPECTRUM_THEME_IDS,
 )
+from app.themes.heat_scenarios import SCENARIO_NOTE, build_theme_scenarios
+
+MAP_SLIDER_BEFORE = 10
+MAP_SLIDER_AFTER = 10
+
+
+def build_map_slider_dates(
+    board_type: str,
+    center: date,
+    *,
+    before: int = MAP_SLIDER_BEFORE,
+    after: int = MAP_SLIDER_AFTER,
+) -> tuple[list[date], int]:
+    """Heat days with `center` ideally at index `before` (前 before + 当日 + 后 after).
+
+    If fewer than `after` days exist after center, pin the right end to the last
+    available heat day and extend left to keep the span.
+    """
+    from app.db import fetch_heat_dates_after, fetch_heat_dates_ending
+
+    span = before + 1 + after
+    left = fetch_heat_dates_ending(board_type, center, before + 1)
+    right = fetch_heat_dates_after(board_type, center, after)
+    if len(left) >= before + 1 and len(right) >= after:
+        return left + right[:after], before
+    right_end = right[-1] if right else center
+    dates = fetch_heat_dates_ending(board_type, right_end, span)
+    if not dates:
+        return [center], 0
+    if center in dates:
+        return dates, dates.index(center)
+    return dates, len(dates) - 1
+
+
+def build_map_scrub_frames(
+    *,
+    slider_dates: list[date],
+    window_days: int,
+    densify: int,
+    spectrum_theme_ids: list[str],
+    ranked_theme_ids: list[str],
+    heat_by_day: dict[date, dict[str, float]],
+    all_heat_dates: list[date],
+) -> list[dict]:
+    """Per slider day: trailing window grids with frozen theme X orders."""
+    themes_by_id = {theme.theme_id: theme for theme in _spectrum_themes()}
+    spectrum_ordered = [
+        themes_by_id[tid] for tid in spectrum_theme_ids if tid in themes_by_id
+    ]
+    ranked_ordered = [
+        themes_by_id[tid] for tid in ranked_theme_ids if tid in themes_by_id
+    ]
+    date_index = {day: i for i, day in enumerate(all_heat_dates)}
+    frames: list[dict] = []
+    for end in slider_dates:
+        end_i = date_index.get(end)
+        if end_i is None:
+            window: list[date] = []
+        else:
+            start_i = max(0, end_i - window_days + 1)
+            window = all_heat_dates[start_i : end_i + 1]
+        spectrum = _surface_for_order(
+            ordered=spectrum_ordered,
+            window_dates=window,
+            heat_by_day=heat_by_day,
+            densify=densify,
+            axis_note=SPECTRUM_AXIS_NOTE,
+        )
+        ranked = _surface_for_order(
+            ordered=ranked_ordered,
+            window_dates=window,
+            heat_by_day=heat_by_day,
+            densify=densify,
+            axis_note=RANK_AXIS_NOTE,
+        )
+        frames.append(
+            {
+                "as_of": end.isoformat(),
+                "dates": spectrum["dates"],
+                "spectrum_z": spectrum["z"],
+                "ranked_z": ranked["z"],
+            }
+        )
+    return frames
 
 
 def _as_float(value: object | None) -> float | None:
@@ -177,6 +261,8 @@ def build_theme_wave_payload(
         "dates": [],
         "spectrum": None,
         "ranked": None,
+        "scenarios": [],
+        "scenario_note": SCENARIO_NOTE,
         "axis_note": SPECTRUM_AXIS_NOTE,
         "rank_axis_note": RANK_AXIS_NOTE,
         "empty_message": "没有可绘制的主题热度窗口",
@@ -226,10 +312,19 @@ def build_theme_wave_payload(
         as_of_hotness=rank_hotness,
     )
 
+    scenarios = build_theme_scenarios(
+        theme_ids=spectrum["theme_ids"],
+        theme_labels=spectrum["theme_labels"],
+        theme_hrefs=spectrum["theme_hrefs"],
+        raw_z=spectrum["raw_z"],
+    )
+
     return {
         "dates": spectrum["dates"],
         "spectrum": spectrum,
         "ranked": ranked,
+        "scenarios": scenarios,
+        "scenario_note": SCENARIO_NOTE,
         "axis_note": SPECTRUM_AXIS_NOTE,
         "rank_axis_note": RANK_AXIS_NOTE,
         "as_of": as_of.isoformat(),

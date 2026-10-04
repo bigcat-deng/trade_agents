@@ -9,7 +9,6 @@ from jinja2 import StrictUndefined, Template
 from app.db import (
     fetch_concept_heat_named_window,
     fetch_heat_dates_ending,
-    fetch_rotation_dates,
 )
 from app.prompts.template import PromptTemplate, load_prompt
 from app.themes.concept_wavelet import build_concept_wavelet_payload
@@ -90,7 +89,7 @@ def _data_block(payload: dict) -> str:
         [
             "",
             "## 读图约束",
-            "- 横轴是轨迹聚类叶序，不是产业链距离。",
+            "- 横轴是轨迹+结构融合叶序（共动/成分/名称近邻），不是产业链距离。",
             "- 细脉冲近端可以很热，但不得升格成主线占位，除非同名也出现在主线占位表。",
             "- 能量%与概念名单必须来自上文，禁止编造未出现的概念。",
             "- 禁止输出 Markdown 表格；映射名单已在页面展示。",
@@ -109,12 +108,11 @@ def build_concept_wavelet_reading_prompt(
     window = int(window_trading_days) if window_trading_days is not None else default_window
     window = max(20, min(180, window))
 
-    slider_dates = fetch_rotation_dates("concept", 10)
-    selected = as_of or (slider_dates[-1] if slider_dates else None)
-    if selected is None:
+    target = as_of or date.today()
+    ending = fetch_heat_dates_ending("concept", target, 1)
+    if not ending:
         raise RuntimeError("no concept heat rows to interpret")
-    if as_of is not None and as_of not in slider_dates:
-        raise RuntimeError("date is outside the last 11 trading days")
+    selected = ending[-1]
 
     window_dates = fetch_heat_dates_ending("concept", selected, window)
     if not window_dates:

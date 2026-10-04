@@ -62,9 +62,71 @@ def order_by_trajectory_seriation(
     series_by_code: dict[str, list[float | None]],
 ) -> list[str]:
     """Average-link hierarchical clustering + optimal leaf order on corr distance."""
-    if len(codes) <= 2:
-        return list(codes)
+    return order_by_fused_seriation(
+        codes,
+        series_by_code,
+        names=None,
+        constituents=None,
+        theme_ids_by_code=None,
+        traj_weight=1.0,
+    )
 
+
+# Fused seriation: trajectory corr + constituent/name structure.
+DEFAULT_TRAJ_WEIGHT = 0.65
+DEFAULT_OVERLAP_IN_STRUCT = 0.75
+_THEME_COMEMBER_BOOST = 0.12
+
+
+def name_char_similarity(left: str, right: str) -> float:
+    """Jaccard on character sets; light semantic prior for Chinese board names."""
+    a = {ch for ch in (left or "").strip() if not ch.isspace()}
+    b = {ch for ch in (right or "").strip() if not ch.isspace()}
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def constituent_jaccard(left: set[str] | None, right: set[str] | None) -> float:
+    a = left or set()
+    b = right or set()
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def structural_similarity(
+    *,
+    left_code: str,
+    right_code: str,
+    names: dict[str, str] | None,
+    constituents: dict[str, set[str]] | None,
+    theme_ids_by_code: dict[str, set[str]] | None,
+    overlap_weight: float = DEFAULT_OVERLAP_IN_STRUCT,
+) -> float:
+    """Blend constituent Jaccard + name similarity (+ small theme co-membership)."""
+    overlap_w = min(1.0, max(0.0, float(overlap_weight)))
+    jacc = constituent_jaccard(
+        (constituents or {}).get(left_code),
+        (constituents or {}).get(right_code),
+    )
+    name_s = name_char_similarity(
+        (names or {}).get(left_code, left_code),
+        (names or {}).get(right_code, right_code),
+    )
+    score = overlap_w * jacc + (1.0 - overlap_w) * name_s
+    themes = theme_ids_by_code or {}
+    left_t = themes.get(left_code) or set()
+    right_t = themes.get(right_code) or set()
+    if left_t and right_t and (left_t & right_t):
+        score = min(1.0, score + _THEME_COMEMBER_BOOST)
+    return float(min(1.0, max(0.0, score)))
+
+
+def _trajectory_rows(
+    codes: list[str],
+    series_by_code: dict[str, list[float | None]],
+) -> tuple[list[str], list[str], list[np.ndarray]]:
     usable: list[str] = []
     unused: list[str] = []
     rows: list[np.ndarray] = []
@@ -84,14 +146,79 @@ def order_by_trajectory_seriation(
         arr = (arr - float(np.mean(arr))) / float(np.std(arr))
         usable.append(code)
         rows.append(arr)
+    return usable, unused, rows
 
-    if len(usable) <= 2:
-        return usable + sorted(unused)
 
+def _condensed_traj_distance(rows: list[np.ndarray]) -> np.ndarray:
     matrix = np.vstack(rows)
     condensed = pdist(matrix, metric="correlation")
     condensed = np.nan_to_num(condensed, nan=1.0, posinf=1.0, neginf=1.0)
-    condensed = np.clip(condensed, 0.0, 1.0)
+    return np.clip(condensed, 0.0, 1.0)
+
+
+def _condensed_struct_distance(
+    usable: list[str],
+    *,
+    names: dict[str, str] | None,
+    constituents: dict[str, set[str]] | None,
+    theme_ids_by_code: dict[str, set[str]] | None,
+    overlap_weight: float,
+) -> np.ndarray:
+    n = len(usable)
+    out = np.zeros(n * (n - 1) // 2, dtype=float)
+    k = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            sim = structural_similarity(
+                left_code=usable[i],
+                right_code=usable[j],
+                names=names,
+                constituents=constituents,
+                theme_ids_by_code=theme_ids_by_code,
+                overlap_weight=overlap_weight,
+            )
+            out[k] = 1.0 - sim
+            k += 1
+    return np.clip(out, 0.0, 1.0)
+
+
+def order_by_fused_seriation(
+    codes: list[str],
+    series_by_code: dict[str, list[float | None]],
+    *,
+    names: dict[str, str] | None = None,
+    constituents: dict[str, set[str]] | None = None,
+    theme_ids_by_code: dict[str, set[str]] | None = None,
+    traj_weight: float = DEFAULT_TRAJ_WEIGHT,
+    overlap_in_struct: float = DEFAULT_OVERLAP_IN_STRUCT,
+) -> list[str]:
+    """Leaf-order clustering on fused trajectory + structural distances.
+
+    ``traj_weight`` (α): weight on corr-distance; ``1-α`` on structure
+    ``1 - (β·Jaccard + (1-β)·name[+theme])``.
+    """
+    if len(codes) <= 2:
+        return list(codes)
+
+    usable, unused, rows = _trajectory_rows(codes, series_by_code)
+    if len(usable) <= 2:
+        return usable + sorted(unused)
+
+    alpha = min(1.0, max(0.0, float(traj_weight)))
+    traj = _condensed_traj_distance(rows)
+    if alpha >= 1.0 - 1e-12 or (
+        not constituents and not names and not theme_ids_by_code
+    ):
+        condensed = traj
+    else:
+        struct = _condensed_struct_distance(
+            usable,
+            names=names,
+            constituents=constituents,
+            theme_ids_by_code=theme_ids_by_code,
+            overlap_weight=overlap_in_struct,
+        )
+        condensed = np.clip(alpha * traj + (1.0 - alpha) * struct, 0.0, 1.0)
 
     tree = linkage(condensed, method="average")
     ordered_tree = optimal_leaf_ordering(tree, condensed)
@@ -128,6 +255,70 @@ def hotness_grid(
                 row.append(1.0 - float(pct[code]))
         grid.append(row)
     return grid
+
+
+DEFAULT_PLANE_DENSIFY = 4
+
+
+def _interp_row(values: list[float | None], densify: int) -> list[float | None]:
+    if densify < 1 or len(values) < 2:
+        return list(values)
+    out: list[float | None] = []
+    for i, left in enumerate(values[:-1]):
+        right = values[i + 1]
+        out.append(left)
+        for step in range(1, densify):
+            t = step / densify
+            if left is None or right is None:
+                out.append(None)
+            else:
+                out.append(left * (1.0 - t) + right * t)
+    out.append(values[-1])
+    return out
+
+
+def _fill_time_gaps(grid: list[list[float | None]]) -> list[list[float | None]]:
+    if not grid:
+        return grid
+    cols = len(grid[0])
+    out = [list(row) for row in grid]
+    for c in range(cols):
+        last: float | None = None
+        for r in range(len(out)):
+            if out[r][c] is None:
+                out[r][c] = last
+            else:
+                last = out[r][c]
+        last = None
+        for r in range(len(out) - 1, -1, -1):
+            if out[r][c] is None:
+                out[r][c] = last
+            else:
+                last = out[r][c]
+    return out
+
+
+def densify_hotness_plane(
+    *,
+    theme_x: list[float],
+    z_short: list[list[float | None]],
+    densify: int = DEFAULT_PLANE_DENSIFY,
+) -> tuple[list[float], list[list[float | None]]]:
+    """Linear-interpolate along the entity axis so adjacent cells form a continuous field.
+
+    Board / concept / theme axes are approximate narratives; densify softens
+    hard block boundaries without changing the frozen tick order.
+    """
+    steps = max(1, densify)
+    dense_x: list[float] = []
+    for i in range(len(theme_x) - 1):
+        dense_x.append(theme_x[i])
+        for step in range(1, steps):
+            dense_x.append(theme_x[i] + step / steps)
+    if theme_x:
+        dense_x.append(theme_x[-1])
+    dense_z = [_interp_row(row, steps) for row in z_short]
+    return dense_x, _fill_time_gaps(dense_z)
 
 
 def late_quarter_dates(window_dates: list[date]) -> list[date]:

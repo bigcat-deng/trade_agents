@@ -11,9 +11,7 @@ from app.charts.board_rotation import render_board_rotation
 from app.charts.kline import render_kline
 from app.charts.mini_kline import render_mini_kline
 from app.charts.theme_wave import (
-    render_board_heat_heatmap,
     render_theme_wave_contour,
-    render_theme_wave_surface,
 )
 from app.charts.concept_wavelet import (
     render_wavelet_energy,
@@ -21,6 +19,7 @@ from app.charts.concept_wavelet import (
 )
 from app.charts.theme_heat import render_theme_charts, render_theme_group_chart
 from app.db import (
+    fetch_board_close_heat,
     fetch_board_daily_bars_from_db,
     fetch_board_daily_bars_many,
     fetch_board_heat_series,
@@ -44,17 +43,29 @@ from app.interpret.service import (
     interpret,
 )
 from app.market_data.board_heat import top_short_heat_keys
-from app.market_data.csi500 import fetch_csi500_closes
+from app.market_data.csi500 import fetch_csi500_closes, csi500_close_volume_maps
 from app.market_data.providers import baostock_kline
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
 from app.themes import build_theme_view, get_theme, list_themes
-from app.themes.concept_wave import build_concept_top_heat_payload
+from app.themes.concept_wave import (
+    build_concept_scrub_frames,
+    build_concept_top_heat_payload,
+)
 from app.themes.concept_wavelet import FEATURE_TOP_N, build_concept_wavelet_payload
 from app.themes.industry_wavelet import build_industry_wavelet_payload
 from app.themes.config import ThemeConfig, theme_board_codes
-from app.themes.industry_wave import build_industry_board_heat_payload
-from app.themes.wave_surface import build_theme_wave_payload
+from app.themes.board_cross_marks import CROSS_HISTORY_DAYS
+from app.themes.industry_return_flags import RETURN_VOL_LOOKBACK
+from app.themes.industry_wave import (
+    build_industry_board_heat_payload,
+    build_industry_scrub_frames,
+)
+from app.themes.wave_surface import (
+    build_map_scrub_frames,
+    build_map_slider_dates,
+    build_theme_wave_payload,
+)
 
 MINI_KLINE_TRADING_DAYS = 60
 
@@ -257,11 +268,15 @@ def stocks_latest_api() -> dict:
     }
 
 
+_ROTATION_SLIDER_DAYS = 11
+
+
 def _rotation_page_fields(board_type: str) -> dict:
     page = _ROTATION_PAGES[board_type]
     return {
         "title": page["title"],
         "kind_label": page["kind_label"],
+        "rotation_path": page["rotation_path"],
         "rotation_api": page["rotation_api"],
         "interpret_template": page["interpret_template"],
         "kline_prefix": page["kline_prefix"],
@@ -278,11 +293,35 @@ def _rotation_payload(
     include_plotlyjs: bool,
     highlight: str | None = None,
     labels: list[str] | None = None,
+    requested_as_of: date | None = None,
 ) -> dict:
-    dates = fetch_rotation_dates(board_type, 10)
-    if as_of is not None and as_of not in dates:
-        raise HTTPException(status_code=400, detail="date is outside the last 11 trading days")
-    selected = as_of or (dates[-1] if dates else None)
+    """Build rotation page/API payload.
+
+    `requested_as_of` is the calendar cutoff (23:59). Slider dates are the last
+    `_ROTATION_SLIDER_DAYS` heat days ending on that resolved heat day.
+    `as_of` selects which day in/near that window to chart; None → window end.
+    """
+    requested = requested_as_of or date.today()
+    window_end = _resolve_heat_as_of(board_type, requested)
+    dates = (
+        fetch_heat_dates_ending(board_type, window_end, _ROTATION_SLIDER_DAYS)
+        if window_end is not None
+        else []
+    )
+    if as_of is not None:
+        if as_of not in dates:
+            # API may ask for a day inside a historically loaded window; allow any
+            # heat day by rebuilding the trailing window ending on that day.
+            dates = fetch_heat_dates_ending(
+                board_type, as_of, _ROTATION_SLIDER_DAYS
+            )
+            if as_of not in dates:
+                raise HTTPException(
+                    status_code=400, detail="date has no heat data"
+                )
+        selected = as_of
+    else:
+        selected = window_end
     got_as_of, prev_date, rows = fetch_board_rotation(board_type, selected)
     if board_type == "concept":
         kept = top_short_heat_keys(
@@ -315,12 +354,26 @@ def _rotation_payload(
         "short_count": short_count,
         "long_count": long_count,
         "highlight_matched": matched if name else None,
+        "requested_as_of": requested.isoformat(),
         **_rotation_page_fields(board_type),
     }
 
 
-def _rotation_page(request: Request, board_type: str) -> HTMLResponse:
-    payload = _rotation_payload(board_type, None, include_plotlyjs=True)
+def _rotation_page(
+    request: Request,
+    board_type: str,
+    as_of: str | None,
+) -> HTMLResponse:
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = _rotation_payload(
+        board_type,
+        None,
+        include_plotlyjs=True,
+        requested_as_of=requested or date.today(),
+    )
     return templates.TemplateResponse(request, "board_rotation.html", payload)
 
 
@@ -340,6 +393,7 @@ def _rotation_api(
         include_plotlyjs=False,
         highlight=highlight,
         labels=label,
+        requested_as_of=day,
     )
     if payload["chart_html"] is None:
         raise HTTPException(status_code=404, detail=f"no {board_type} heat for that date")
@@ -347,13 +401,19 @@ def _rotation_api(
 
 
 @app.get("/boards/rotation", response_class=HTMLResponse)
-def board_rotation_page(request: Request) -> HTMLResponse:
-    return _rotation_page(request, "industry")
+def board_rotation_page(
+    request: Request,
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    return _rotation_page(request, "industry", as_of)
 
 
 @app.get("/boards/concept/rotation", response_class=HTMLResponse)
-def concept_rotation_page(request: Request) -> HTMLResponse:
-    return _rotation_page(request, "concept")
+def concept_rotation_page(
+    request: Request,
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    return _rotation_page(request, "concept", as_of)
 
 
 @app.get("/boards/concept/themes", response_class=HTMLResponse)
@@ -366,8 +426,17 @@ def concept_themes_hub_page(request: Request) -> HTMLResponse:
 def concept_themes_wave_page(
     request: Request,
     days: int = Query(40, ge=20, le=180),
+    as_of: str | None = Query(None),
 ) -> HTMLResponse:
-    payload = _themes_wave_page_payload(days=days, include_plotlyjs=False)
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = _themes_wave_page_payload(
+        days=days,
+        as_of=requested,
+        include_plotlyjs=False,
+    )
     return templates.TemplateResponse(request, "theme_wave.html", payload)
 
 
@@ -375,8 +444,15 @@ def concept_themes_wave_page(
 def concept_themes_wave_wavelet_page(
     request: Request,
     days: int = Query(60, ge=20, le=180),
+    as_of: str | None = Query(None),
 ) -> HTMLResponse:
-    payload = _themes_wave_wavelet_page_payload(scope="concept", days=days)
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = _themes_wave_wavelet_page_payload(
+        scope="concept", days=days, as_of=requested
+    )
     return templates.TemplateResponse(request, "theme_wave_wavelet.html", payload)
 
 
@@ -384,8 +460,15 @@ def concept_themes_wave_wavelet_page(
 def concept_themes_wave_industry_wavelet_page(
     request: Request,
     days: int = Query(60, ge=20, le=180),
+    as_of: str | None = Query(None),
 ) -> HTMLResponse:
-    payload = _themes_wave_wavelet_page_payload(scope="industry", days=days)
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = _themes_wave_wavelet_page_payload(
+        scope="industry", days=days, as_of=requested
+    )
     return templates.TemplateResponse(request, "theme_wave_wavelet.html", payload)
 
 
@@ -430,12 +513,26 @@ def _themes_hub_page_payload(
     }
 
 
+def _resolve_heat_as_of(board_type: str, requested: date | None) -> date | None:
+    """Last heat trading day on or before requested (default: today).
+
+    Calendar cutoff is end-of-day 23:59 on the requested date; with daily heat
+    bars that means trade_date ≤ requested.
+    """
+    target = requested or date.today()
+    days = fetch_heat_dates_ending(board_type, target, 1)
+    return days[-1] if days else None
+
+
 def _themes_wave_empty(
     *,
     empty_message: str,
     axis_note: str = "",
     rank_axis_note: str = "",
+    days: int = 40,
+    requested_as_of: date | None = None,
 ) -> dict:
+    requested = requested_as_of or date.today()
     return {
         "title": "主题热度水面",
         "axis_note": axis_note,
@@ -445,6 +542,8 @@ def _themes_wave_empty(
         "dates": [],
         "as_of": None,
         "rank_as_of": None,
+        "days": days,
+        "requested_as_of": requested.isoformat(),
         "industry_board_count": 0,
         "concept_board_count": 0,
         "concept_select_from": None,
@@ -457,11 +556,36 @@ def _themes_wave_empty(
         "ranked_map_html": "",
         "industry_short_html": "",
         "concept_short_html": "",
-        "wavelet_href": "/boards/concept/themes/wave/wavelet",
-        "industry_wavelet_href": "/boards/concept/themes/wave/industry-wavelet",
+        "wavelet_href": (
+            f"/boards/concept/themes/wave/wavelet?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
+        "industry_wavelet_href": (
+            f"/boards/concept/themes/wave/industry-wavelet?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
         "spectrum_links": [],
         "ranked_links": [],
+        "scenarios": [],
+        "scenario_note": "",
+        "map_slider_dates": [],
+        "map_slider_index": 0,
+        "map_scrub_frames": [],
+        "industry_slider_dates": [],
+        "industry_slider_index": 0,
+        "industry_scrub_frames": [],
+        "concept_slider_dates": [],
+        "concept_slider_index": 0,
+        "concept_scrub_frames": [],
         "empty_message": empty_message,
+        "window_start": None,
+        "window_end": None,
+        "industry_board_names": [],
+        "industry_board_codes": [],
+        "industry_date_count": 0,
+        "concept_board_names": [],
+        "concept_board_codes": [],
+        "concept_date_count": 0,
     }
 
 
@@ -493,14 +617,27 @@ def _concept_theme_highlight_options(board_codes: list[str]) -> list[dict]:
     return options
 
 
-def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
-    slider_dates = fetch_rotation_dates("concept", 10)
-    selected = slider_dates[-1] if slider_dates else None
+def _themes_wave_page_payload(
+    *,
+    days: int,
+    as_of: date | None,
+    include_plotlyjs: bool,
+) -> dict:
+    requested = as_of or date.today()
+    selected = _resolve_heat_as_of("concept", requested)
     if selected is None:
-        return _themes_wave_empty(empty_message="还没有概念热度。")
+        return _themes_wave_empty(
+            empty_message="还没有概念热度。",
+            days=days,
+            requested_as_of=requested,
+        )
     window_dates = fetch_heat_dates_ending("concept", selected, days)
     if not window_dates:
-        return _themes_wave_empty(empty_message="窗口内没有热度日期")
+        return _themes_wave_empty(
+            empty_message="窗口内没有热度日期",
+            days=days,
+            requested_as_of=requested,
+        )
     heat_rows = fetch_concept_heat_window(window_dates[0], window_dates[-1])
     payload = build_theme_wave_payload(
         window_dates=window_dates,
@@ -514,39 +651,21 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
             empty_message=payload.get("empty_message") or "没有可绘制的曲面",
             axis_note=payload.get("axis_note") or "",
             rank_axis_note=payload.get("rank_axis_note") or "",
+            days=days,
+            requested_as_of=requested,
         )
     spectrum = payload["spectrum"]
     ranked = payload["ranked"]
     rank_as_of = payload.get("rank_as_of") or payload["as_of"]
-    spectrum_chart_html = render_theme_wave_surface(
-        dates=spectrum["dates"],
-        x=spectrum["x"],
-        z=spectrum["z"],
-        x_tickvals=spectrum["x_tickvals"],
-        x_ticktext=spectrum["x_ticktext"],
-        include_plotlyjs=include_plotlyjs,
-        title="光谱水面 · 可拖拽旋转",
-        xaxis_title="主题光谱（防守 → 科技）",
-    )
     spectrum_map_html = render_theme_wave_contour(
         dates=spectrum["dates"],
         x=spectrum["x"],
         z=spectrum["z"],
         x_tickvals=spectrum["x_tickvals"],
         x_ticktext=spectrum["x_ticktext"],
-        include_plotlyjs=False,
-        title="光谱等位图 · 点击取点",
+        include_plotlyjs=include_plotlyjs,
+        title="光谱等位图",
         xaxis_title="主题光谱（防守 → 科技）",
-    )
-    ranked_chart_html = render_theme_wave_surface(
-        dates=ranked["dates"],
-        x=ranked["x"],
-        z=ranked["z"],
-        x_tickvals=ranked["x_tickvals"],
-        x_ticktext=ranked["x_ticktext"],
-        include_plotlyjs=False,
-        title=f"近热排序水面 · 中间日 {rank_as_of} 热度从高到低",
-        xaxis_title="近热排序（高 → 低）",
     )
     ranked_map_html = render_theme_wave_contour(
         dates=ranked["dates"],
@@ -555,13 +674,49 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
         x_tickvals=ranked["x_tickvals"],
         x_ticktext=ranked["x_ticktext"],
         include_plotlyjs=False,
-        title="近热排序等位图 · 点击取点",
+        title=f"近热排序等位图 · 中间日 {rank_as_of}",
         xaxis_title="近热排序（高 → 低）",
+    )
+
+    slider_dates, slider_index = build_map_slider_dates("concept", selected)
+    scrub_lookback = days + len(slider_dates) + 5
+    scrub_hist = fetch_heat_dates_ending(
+        "concept", slider_dates[-1], scrub_lookback
+    )
+    scrub_heat_rows = (
+        fetch_concept_heat_window(scrub_hist[0], slider_dates[-1])
+        if scrub_hist
+        else []
+    )
+    scrub_heat_by_day: dict[date, dict[str, float]] = {}
+    for trade_date, board_code, heat_short in scrub_heat_rows:
+        if heat_short is None:
+            continue
+        try:
+            scrub_heat_by_day.setdefault(trade_date, {})[board_code] = float(
+                heat_short
+            )
+        except (TypeError, ValueError):
+            continue
+    map_scrub_frames = build_map_scrub_frames(
+        slider_dates=slider_dates,
+        window_days=days,
+        densify=int(payload.get("densify") or 4),
+        spectrum_theme_ids=list(spectrum.get("theme_ids") or []),
+        ranked_theme_ids=list(ranked.get("theme_ids") or []),
+        heat_by_day=scrub_heat_by_day,
+        all_heat_dates=scrub_hist,
     )
 
     industry_short_html = ""
     industry_axis_note = ""
     industry_board_count = 0
+    industry_board_names: list[str] = []
+    industry_board_codes: list[str] = []
+    industry_date_count = 0
+    industry_slider_dates: list[date] = []
+    industry_slider_index = 0
+    industry_scrub_frames: list[dict] = []
     industry_dates = fetch_heat_dates_ending("industry", selected, days)
     if industry_dates:
         industry_rows = fetch_industry_heat_window(
@@ -574,7 +729,10 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
         if not industry.get("empty_message"):
             industry_axis_note = industry["axis_note"]
             industry_board_count = industry["board_count"]
-            industry_short_html = render_board_heat_heatmap(
+            industry_board_names = list(industry.get("board_names") or [])
+            industry_board_codes = list(industry.get("board_codes") or [])
+            industry_date_count = len(industry.get("dates") or [])
+            industry_short_html = render_theme_wave_contour(
                 dates=industry["dates"],
                 x=industry["x"],
                 z=industry["z_short"],
@@ -584,6 +742,80 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
                 height=620,
                 title="行业短热 · 轨迹聚类叶序",
                 xaxis_title="行业板块（共动近 → 相邻）",
+                entity_label="行业",
+                tickangle=-55,
+                return_exceedance=industry.get("return_exceedance"),
+                cross_marks=industry.get("cross_marks"),
+                csi500_returns=industry.get("csi500_returns"),
+                csi500_volumes=industry.get("csi500_volumes"),
+                csi500_volumes_scaled=industry.get("csi500_volumes_scaled"),
+            )
+            industry_slider_dates, industry_slider_index = build_map_slider_dates(
+                "industry", selected
+            )
+            ind_lookback = (
+                days
+                + len(industry_slider_dates)
+                + max(RETURN_VOL_LOOKBACK, CROSS_HISTORY_DAYS)
+                + 5
+            )
+            ind_hist = fetch_heat_dates_ending(
+                "industry", industry_slider_dates[-1], ind_lookback
+            )
+            # Cover 100 returns before the earliest slider day through the latest.
+            ind_vol_dates = fetch_heat_dates_ending(
+                "industry", industry_slider_dates[-1], ind_lookback
+            )
+            ind_rows = (
+                fetch_industry_heat_window(ind_hist[0], industry_slider_dates[-1])
+                if ind_hist
+                else []
+            )
+            ind_heat_by_day: dict[date, dict[str, float]] = {}
+            for trade_date, board_code, _name, heat_short, _long in ind_rows:
+                if heat_short is None:
+                    continue
+                try:
+                    ind_heat_by_day.setdefault(trade_date, {})[str(board_code)] = float(
+                        heat_short
+                    )
+                except (TypeError, ValueError):
+                    continue
+            ind_bar_start = (
+                ind_vol_dates[0]
+                if ind_vol_dates
+                else (ind_hist[0] if ind_hist else selected)
+            )
+            ind_bars = fetch_board_daily_bars_many(
+                "industry",
+                industry_board_codes,
+                ind_bar_start,
+                industry_slider_dates[-1],
+            )
+            ind_csi_start = (ind_hist[0] if ind_hist else selected) - timedelta(days=14)
+            ind_csi_closes, ind_csi_volumes = csi500_close_volume_maps(
+                ind_csi_start, industry_slider_dates[-1]
+            )
+            ind_cross_start = ind_hist[0] if ind_hist else selected
+            ind_close_heat = fetch_board_close_heat(
+                "industry",
+                industry_board_codes,
+                ind_cross_start,
+                industry_slider_dates[-1],
+            )
+            industry_scrub_frames = build_industry_scrub_frames(
+                slider_dates=industry_slider_dates,
+                window_days=days,
+                ordered_codes=industry_board_codes,
+                heat_by_day=ind_heat_by_day,
+                all_heat_dates=ind_hist,
+                densify=int(industry.get("densify") or 4),
+                bars_by_code=ind_bars,
+                vol_all_dates=ind_vol_dates or ind_hist,
+                names=dict(zip(industry_board_codes, industry_board_names)),
+                csi500_closes=ind_csi_closes,
+                csi500_volumes=ind_csi_volumes,
+                close_heat_by_code=ind_close_heat,
             )
 
     concept_short_html = ""
@@ -592,6 +824,12 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
     concept_select_from = None
     concept_select_to = None
     concept_theme_options: list[dict] = []
+    concept_board_names: list[str] = []
+    concept_board_codes: list[str] = []
+    concept_date_count = 0
+    concept_slider_dates: list[date] = []
+    concept_slider_index = 0
+    concept_scrub_frames: list[dict] = []
     concept_named_rows = fetch_concept_heat_named_window(
         window_dates[0], window_dates[-1]
     )
@@ -604,10 +842,13 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
         concept_board_count = concept_top["board_count"]
         concept_select_from = concept_top["select_from"]
         concept_select_to = concept_top["select_to"]
+        concept_board_names = list(concept_top.get("board_names") or [])
+        concept_board_codes = list(concept_top.get("board_codes") or [])
+        concept_date_count = len(concept_top.get("dates") or [])
         concept_theme_options = _concept_theme_highlight_options(
             concept_top["board_codes"]
         )
-        concept_short_html = render_board_heat_heatmap(
+        concept_short_html = render_theme_wave_contour(
             dates=concept_top["dates"],
             x=concept_top["x"],
             z=concept_top["z_short"],
@@ -617,10 +858,82 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
             height=620,
             title=(
                 f"概念短热 Top{concept_top['top_n']}∪主题"
-                f"（{concept_top['board_count']}）· 轨迹聚类叶序"
+                f"（{concept_top['board_count']}）· 轨迹+结构融合叶序"
             ),
-            xaxis_title="概念（共动近 → 相邻）",
+            xaxis_title="概念（共动/结构近 → 相邻）",
             entity_label="概念",
+            tickangle=-55,
+            return_exceedance=concept_top.get("return_exceedance"),
+            cross_marks=concept_top.get("cross_marks"),
+            csi500_returns=concept_top.get("csi500_returns"),
+            csi500_volumes=concept_top.get("csi500_volumes"),
+            csi500_volumes_scaled=concept_top.get("csi500_volumes_scaled"),
+        )
+        concept_slider_dates, concept_slider_index = build_map_slider_dates(
+            "concept", selected
+        )
+        con_lookback = (
+            days
+            + len(concept_slider_dates)
+            + max(RETURN_VOL_LOOKBACK, CROSS_HISTORY_DAYS)
+            + 5
+        )
+        con_hist = fetch_heat_dates_ending(
+            "concept", concept_slider_dates[-1], con_lookback
+        )
+        con_vol_dates = fetch_heat_dates_ending(
+            "concept", concept_slider_dates[-1], con_lookback
+        )
+        con_rows = (
+            fetch_concept_heat_named_window(con_hist[0], concept_slider_dates[-1])
+            if con_hist
+            else []
+        )
+        con_heat_by_day: dict[date, dict[str, float]] = {}
+        for trade_date, board_code, _name, heat_short, _long in con_rows:
+            if heat_short is None:
+                continue
+            try:
+                con_heat_by_day.setdefault(trade_date, {})[str(board_code)] = float(
+                    heat_short
+                )
+            except (TypeError, ValueError):
+                continue
+        con_bar_start = (
+            con_vol_dates[0]
+            if con_vol_dates
+            else (con_hist[0] if con_hist else selected)
+        )
+        con_bars = fetch_board_daily_bars_many(
+            "concept",
+            concept_board_codes,
+            con_bar_start,
+            concept_slider_dates[-1],
+        )
+        con_csi_start = (con_hist[0] if con_hist else selected) - timedelta(days=14)
+        con_csi_closes, con_csi_volumes = csi500_close_volume_maps(
+            con_csi_start, concept_slider_dates[-1]
+        )
+        con_cross_start = con_hist[0] if con_hist else selected
+        con_close_heat = fetch_board_close_heat(
+            "concept",
+            concept_board_codes,
+            con_cross_start,
+            concept_slider_dates[-1],
+        )
+        concept_scrub_frames = build_concept_scrub_frames(
+            slider_dates=concept_slider_dates,
+            window_days=days,
+            ordered_codes=concept_board_codes,
+            heat_by_day=con_heat_by_day,
+            all_heat_dates=con_hist,
+            densify=int(concept_top.get("densify") or 4),
+            bars_by_code=con_bars,
+            vol_all_dates=con_vol_dates or con_hist,
+            names=dict(zip(concept_board_codes, concept_board_names)),
+            csi500_closes=con_csi_closes,
+            csi500_volumes=con_csi_volumes,
+            close_heat_by_code=con_close_heat,
         )
 
     return {
@@ -632,22 +945,53 @@ def _themes_wave_page_payload(*, days: int, include_plotlyjs: bool) -> dict:
         "dates": payload["dates"],
         "as_of": payload["as_of"],
         "rank_as_of": rank_as_of,
+        "days": days,
+        "requested_as_of": requested.isoformat(),
+        "window_start": window_dates[0].isoformat(),
+        "window_end": window_dates[-1].isoformat(),
         "industry_board_count": industry_board_count,
         "concept_board_count": concept_board_count,
         "concept_select_from": concept_select_from,
         "concept_select_to": concept_select_to,
         "concept_theme_options": concept_theme_options,
+        "industry_board_names": industry_board_names,
+        "industry_board_codes": industry_board_codes,
+        "industry_date_count": industry_date_count,
+        "concept_board_names": concept_board_names,
+        "concept_board_codes": concept_board_codes,
+        "concept_date_count": concept_date_count,
         "interpret_template": "theme-wave-reading",
-        "spectrum_chart_html": spectrum_chart_html,
+        "spectrum_chart_html": "",
         "spectrum_map_html": spectrum_map_html,
-        "ranked_chart_html": ranked_chart_html,
+        "ranked_chart_html": "",
         "ranked_map_html": ranked_map_html,
         "industry_short_html": industry_short_html,
         "concept_short_html": concept_short_html,
-        "wavelet_href": f"/boards/concept/themes/wave/wavelet?days={days}",
-        "industry_wavelet_href": f"/boards/concept/themes/wave/industry-wavelet?days={days}",
+        "wavelet_href": (
+            f"/boards/concept/themes/wave/wavelet?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
+        "industry_wavelet_href": (
+            f"/boards/concept/themes/wave/industry-wavelet?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
         "spectrum_links": list(zip(spectrum["theme_labels"], spectrum["theme_hrefs"])),
         "ranked_links": list(zip(ranked["theme_labels"], ranked["theme_hrefs"])),
+        "scenarios": payload.get("scenarios") or [],
+        "scenario_note": payload.get("scenario_note") or "",
+        "map_slider_dates": [day.isoformat() for day in slider_dates],
+        "map_slider_index": slider_index,
+        "map_scrub_frames": map_scrub_frames,
+        "industry_slider_dates": [
+            day.isoformat() for day in industry_slider_dates
+        ],
+        "industry_slider_index": industry_slider_index,
+        "industry_scrub_frames": industry_scrub_frames,
+        "concept_slider_dates": [
+            day.isoformat() for day in concept_slider_dates
+        ],
+        "concept_slider_index": concept_slider_index,
+        "concept_scrub_frames": concept_scrub_frames,
         "empty_message": None,
     }
 
@@ -663,7 +1007,10 @@ def _wavelet_page_empty(
     map_section_title: str,
     roster_note: str,
     board_type: str = "concept",
+    days: int = 60,
+    requested_as_of: date | None = None,
 ) -> dict:
+    requested = requested_as_of or date.today()
     return {
         "title": title,
         "empty_message": empty_message,
@@ -676,6 +1023,11 @@ def _wavelet_page_empty(
         "window_end": None,
         "board_type": board_type,
         "window_days": 0,
+        "days": days,
+        "requested_as_of": requested.isoformat(),
+        "wave_back_href": (
+            f"/boards/concept/themes/wave?days={days}&as_of={requested.isoformat()}"
+        ),
         "top_n": 0,
         "late_days": 0,
         "extremum_days": 0,
@@ -698,7 +1050,12 @@ def _wavelet_page_empty(
     }
 
 
-def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
+def _themes_wave_wavelet_page_payload(
+    *,
+    scope: str,
+    days: int,
+    as_of: date | None,
+) -> dict:
     if scope == "industry":
         board_type = "industry"
         title = "行业板块短热 · 二维小波"
@@ -727,32 +1084,26 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
         )
         empty_no_data = "还没有概念热度。"
 
-    slider_dates = fetch_rotation_dates(board_type, 10)
-    selected = slider_dates[-1] if slider_dates else None
+    requested = as_of or date.today()
+    selected = _resolve_heat_as_of(board_type, requested)
+    empty_kwargs = dict(
+        title=title,
+        interpret_template=interpret_template,
+        entity_label=entity_label,
+        reading_heading=reading_heading,
+        map_heading=map_heading,
+        map_section_title=map_section_title,
+        roster_note=roster_note,
+        board_type=board_type,
+        days=days,
+        requested_as_of=requested,
+    )
     if selected is None:
-        return _wavelet_page_empty(
-            title=title,
-            empty_message=empty_no_data,
-            interpret_template=interpret_template,
-            entity_label=entity_label,
-            reading_heading=reading_heading,
-            map_heading=map_heading,
-            map_section_title=map_section_title,
-            roster_note=roster_note,
-            board_type=board_type,
-        )
+        return _wavelet_page_empty(empty_message=empty_no_data, **empty_kwargs)
     window_dates = fetch_heat_dates_ending(board_type, selected, days)
     if not window_dates:
         return _wavelet_page_empty(
-            title=title,
-            empty_message="窗口内没有热度日期",
-            interpret_template=interpret_template,
-            entity_label=entity_label,
-            reading_heading=reading_heading,
-            map_heading=map_heading,
-            map_section_title=map_section_title,
-            roster_note=roster_note,
-            board_type=board_type,
+            empty_message="窗口内没有热度日期", **empty_kwargs
         )
 
     if scope == "industry":
@@ -771,15 +1122,7 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
         )
     if payload.get("empty_message"):
         return _wavelet_page_empty(
-            title=title,
-            empty_message=payload["empty_message"],
-            interpret_template=interpret_template,
-            entity_label=entity_label,
-            reading_heading=reading_heading,
-            map_heading=map_heading,
-            map_section_title=map_section_title,
-            roster_note=roster_note,
-            board_type=board_type,
+            empty_message=payload["empty_message"], **empty_kwargs
         )
 
     bands = payload["bands"]
@@ -852,6 +1195,12 @@ def _themes_wave_wavelet_page_payload(*, scope: str, days: int) -> dict:
         "window_end": (payload.get("dates") or [None])[-1],
         "board_type": board_type,
         "window_days": payload["window_days"],
+        "days": days,
+        "requested_as_of": requested.isoformat(),
+        "wave_back_href": (
+            f"/boards/concept/themes/wave?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
         "top_n": payload["top_n"],
         "late_days": payload["late_days"],
         "extremum_days": payload.get("extremum_days") or 0,

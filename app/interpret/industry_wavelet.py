@@ -9,7 +9,6 @@ from jinja2 import StrictUndefined, Template
 from app.db import (
     fetch_heat_dates_ending,
     fetch_industry_heat_window,
-    fetch_rotation_dates,
 )
 from app.prompts.template import PromptTemplate, load_prompt
 from app.themes.industry_wavelet import build_industry_wavelet_payload
@@ -108,12 +107,11 @@ def build_industry_wavelet_reading_prompt(
     window = int(window_trading_days) if window_trading_days is not None else default_window
     window = max(20, min(180, window))
 
-    slider_dates = fetch_rotation_dates("industry", 10)
-    selected = as_of or (slider_dates[-1] if slider_dates else None)
-    if selected is None:
+    target = as_of or date.today()
+    ending = fetch_heat_dates_ending("industry", target, 1)
+    if not ending:
         raise RuntimeError("no industry heat rows to interpret")
-    if as_of is not None and as_of not in slider_dates:
-        raise RuntimeError("date is outside the last 11 trading days")
+    selected = ending[-1]
 
     window_dates = fetch_heat_dates_ending("industry", selected, window)
     if not window_dates:

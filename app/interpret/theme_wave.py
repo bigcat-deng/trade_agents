@@ -11,7 +11,6 @@ from app.db import (
     fetch_concept_heat_window,
     fetch_heat_dates_ending,
     fetch_industry_heat_window,
-    fetch_rotation_dates,
 )
 from app.prompts.template import PromptTemplate, load_prompt
 from app.themes import list_themes
@@ -201,6 +200,27 @@ def _data_block(
             f"\t{_fmt(end_vals[i] if i < len(end_vals) else None)}"
         )
 
+    scenarios = theme_payload.get("scenarios") or []
+    lines.extend(
+        [
+            "",
+            "## 光谱情景（自动标签；跟过程不跟高度）",
+            "主题\t情景\t近端斜率\t斜率值\t截止热度\t读法",
+        ]
+    )
+    if scenarios:
+        for row in scenarios:
+            lines.append(
+                f"{row.get('label') or ''}\t"
+                f"{row.get('scenario') or '—'}\t"
+                f"{row.get('slope_label') or ''}\t"
+                f"{_fmt(row.get('near_slope'), 4)}\t"
+                f"{_fmt(row.get('hotness'))}\t"
+                f"{row.get('hint') or ''}"
+            )
+    else:
+        lines.append("（本窗无情景表）")
+
     lines.extend(
         [
             "",
@@ -323,7 +343,9 @@ def _data_block(
         [
             "",
             "## 读图提示（供组织叙述，不要复述本段）",
-            "先写清当前热/冷；行业侧结合长红柱、二波回补、候补龙头；再写三层衔接；最后用可验证条件句写下文观察。",
+            "先写清当前热/冷并点名光谱情景（萌芽/中位/久热+斜率）；"
+            "行业侧结合长红柱、二波回补、候补龙头；再写三层衔接；"
+            "下文用可验证条件句盯萌芽续热或久热转冷，勿把中位默认可跟。",
         ]
     )
     return "\n".join(lines)
@@ -335,12 +357,11 @@ def build_theme_wave_reading_prompt(
     template = load_prompt("theme-wave-reading")
     window = int(template.config.get("window_trading_days") or DEFAULT_WINDOW_DAYS)
 
-    slider_dates = fetch_rotation_dates("concept", 10)
-    selected = as_of or (slider_dates[-1] if slider_dates else None)
-    if selected is None:
+    target = as_of or date.today()
+    ending = fetch_heat_dates_ending("concept", target, 1)
+    if not ending:
         raise RuntimeError("no concept heat rows to interpret")
-    if as_of is not None and as_of not in slider_dates:
-        raise RuntimeError("date is outside the last 11 trading days")
+    selected = ending[-1]
 
     window_dates = fetch_heat_dates_ending("concept", selected, window)
     if not window_dates:

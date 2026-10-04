@@ -835,6 +835,72 @@ def fetch_board_constituent_codes(
             return [row[0] for row in cur.fetchall()]
 
 
+def fetch_board_constituents_many(
+    board_type: str,
+    board_codes: list[str],
+    *,
+    as_of: date | None = None,
+) -> dict[str, set[str]]:
+    """Latest constituent sets for many boards (empty set if none).
+
+    When ``as_of`` is set, prefer the latest snapshot on/before that day;
+    boards with no earlier row fall back to the absolute latest snapshot
+    (membership sync may lag heat windows).
+    """
+    if not board_codes:
+        return {}
+    codes = list(dict.fromkeys(board_codes))
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            if as_of is None:
+                cur.execute(
+                    """
+                    SELECT c.board_code, c.stock_code
+                    FROM board_constituent_daily AS c
+                    JOIN (
+                        SELECT board_code, MAX(trade_date) AS trade_date
+                        FROM board_constituent_daily
+                        WHERE board_type = %s
+                          AND board_code = ANY(%s)
+                        GROUP BY board_code
+                    ) AS latest
+                      ON c.board_code = latest.board_code
+                     AND c.trade_date = latest.trade_date
+                    WHERE c.board_type = %s
+                    """,
+                    (board_type, codes, board_type),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT c.board_code, c.stock_code
+                    FROM board_constituent_daily AS c
+                    JOIN (
+                        SELECT board_code,
+                               COALESCE(
+                                   MAX(trade_date) FILTER (
+                                       WHERE trade_date <= %s
+                                   ),
+                                   MAX(trade_date)
+                               ) AS trade_date
+                        FROM board_constituent_daily
+                        WHERE board_type = %s
+                          AND board_code = ANY(%s)
+                        GROUP BY board_code
+                    ) AS latest
+                      ON c.board_code = latest.board_code
+                     AND c.trade_date = latest.trade_date
+                    WHERE c.board_type = %s
+                    """,
+                    (as_of, board_type, codes, board_type),
+                )
+            rows = cur.fetchall()
+    out: dict[str, set[str]] = {code: set() for code in codes}
+    for board_code, stock_code in rows:
+        out.setdefault(str(board_code), set()).add(str(stock_code))
+    return out
+
+
 def fetch_stock_bars_for_codes(
     codes: list[str],
     start: date,
@@ -1405,6 +1471,34 @@ def fetch_heat_dates_ending(
                 ORDER BY trade_date
                 """,
                 (board_type, on_or_before, limit),
+            )
+            return [row[0] for row in cur.fetchall()]
+
+
+def fetch_heat_dates_after(
+    board_type: str,
+    after: date,
+    limit: int,
+) -> list[date]:
+    """Up to `limit` distinct heat dates strictly after the day, oldest first."""
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date
+                FROM (
+                    SELECT DISTINCT trade_date
+                    FROM board_heat_daily
+                    WHERE board_type = %s
+                      AND trade_date > %s
+                    ORDER BY trade_date ASC
+                    LIMIT %s
+                ) AS recent
+                ORDER BY trade_date
+                """,
+                (board_type, after, limit),
             )
             return [row[0] for row in cur.fetchall()]
 

@@ -58,7 +58,7 @@ def build_concept_wavelet_payload(
             f"（近端 Top{base_top_n}∪主题A+B+卫星，共 {n} 列"
             + (f"，其中主题补入 {theme_added}" if theme_added else "")
             + f"）；二维小波 {WAVELET}×{LEVEL} 层；"
-            "横轴=共动叶序（非产业链），纵轴=交易日；颜色越高越热（翻转分位）。"
+            "横轴=轨迹+结构融合叶序（非产业链），纵轴=交易日；颜色越高越热（翻转分位）。"
         ),
     )
     result["top_n"] = base_top_n

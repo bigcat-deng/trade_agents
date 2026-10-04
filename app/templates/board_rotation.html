@@ -205,12 +205,63 @@
       padding: 1.5rem 1rem;
       color: var(--muted);
     }
+    .asof-picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 0.75rem;
+      align-items: center;
+      margin: 0.35rem 0 0.85rem;
+      padding: 0.7rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .asof-picker label {
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .asof-picker input[type="date"] {
+      font: inherit;
+      padding: 0.4rem 0.55rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .asof-picker button {
+      font: inherit;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .asof-picker button:hover {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+    .asof-picker .hint {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
   </style>
 </head>
 <body>
   <main>
     <a class="back" href="/">← 索引</a>
     <h1>{{ title }}</h1>
+    <form class="asof-picker" id="asof-picker" action="{{ rotation_path }}" method="get">
+      <label for="asof-input">截止日期</label>
+      <input type="date" id="asof-input" name="as_of" value="{{ requested_as_of }}" required>
+      <button type="submit">确定</button>
+      <span class="hint">
+        按所选日 23:59 截止
+        {% if as_of and requested_as_of and as_of != requested_as_of %}
+        · 实际热度日 {{ as_of }}
+        {% elif as_of %}
+        · 热度截止 {{ as_of }}
+        {% endif %}
+      </span>
+    </form>
     {% if kind_label == "概念" %}
     <p class="meta">
       <a href="/boards/concept/themes" style="color:#1d4ed8;text-decoration:none">主题域总览 →</a>
@@ -346,7 +397,7 @@
         if (previous) loadDate(Number(slider.value));
       });
 
-      const readingAsOf = dates[dates.length - 1];
+      const readingAsOf = {{ as_of | tojson }};
       const readingMeta = document.getElementById("reading-meta");
       const readingBody = document.getElementById("reading-body");
       const rereadBtn = document.getElementById("reread-btn");

@@ -48,12 +48,53 @@
     }
     .wave-pair {
       display: grid;
-      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 0.65rem;
       align-items: stretch;
     }
     @media (max-width: 980px) {
       .wave-pair { grid-template-columns: 1fr; }
+    }
+    .wave-pair .panel-caption {
+      margin: 0.45rem 0 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+    .wave-pair .legend {
+      margin-top: 0.45rem;
+    }
+    .map-slider {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.35rem 0.85rem;
+      align-items: center;
+      margin: 0.75rem 0 0.35rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .map-slider strong {
+      font-variant-numeric: tabular-nums;
+      min-width: 7.5rem;
+    }
+    .map-slider input[type="range"] {
+      width: 100%;
+      accent-color: #1d4ed8;
+    }
+    .map-slider .ends {
+      grid-column: 2;
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .map-slider .hint {
+      grid-column: 1 / -1;
+      margin: 0.15rem 0 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.4;
     }
     .panel {
       margin: 0;
@@ -77,6 +118,60 @@
       border-bottom: 1px dotted var(--line);
     }
     .legend a:hover { border-color: #1d4ed8; color: #1d4ed8; }
+    .scenario-board {
+      margin: 0.85rem 0 1.1rem;
+      padding: 0.75rem 0.9rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .scenario-board h3 {
+      margin: 0 0 0.25rem;
+      font-size: 1.02rem;
+    }
+    .scenario-board .meta {
+      margin: 0 0 0.65rem;
+    }
+    .scenario-board .table-wrap {
+      overflow-x: auto;
+    }
+    .scenario-board table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .scenario-board th,
+    .scenario-board td {
+      padding: 0.35rem 0.5rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      white-space: nowrap;
+    }
+    .scenario-board td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .scenario-board a {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+    .scenario-board a:hover { text-decoration: underline; }
+    .scenario-board .tag {
+      display: inline-block;
+      min-width: 2.6em;
+      font-weight: 650;
+    }
+    .scenario-board .tag.bud { color: #047857; }
+    .scenario-board .tag.mid { color: #b45309; }
+    .scenario-board .tag.hot { color: #b91c1c; }
+    .scenario-board .tag.none { color: var(--muted); font-weight: 500; }
+    .scenario-board .slope.up { color: #b91c1c; }
+    .scenario-board .slope.down { color: #047857; }
+    .scenario-board .slope.flat { color: var(--muted); }
+    .scenario-board .hint {
+      color: var(--muted);
+      white-space: normal;
+      max-width: 18rem;
+    }
     .concept-theme-picker {
       margin: 0.65rem 0 0;
       display: flex;
@@ -100,6 +195,152 @@
     .concept-theme-picker .hint {
       color: var(--muted);
       font-size: 0.84rem;
+    }
+    .board-pick {
+      margin: 0.7rem 0 0.55rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 0.55rem;
+      align-items: center;
+    }
+    .board-pick button,
+    .board-pick input {
+      font: inherit;
+      font-size: 0.9rem;
+    }
+    .board-pick button {
+      padding: 0.32rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .board-pick button:hover { border-color: #b91c1c; color: #b91c1c; }
+    .board-pick input[type="text"] {
+      flex: 1 1 14rem;
+      min-width: 10rem;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .board-pick .pick-status {
+      flex: 1 1 100%;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+    .board-pick .pick-status.err { color: #b91c1c; }
+    .board-pick .pick-status.ok { color: #b91c1c; font-weight: 650; }
+    .board-pick-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(28, 25, 23, 0.35);
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .board-pick-modal.open { display: flex; }
+    .board-pick-dialog {
+      width: min(420px, 100%);
+      max-height: min(70vh, 560px);
+      display: flex;
+      flex-direction: column;
+      background: var(--card);
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 40px rgba(28, 25, 23, 0.18);
+    }
+    .board-pick-dialog header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .board-pick-dialog header h3 {
+      margin: 0;
+      font-size: 0.98rem;
+    }
+    .board-pick-dialog header button {
+      font: inherit;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+    .board-pick-dialog .filter {
+      margin: 0.55rem 0.75rem 0.35rem;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid var(--line);
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .board-pick-dialog ul {
+      list-style: none;
+      margin: 0;
+      padding: 0.25rem 0 0.55rem;
+      overflow: auto;
+    }
+    .board-pick-dialog li button {
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      padding: 0.4rem 0.85rem;
+      font: inherit;
+      font-size: 0.88rem;
+      cursor: pointer;
+      color: var(--ink);
+    }
+    .board-pick-dialog li button:hover,
+    .board-pick-dialog li button:focus {
+      background: #fef2f2;
+      color: #b91c1c;
+      outline: none;
+    }
+    .board-kline-embed {
+      margin: 0 0 0.75rem;
+      padding: 0.65rem 0.75rem 0.85rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .board-kline-embed[hidden] { display: none; }
+    .board-kline-embed .kline-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.45rem 1rem;
+      margin: 0 0 0.45rem;
+    }
+    .board-kline-embed .kline-head h3 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+    .board-kline-embed .kline-head a {
+      color: #1d4ed8;
+      text-decoration: none;
+      font-size: 0.88rem;
+    }
+    .board-kline-embed .kline-meta {
+      margin: 0 0 0.55rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+    .board-kline-embed .kline-error {
+      margin: 0.4rem 0;
+      color: #b91c1c;
+    }
+    .board-kline-embed .kline-chart {
+      min-height: 120px;
+      overflow-x: auto;
     }
     .wavelet-link {
       margin: 0.75rem 0 0;
@@ -242,6 +483,43 @@
       line-height: 1.5;
       margin: 0.75rem 0 0;
     }
+    .asof-picker {
+      margin: 0.55rem 0 0.85rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 0.55rem;
+      align-items: center;
+    }
+    .asof-picker label {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .asof-picker input[type="date"] {
+      font: inherit;
+      font-size: 0.9rem;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .asof-picker button {
+      font: inherit;
+      font-size: 0.9rem;
+      padding: 0.32rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .asof-picker button:hover {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+    .asof-picker .hint {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
   </style>
   <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
 </head>
@@ -249,10 +527,24 @@
   <main>
     <a class="back" href="/boards/concept/themes">← 主题域</a>
     <h1>{{ title }}</h1>
+    <form class="asof-picker" id="asof-picker" action="/boards/concept/themes/wave" method="get">
+      <label for="asof-input">截止日期</label>
+      <input type="date" id="asof-input" name="as_of" value="{{ requested_as_of }}" required>
+      <input type="hidden" name="days" value="{{ days | default(40) }}">
+      <button type="submit">确定</button>
+      <span class="hint">
+        按所选日 23:59 截止
+        {% if as_of and requested_as_of and as_of != requested_as_of %}
+        · 实际热度日 {{ as_of }}
+        {% elif as_of %}
+        · 热度截止 {{ as_of }}
+        {% endif %}
+      </span>
+    </form>
     {% if empty_message %}
     <p class="meta">{{ empty_message }}</p>
     {% else %}
-    <p class="meta">窗口 {{ dates[0] if dates else "—" }} → {{ dates[-1] if dates else "—" }}（{{ dates|length }} 个交易日）· 高度为各主题群 A 热度分位翻转为「越高越热」· 主题之间已插值成连续水面 · 默认俯视</p>
+    <p class="meta">窗口 {{ dates[0] if dates else "—" }} → {{ dates[-1] if dates else "—" }}（{{ dates|length }} 个交易日）· 颜色为各主题群 A 热度分位翻转（越红越热）· 主题之间已插值 · 左光谱序、右近热排序</p>
 
     <section class="reading" id="chart-reading">
       <div class="reading-head">
@@ -263,34 +555,110 @@
       <div class="conclusion" id="reading-body"></div>
     </section>
 
-    <h2>光谱水面</h2>
-    <p class="meta">{{ axis_note }}</p>
-    <div class="wave-pair" data-wave-pair="spectrum">
-      <div class="panel" data-role="surface">{{ spectrum_chart_html | safe }}</div>
-      <div class="panel" data-role="contour">{{ spectrum_map_html | safe }}</div>
+    <h2>主题等位图</h2>
+    <div class="wave-pair" data-wave-pair="maps">
+      <div class="panel" data-role="spectrum-map">
+        {{ spectrum_map_html | safe }}
+        <p class="panel-caption">{{ axis_note }}</p>
+        <ul class="legend">
+          {% for label, href in spectrum_links %}
+          <li><a href="{{ href }}">{{ label }}</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="panel" data-role="ranked-map">
+        {{ ranked_map_html | safe }}
+        <p class="panel-caption">{{ rank_axis_note }} 排序基准日 {{ rank_as_of }}。</p>
+        <ul class="legend">
+          {% for label, href in ranked_links %}
+          <li><a href="{{ href }}">{{ loop.index }}. {{ label }}</a></li>
+          {% endfor %}
+        </ul>
+      </div>
     </div>
-    <ul class="legend">
-      {% for label, href in spectrum_links %}
-      <li><a href="{{ href }}">{{ label }}</a></li>
-      {% endfor %}
-    </ul>
-
-    <h2>近热排序水面</h2>
-    <p class="meta">{{ rank_axis_note }} 排序基准日 {{ rank_as_of }}。</p>
-    <div class="wave-pair" data-wave-pair="ranked">
-      <div class="panel" data-role="surface">{{ ranked_chart_html | safe }}</div>
-      <div class="panel" data-role="contour">{{ ranked_map_html | safe }}</div>
+    {% if map_slider_dates and map_slider_dates|length > 1 %}
+    <div class="map-slider" id="map-slider">
+      <strong id="map-slider-date">{{ map_slider_dates[map_slider_index] }}</strong>
+      <input
+        id="map-slider-input"
+        type="range"
+        min="0"
+        max="{{ map_slider_dates|length - 1 }}"
+        value="{{ map_slider_index }}"
+        step="1"
+        aria-label="主题等位图时间"
+      >
+      <div class="ends">
+        <span>{{ map_slider_dates[0] }}</span>
+        <span>{{ map_slider_dates[-1] }}</span>
+      </div>
+      <p class="hint">只带动两幅等位图热度演变；横轴主题序固定。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
     </div>
-    <ul class="legend">
-      {% for label, href in ranked_links %}
-      <li><a href="{{ href }}">{{ loop.index }}. {{ label }}</a></li>
-      {% endfor %}
-    </ul>
+    {% endif %}
+    {% if scenarios %}
+    <section class="scenario-board" aria-label="光谱情景标签">
+      <h3>光谱情景</h3>
+      <p class="meta">{{ scenario_note }}</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>主题</th>
+              <th>情景</th>
+              <th>近端斜率</th>
+              <th>截止热度</th>
+              <th>读法</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in scenarios %}
+            <tr>
+              <td><a href="{{ row.href }}">{{ row.label }}</a></td>
+              <td>
+                {% if row.scenario == "萌芽" %}
+                <span class="tag bud">萌芽</span>
+                {% elif row.scenario == "中位" %}
+                <span class="tag mid">中位</span>
+                {% elif row.scenario == "久热" %}
+                <span class="tag hot">久热</span>
+                {% else %}
+                <span class="tag none">—</span>
+                {% endif %}
+              </td>
+              <td class="slope {{ row.slope_key }}">{{ row.slope_label }}{% if row.near_slope is not none %} <span class="num">({{ '%.3f'|format(row.near_slope) }})</span>{% endif %}</td>
+              <td class="num">{% if row.hotness is not none %}{{ '%.2f'|format(row.hotness) }}{% else %}—{% endif %}</td>
+              <td class="hint">{{ row.hint }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
 
     <h2>行业板块热度</h2>
     {% if industry_short_html %}
     <p class="meta">{{ industry_axis_note }} 共 {{ industry_board_count }} 个行业板块。读图时优先看时间形态，不要只盯截止日最热那一列。</p>
-    <div class="panel">{{ industry_short_html | safe }}</div>
+    <div class="panel" id="industry-board-chart">{{ industry_short_html | safe }}</div>
+    {% if industry_slider_dates and industry_slider_dates|length > 1 %}
+    <div class="map-slider" id="industry-map-slider">
+      <strong id="industry-slider-date">{{ industry_slider_dates[industry_slider_index] }}</strong>
+      <input
+        id="industry-slider-input"
+        type="range"
+        min="0"
+        max="{{ industry_slider_dates|length - 1 }}"
+        value="{{ industry_slider_index }}"
+        step="1"
+        aria-label="行业热度图时间"
+      >
+      <div class="ends">
+        <span>{{ industry_slider_dates[0] }}</span>
+        <span>{{ industry_slider_dates[-1] }}</span>
+      </div>
+      <p class="hint">只带动行业热度图演变；横轴叶序固定。方格下沿黑/白细线=当日收盘收益超过近100日波动率2倍（黑正白负）；顶上红/绿字=最后交易日正超/负超行业；小交叉×=MACD、◆=短长热（上穿橙、下穿蓝）；右侧实线=中证500同日收盘收益，虚线=成交量（按双方波动对齐到收益尺度）。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
+    </div>
+    {% endif %}
     <aside class="shape-glossary" aria-label="行业时间形态读法说明">
       <p>行业时间形态 · 读法说明（解读表「读法」列同义）</p>
       <dl>
@@ -320,6 +688,31 @@
         </div>
       </dl>
     </aside>
+    <div class="board-pick" id="industry-board-pick" aria-label="定位行业板块">
+      <button type="button" id="industry-board-pick-open">选择</button>
+      <input type="text" id="industry-board-pick-name" placeholder="板块名称" autocomplete="off" spellcheck="false">
+      <button type="button" id="industry-board-pick-confirm">确定</button>
+      <p class="pick-status" id="industry-board-pick-status"></p>
+    </div>
+    <div class="board-pick-modal" id="industry-board-pick-modal" aria-hidden="true">
+      <div class="board-pick-dialog" role="dialog" aria-modal="true" aria-labelledby="industry-board-pick-title">
+        <header>
+          <h3 id="industry-board-pick-title">选择行业</h3>
+          <button type="button" id="industry-board-pick-close" aria-label="关闭">×</button>
+        </header>
+        <input class="filter" type="search" id="industry-board-pick-filter" placeholder="筛选名称…" autocomplete="off">
+        <ul id="industry-board-pick-list"></ul>
+      </div>
+    </div>
+    <section class="board-kline-embed" id="industry-board-kline-embed" hidden>
+      <div class="kline-head">
+        <h3 id="industry-board-kline-title">K线</h3>
+        <a id="industry-board-kline-link" href="#" target="_blank" rel="noopener">打开完整K线页 →</a>
+      </div>
+      <p class="kline-meta" id="industry-board-kline-meta"></p>
+      <p class="kline-error" id="industry-board-kline-error" hidden></p>
+      <div class="kline-chart" id="industry-board-kline-chart"></div>
+    </section>
     {% if industry_wavelet_href %}
     <p class="wavelet-link"><a href="{{ industry_wavelet_href }}">二维小波分析 →</a></p>
     {% endif %}
@@ -331,6 +724,50 @@
     {% if concept_short_html %}
     <p class="meta">{{ concept_axis_note }} 筛选段 {{ concept_select_from }} → {{ concept_select_to }} · 共 {{ concept_board_count }} 个概念。</p>
     <div class="panel" id="concept-top-chart">{{ concept_short_html | safe }}</div>
+    {% if concept_slider_dates and concept_slider_dates|length > 1 %}
+    <div class="map-slider" id="concept-map-slider">
+      <strong id="concept-slider-date">{{ concept_slider_dates[concept_slider_index] }}</strong>
+      <input
+        id="concept-slider-input"
+        type="range"
+        min="0"
+        max="{{ concept_slider_dates|length - 1 }}"
+        value="{{ concept_slider_index }}"
+        step="1"
+        aria-label="概念热度图时间"
+      >
+      <div class="ends">
+        <span>{{ concept_slider_dates[0] }}</span>
+        <span>{{ concept_slider_dates[-1] }}</span>
+      </div>
+      <p class="hint">只带动概念热度图演变；横轴叶序与入选名单固定。方格下沿黑/白细线=当日收盘收益超过近100日波动率2倍（黑正白负）；顶上红/绿字=最后交易日正超/负超概念；小交叉×=MACD、◆=短长热（上穿橙、下穿蓝）；右侧实线=中证500同日收盘收益，虚线=成交量（按双方波动对齐到收益尺度）。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
+    </div>
+    {% endif %}
+    <div class="board-pick" id="concept-board-pick" aria-label="定位概念">
+      <button type="button" id="concept-board-pick-open">选择</button>
+      <input type="text" id="concept-board-pick-name" placeholder="板块名称" autocomplete="off" spellcheck="false">
+      <button type="button" id="concept-board-pick-confirm">确定</button>
+      <p class="pick-status" id="concept-board-pick-status"></p>
+    </div>
+    <div class="board-pick-modal" id="concept-board-pick-modal" aria-hidden="true">
+      <div class="board-pick-dialog" role="dialog" aria-modal="true" aria-labelledby="concept-board-pick-title">
+        <header>
+          <h3 id="concept-board-pick-title">选择概念</h3>
+          <button type="button" id="concept-board-pick-close" aria-label="关闭">×</button>
+        </header>
+        <input class="filter" type="search" id="concept-board-pick-filter" placeholder="筛选名称…" autocomplete="off">
+        <ul id="concept-board-pick-list"></ul>
+      </div>
+    </div>
+    <section class="board-kline-embed" id="concept-board-kline-embed" hidden>
+      <div class="kline-head">
+        <h3 id="concept-board-kline-title">K线</h3>
+        <a id="concept-board-kline-link" href="#" target="_blank" rel="noopener">打开完整K线页 →</a>
+      </div>
+      <p class="kline-meta" id="concept-board-kline-meta"></p>
+      <p class="kline-error" id="concept-board-kline-error" hidden></p>
+      <div class="kline-chart" id="concept-board-kline-chart"></div>
+    </section>
     <div class="concept-theme-picker">
       <label for="concept-theme-select">主题高亮</label>
       <select id="concept-theme-select">
@@ -348,17 +785,31 @@
     <p class="meta">还没有概念短热 Top 可画。</p>
     {% endif %}
 
-    <p class="foot">主题组：右侧平面图单击后左侧 3D 用红点标出同一位置，再单击清除。行业/概念组：悬停查看短热（分位翻转，越高越热）。概念图可用下方下拉按主题阴影标出成员列。</p>
+    <p class="foot">行业/概念图可用「选择 / 确定」定位列并展开同窗 K 线；概念图也可用主题下拉阴影标出成员列。</p>
     {% endif %}
   </main>
   <script>
     (function () {
-      const MARKER_TRACE = 1;
-      let markerPair = null;
-      const bound = new WeakSet();
       const conceptThemeOptions = {{ concept_theme_options | tojson }};
       const interpretTemplate = {{ interpret_template | tojson }};
       const readingAsOf = {{ as_of | tojson }};
+      const windowStart = {{ window_start | tojson }};
+      const windowEnd = {{ window_end | tojson }};
+      const industryBoardNames = {{ industry_board_names | default([]) | tojson }};
+      const industryBoardCodes = {{ industry_board_codes | default([]) | tojson }};
+      const industryDateCount = {{ industry_date_count | default(0) | tojson }};
+      const conceptBoardNames = {{ concept_board_names | default([]) | tojson }};
+      const conceptBoardCodes = {{ concept_board_codes | default([]) | tojson }};
+      const conceptDateCount = {{ concept_date_count | default(0) | tojson }};
+      const mapSliderDates = {{ map_slider_dates | default([]) | tojson }};
+      const mapSliderIndex = {{ map_slider_index | default(0) | tojson }};
+      const mapScrubFrames = {{ map_scrub_frames | default([]) | tojson }};
+      const industrySliderDates = {{ industry_slider_dates | default([]) | tojson }};
+      const industrySliderIndex = {{ industry_slider_index | default(0) | tojson }};
+      const industryScrubFrames = {{ industry_scrub_frames | default([]) | tojson }};
+      const conceptSliderDates = {{ concept_slider_dates | default([]) | tojson }};
+      const conceptSliderIndex = {{ concept_slider_index | default(0) | tojson }};
+      const conceptScrubFrames = {{ concept_scrub_frames | default([]) | tojson }};
       let interpretRequestId = 0;
 
       const READING_TITLES = new Set([
@@ -583,106 +1034,658 @@
         if (metaEl) metaEl.textContent = "暂无截止日，无法解读";
       }
 
-      function nearestIndex(values, target) {
-        let best = 0;
-        let bestDist = Infinity;
-        for (let i = 0; i < values.length; i += 1) {
-          const dist = Math.abs(Number(values[i]) - target);
-          if (dist < bestDist) {
-            bestDist = dist;
-            best = i;
-          }
-        }
-        return best;
-      }
-
       function plotIn(panel) {
         return panel ? panel.querySelector(".js-plotly-plot") : null;
       }
 
-      function pairPlots(pairEl) {
-        const surface = plotIn(pairEl.querySelector('[data-role="surface"]'));
-        const contour = plotIn(pairEl.querySelector('[data-role="contour"]'));
-        return { pairEl, surface, contour };
+      function conceptPlot() {
+        return plotIn(document.getElementById("concept-top-chart"));
       }
 
-      function lookupFromContourPoint(contourGd, point) {
-        const xs = contourGd.data[0].x;
-        const ys = contourGd.data[0].y;
-        const zs = contourGd.data[0].z;
-        if (!xs || !ys || !zs) return null;
-
-        const xi = nearestIndex(xs, Number(point.x));
-        const yi = nearestIndex(ys, Number(point.y));
-        const row = zs[yi];
-        const heat = row ? row[xi] : null;
-        if (heat == null || Number.isNaN(Number(heat))) return null;
-
-        return {
-          x: Number(xs[xi]),
-          y: Number(ys[yi]),
-          z: Number(heat),
-        };
+      function industryPlot() {
+        return plotIn(document.getElementById("industry-board-chart"));
       }
 
-      function clearMarker(surfaceGd) {
-        if (!surfaceGd || typeof Plotly === "undefined") return;
-        if (!surfaceGd.data || !surfaceGd.data[MARKER_TRACE]) return;
-        Plotly.restyle(surfaceGd, { x: [[null]], y: [[null]], z: [[null]] }, [MARKER_TRACE]);
+      function yTicks(dates) {
+        const n = dates.length;
+        if (!n) return { tickvals: [], ticktext: [] };
+        const step = Math.max(1, Math.floor(n / 6));
+        const tickvals = [];
+        for (let i = 0; i < n; i += step) tickvals.push(i);
+        if (tickvals[tickvals.length - 1] !== n - 1) tickvals.push(n - 1);
+        return { tickvals, ticktext: tickvals.map((i) => dates[i]) };
       }
 
-      function setMarker(surfaceGd, info) {
-        if (!surfaceGd || typeof Plotly === "undefined") return;
-        if (!surfaceGd.data || !surfaceGd.data[MARKER_TRACE]) return;
-        Plotly.restyle(
-          surfaceGd,
-          { x: [[info.x]], y: [[info.y]], z: [[info.z]] },
-          [MARKER_TRACE]
+      function themeLabelForX(xValue, tickvals, ticktext) {
+        if (!tickvals || !tickvals.length || !ticktext || !ticktext.length) {
+          return "主题轴 " + Number(xValue).toFixed(2);
+        }
+        for (let i = 0; i < tickvals.length; i += 1) {
+          if (Math.abs(Number(tickvals[i]) - Number(xValue)) < 1e-9) {
+            return ticktext[i];
+          }
+        }
+        for (let i = 0; i < tickvals.length - 1; i += 1) {
+          const left = Number(tickvals[i]);
+          const right = Number(tickvals[i + 1]);
+          if (left <= xValue && xValue <= right) {
+            return ticktext[i] + " ↔ " + ticktext[i + 1];
+          }
+        }
+        if (xValue < Number(tickvals[0])) return ticktext[0];
+        return ticktext[ticktext.length - 1];
+      }
+
+      function formatHeat(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return "—";
+        }
+        return Number(value).toFixed(3);
+      }
+
+      function buildCustomdata(dates, xs, zs, tickvals, ticktext) {
+        const labels = xs.map((x) => themeLabelForX(x, tickvals, ticktext));
+        return dates.map((day, i) =>
+          xs.map((_, j) => [labels[j], day, formatHeat(zs[i] ? zs[i][j] : null)])
         );
       }
 
-      function onContourClick(pair, eventData) {
-        if (markerPair === pair) {
-          clearMarker(pair.surface);
-          markerPair = null;
-          return;
-        }
-        if (markerPair && markerPair !== pair) {
-          clearMarker(markerPair.surface);
-          markerPair = null;
-        }
-        const point = eventData && eventData.points && eventData.points[0];
-        if (!point) return;
-        const info = lookupFromContourPoint(pair.contour, point);
-        if (!info) return;
-        setMarker(pair.surface, info);
-        markerPair = pair;
+      function applyMapFrame(index) {
+        if (!mapScrubFrames || !mapScrubFrames.length) return;
+        const frame = mapScrubFrames[index];
+        if (!frame) return;
+        const dateLabel = document.getElementById("map-slider-date");
+        if (dateLabel) dateLabel.textContent = frame.as_of || mapSliderDates[index] || "";
+        const spectrumGd = plotIn(
+          document.querySelector('.wave-pair [data-role="spectrum-map"]')
+        );
+        const rankedGd = plotIn(
+          document.querySelector('.wave-pair [data-role="ranked-map"]')
+        );
+        if (!spectrumGd || !rankedGd || typeof Plotly === "undefined") return;
+        const dates = frame.dates || [];
+        const y = dates.map((_, i) => i);
+        const ticks = yTicks(dates);
+        const sx = spectrumGd.data[0].x;
+        const rx = rankedGd.data[0].x;
+        const sTicks = spectrumGd.layout.xaxis.tickvals;
+        const sText = spectrumGd.layout.xaxis.ticktext;
+        const rTicks = rankedGd.layout.xaxis.tickvals;
+        const rText = rankedGd.layout.xaxis.ticktext;
+        Plotly.update(
+          spectrumGd,
+          {
+            z: [frame.spectrum_z],
+            y: [y],
+            customdata: [buildCustomdata(dates, sx, frame.spectrum_z, sTicks, sText)],
+          },
+          {
+            "yaxis.tickvals": ticks.tickvals,
+            "yaxis.ticktext": ticks.ticktext,
+          },
+          [0]
+        );
+        Plotly.update(
+          rankedGd,
+          {
+            z: [frame.ranked_z],
+            y: [y],
+            customdata: [buildCustomdata(dates, rx, frame.ranked_z, rTicks, rText)],
+          },
+          {
+            "yaxis.tickvals": ticks.tickvals,
+            "yaxis.ticktext": ticks.ticktext,
+          },
+          [0]
+        );
       }
 
-      function bindPair(pairEl) {
-        const pair = pairPlots(pairEl);
-        if (!pair.contour || !pair.surface) return false;
-        if (bound.has(pair.contour)) return true;
-        bound.add(pair.contour);
-
-        if (typeof pair.contour.on === "function") {
-          pair.contour.on("plotly_click", (eventData) => {
-            onContourClick(pair, eventData);
-          });
-        }
+      function bindMapSlider() {
+        const slider = document.getElementById("map-slider-input");
+        if (!slider || !mapScrubFrames || mapScrubFrames.length < 2) return false;
+        if (slider.dataset.bound === "1") return true;
+        slider.dataset.bound = "1";
+        slider.addEventListener("input", () => {
+          applyMapFrame(Number(slider.value));
+        });
         return true;
       }
 
-      function bindAll() {
-        let ready = 0;
-        document.querySelectorAll(".wave-pair").forEach((el) => {
-          if (bindPair(el)) ready += 1;
+      function industryExceedanceAnnotations(marks) {
+        const anns = [];
+        const groups = [
+          {
+            color: "#dc2626",
+            xs: marks.last_pos_x || [],
+            ys: marks.last_pos_y || [],
+            texts: marks.last_pos_text || [],
+          },
+          {
+            color: "#16a34a",
+            xs: marks.last_neg_x || [],
+            ys: marks.last_neg_y || [],
+            texts: marks.last_neg_text || [],
+          },
+        ];
+        groups.forEach((g) => {
+          for (let i = 0; i < g.texts.length; i += 1) {
+            if (g.texts[i] == null || g.xs[i] == null || g.ys[i] == null) continue;
+            anns.push({
+              x: g.xs[i],
+              y: g.ys[i],
+              text: g.texts[i],
+              showarrow: false,
+              textangle: -45,
+              font: { color: g.color, size: 9 },
+              xanchor: "left",
+              yanchor: "bottom",
+              xref: "x",
+              yref: "y",
+            });
+          }
         });
-        return ready;
+        return anns;
       }
 
-      function conceptPlot() {
-        return plotIn(document.getElementById("concept-top-chart"));
+      function bindCsiRowHover(gd) {
+        if (!gd || typeof Plotly === "undefined" || typeof gd.on !== "function") return false;
+        if (gd._csiRowHoverBound) return true;
+        gd._csiRowHoverBound = true;
+        const csiNames = { "中证500日收益": 1, "中证500成交量": 1 };
+        function clearCsiRowMark() {
+          gd._csiRowY = null;
+          Plotly.relayout(gd, { shapes: [] });
+        }
+        function showCsiRowMark(y) {
+          if (gd._csiRowY === y) return;
+          gd._csiRowY = y;
+          Plotly.relayout(gd, {
+            shapes: [{
+              type: "line",
+              xref: "paper",
+              yref: "y",
+              x0: 0,
+              x1: 1,
+              y0: y,
+              y1: y,
+              line: { color: "rgba(28, 25, 23, 0.55)", width: 1 },
+              layer: "above",
+            }],
+          });
+        }
+        gd.on("plotly_hover", function (data) {
+          const pt = data && data.points && data.points[0];
+          const name = pt && pt.data && pt.data.name;
+          if (!name || !csiNames[name] || pt.y == null) {
+            if (gd._csiRowY != null) clearCsiRowMark();
+            return;
+          }
+          showCsiRowMark(pt.y);
+        });
+        gd.on("plotly_unhover", function () {
+          if (gd._csiRowY != null) clearCsiRowMark();
+        });
+        return true;
+      }
+
+      function restyleCsi500Overlay(gd, frame, dates, y) {
+        const csiIdx = gd.data.findIndex((t) => t.name === "中证500日收益");
+        if (csiIdx >= 0) {
+          Plotly.restyle(
+            gd,
+            {
+              x: [frame.csi500_returns || []],
+              y: [y],
+              customdata: [dates],
+            },
+            [csiIdx]
+          );
+        }
+        const volIdx = gd.data.findIndex((t) => t.name === "中证500成交量");
+        if (volIdx >= 0) {
+          const rawVol = frame.csi500_volumes || [];
+          const custom = dates.map((day, i) => [day, rawVol[i] == null ? null : rawVol[i]]);
+          Plotly.restyle(
+            gd,
+            {
+              x: [frame.csi500_volumes_scaled || []],
+              y: [y],
+              customdata: [custom],
+            },
+            [volIdx]
+          );
+        }
+      }
+
+      function restyleExceedanceOverlay(gd, marks) {
+        const posIdx = gd.data.findIndex((t) => t.name === "收益>+2σ");
+        const negIdx = gd.data.findIndex((t) => t.name === "收益<-2σ");
+        if (posIdx >= 0 && negIdx >= 0) {
+          Plotly.restyle(
+            gd,
+            {
+              x: [marks.pos_x || [], marks.neg_x || []],
+              y: [marks.pos_y || [], marks.neg_y || []],
+            },
+            [posIdx, negIdx]
+          );
+        }
+        Plotly.relayout(gd, { annotations: industryExceedanceAnnotations(marks) });
+      }
+
+      function restyleCrossMarks(gd, marks) {
+        const keys = [
+          ["MACD上穿", "macd_up"],
+          ["MACD下穿", "macd_down"],
+          ["热度上穿", "heat_up"],
+          ["热度下穿", "heat_down"],
+        ];
+        const m = marks || {};
+        keys.forEach(([name, key]) => {
+          const idx = gd.data.findIndex((t) => t.name === name);
+          if (idx < 0) return;
+          Plotly.restyle(
+            gd,
+            {
+              x: [m[`${key}_x`] || []],
+              y: [m[`${key}_y`] || []],
+              text: [m[`${key}_text`] || []],
+            },
+            [idx]
+          );
+        });
+      }
+
+      function applyIndustryFrame(index) {
+        if (!industryScrubFrames || !industryScrubFrames.length) return;
+        const frame = industryScrubFrames[index];
+        if (!frame) return;
+        const dateLabel = document.getElementById("industry-slider-date");
+        if (dateLabel) {
+          dateLabel.textContent = frame.as_of || industrySliderDates[index] || "";
+        }
+        const gd = industryPlot();
+        if (!gd || typeof Plotly === "undefined" || !gd.data || !gd.data[0]) return;
+        const dates = frame.dates || [];
+        const y = dates.map((_, i) => i);
+        const ticks = yTicks(dates);
+        const xs = gd.data[0].x;
+        const tickvals = gd.layout.xaxis.tickvals;
+        const ticktext = gd.layout.xaxis.ticktext;
+        Plotly.update(
+          gd,
+          {
+            z: [frame.z_short],
+            y: [y],
+            customdata: [buildCustomdata(dates, xs, frame.z_short, tickvals, ticktext)],
+          },
+          {
+            "yaxis.tickvals": ticks.tickvals,
+            "yaxis.ticktext": ticks.ticktext,
+          },
+          [0]
+        );
+        restyleExceedanceOverlay(gd, frame.return_exceedance || {});
+        restyleCrossMarks(gd, frame.cross_marks || {});
+        restyleCsi500Overlay(gd, frame, dates, y);
+      }
+
+      function bindIndustrySlider() {
+        const slider = document.getElementById("industry-slider-input");
+        if (!slider || !industryScrubFrames || industryScrubFrames.length < 2) {
+          return false;
+        }
+        if (slider.dataset.bound === "1") return true;
+        slider.dataset.bound = "1";
+        slider.addEventListener("input", () => {
+          applyIndustryFrame(Number(slider.value));
+        });
+        return true;
+      }
+
+      function applyConceptFrame(index) {
+        if (!conceptScrubFrames || !conceptScrubFrames.length) return;
+        const frame = conceptScrubFrames[index];
+        if (!frame) return;
+        const dateLabel = document.getElementById("concept-slider-date");
+        if (dateLabel) {
+          dateLabel.textContent = frame.as_of || conceptSliderDates[index] || "";
+        }
+        const gd = conceptPlot();
+        if (!gd || typeof Plotly === "undefined" || !gd.data || !gd.data[0]) return;
+        const dates = frame.dates || [];
+        const y = dates.map((_, i) => i);
+        const ticks = yTicks(dates);
+        const xs = gd.data[0].x;
+        const tickvals = gd.layout.xaxis.tickvals;
+        const ticktext = gd.layout.xaxis.ticktext;
+        Plotly.update(
+          gd,
+          {
+            z: [frame.z_short],
+            y: [y],
+            customdata: [buildCustomdata(dates, xs, frame.z_short, tickvals, ticktext)],
+          },
+          {
+            "yaxis.tickvals": ticks.tickvals,
+            "yaxis.ticktext": ticks.ticktext,
+          },
+          [0]
+        );
+        restyleExceedanceOverlay(gd, frame.return_exceedance || {});
+        restyleCrossMarks(gd, frame.cross_marks || {});
+        restyleCsi500Overlay(gd, frame, dates, y);
+      }
+
+      function bindConceptSlider() {
+        const slider = document.getElementById("concept-slider-input");
+        if (!slider || !conceptScrubFrames || conceptScrubFrames.length < 2) {
+          return false;
+        }
+        if (slider.dataset.bound === "1") return true;
+        slider.dataset.bound = "1";
+        slider.addEventListener("input", () => {
+          applyConceptFrame(Number(slider.value));
+        });
+        return true;
+      }
+
+      function mountHtmlWithScripts(container, html) {
+        container.innerHTML = html;
+        container.querySelectorAll("script").forEach((oldScript) => {
+          const script = document.createElement("script");
+          for (const attr of oldScript.attributes) {
+            script.setAttribute(attr.name, attr.value);
+          }
+          script.text = oldScript.textContent || "";
+          oldScript.replaceWith(script);
+        });
+      }
+
+      function bindHeatBoardPicker(cfg) {
+        const {
+          idPrefix,
+          entityLabel,
+          boardType,
+          boardNames,
+          boardCodes,
+          dateCount,
+          getPlot,
+          onBeforeHighlight,
+        } = cfg;
+        const openBtn = document.getElementById(idPrefix + "-open");
+        const confirmBtn = document.getElementById(idPrefix + "-confirm");
+        const nameInput = document.getElementById(idPrefix + "-name");
+        const statusEl = document.getElementById(idPrefix + "-status");
+        const modal = document.getElementById(idPrefix + "-modal");
+        const closeBtn = document.getElementById(idPrefix + "-close");
+        const filterInput = document.getElementById(idPrefix + "-filter");
+        const listEl = document.getElementById(idPrefix + "-list");
+        const klineRoot = idPrefix.replace(/-pick$/, "-kline");
+        const klineEmbedEl = document.getElementById(klineRoot + "-embed");
+        const klineTitle = document.getElementById(klineRoot + "-title");
+        const klineMeta = document.getElementById(klineRoot + "-meta");
+        const klineError = document.getElementById(klineRoot + "-error");
+        const klineChart = document.getElementById(klineRoot + "-chart");
+        const klineLink = document.getElementById(klineRoot + "-link");
+        let baseAnnotations = null;
+        let baseShapes = null;
+        let klineRequestId = 0;
+
+        if (!openBtn || !confirmBtn || !Array.isArray(boardNames) || !boardNames.length) {
+          return false;
+        }
+        if (openBtn.dataset.bound === "1") return true;
+        openBtn.dataset.bound = "1";
+
+        function setStatus(text, kind) {
+          if (!statusEl) return;
+          statusEl.textContent = text || "";
+          statusEl.className = "pick-status" + (kind ? " " + kind : "");
+        }
+
+        function findBoardIndex(raw) {
+          const q = String(raw || "").trim();
+          if (!q) return -1;
+          const exact = boardNames.findIndex((n) => n === q);
+          if (exact >= 0) return exact;
+          const lower = q.toLowerCase();
+          const ci = boardNames.findIndex((n) => String(n).toLowerCase() === lower);
+          if (ci >= 0) return ci;
+          const hits = [];
+          boardNames.forEach((n, i) => {
+            if (String(n).includes(q)) hits.push(i);
+          });
+          return hits.length === 1 ? hits[0] : -1;
+        }
+
+        function renderList(filterText) {
+          if (!listEl) return;
+          const q = String(filterText || "").trim();
+          listEl.replaceChildren();
+          boardNames.forEach((name, idx) => {
+            if (q && !String(name).includes(q)) return;
+            const li = document.createElement("li");
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = idx + " · " + name;
+            btn.addEventListener("click", () => {
+              if (nameInput) nameInput.value = name;
+              closeModal();
+              if (nameInput) nameInput.focus();
+            });
+            li.appendChild(btn);
+            listEl.appendChild(li);
+          });
+        }
+
+        function openModal() {
+          if (!modal) return;
+          modal.classList.add("open");
+          modal.setAttribute("aria-hidden", "false");
+          if (filterInput) {
+            filterInput.value = "";
+            renderList("");
+            filterInput.focus();
+          } else {
+            renderList("");
+          }
+        }
+
+        function closeModal() {
+          if (!modal) return;
+          modal.classList.remove("open");
+          modal.setAttribute("aria-hidden", "true");
+        }
+
+        function ensureBaseLayout(gd) {
+          if (baseAnnotations === null) {
+            baseAnnotations = JSON.parse(JSON.stringify(gd.layout.annotations || []));
+          }
+          if (baseShapes === null) {
+            baseShapes = JSON.parse(JSON.stringify(gd.layout.shapes || []));
+          }
+        }
+
+        function highlightBoard(idx, name) {
+          const gd = getPlot();
+          if (!gd || typeof Plotly === "undefined") {
+            setStatus("图尚未就绪，请稍后重试", "err");
+            return false;
+          }
+          if (typeof onBeforeHighlight === "function") {
+            onBeforeHighlight();
+            baseAnnotations = [];
+            baseShapes = [];
+          }
+          ensureBaseLayout(gd);
+          const nDates = Math.max(1, Number(dateCount) || 1);
+          const shapes = (baseShapes || []).slice();
+          const annotations = (baseAnnotations || []).slice();
+          shapes.push({
+            type: "rect",
+            xref: "x",
+            yref: "y",
+            x0: idx - 0.5,
+            x1: idx + 0.5,
+            y0: -0.5,
+            y1: nDates - 0.5,
+            fillcolor: "rgba(15, 23, 42, 0.30)",
+            line: { width: 0 },
+            layer: "above",
+          });
+          shapes.push({
+            type: "rect",
+            xref: "x",
+            yref: "y",
+            x0: idx - 0.5,
+            x1: idx + 0.5,
+            y0: -0.5,
+            y1: nDates - 0.5,
+            fillcolor: "rgba(0,0,0,0)",
+            line: { color: "#dc2626", width: 2.2 },
+            layer: "above",
+          });
+          annotations.push({
+            xref: "x",
+            yref: "y",
+            x: idx,
+            y: nDates - 0.5,
+            text: "<b>" + idx + "</b>",
+            showarrow: false,
+            font: {
+              color: "#dc2626",
+              size: 13,
+              family: "IBM Plex Sans, Noto Sans SC, sans-serif",
+            },
+            bgcolor: "rgba(255,253,248,0.82)",
+            borderpad: 2,
+            yanchor: "bottom",
+            yshift: 8,
+          });
+          Plotly.relayout(gd, { shapes: shapes, annotations: annotations });
+          setStatus("下标 " + idx + " · " + name, "ok");
+          return true;
+        }
+
+        async function loadBoardKline(idx, name) {
+          const embed = klineEmbedEl;
+          if (!embed || !klineChart) return;
+          const code = Array.isArray(boardCodes) ? boardCodes[idx] : null;
+          if (!code || !windowStart || !windowEnd) {
+            embed.hidden = false;
+            if (klineTitle) klineTitle.textContent = name;
+            if (klineMeta) klineMeta.textContent = "";
+            if (klineError) {
+              klineError.hidden = false;
+              klineError.textContent = "缺少代码或窗口日期，无法加载K线";
+            }
+            klineChart.replaceChildren();
+            return;
+          }
+          const ticket = ++klineRequestId;
+          embed.hidden = false;
+          if (klineTitle) klineTitle.textContent = name + " · " + code;
+          if (klineMeta) {
+            klineMeta.textContent = "正在加载 " + windowStart + " → " + windowEnd + " …";
+          }
+          if (klineError) {
+            klineError.hidden = true;
+            klineError.textContent = "";
+          }
+          klineChart.replaceChildren();
+          if (klineLink) {
+            klineLink.href =
+              "/boards/" + boardType + "/" + encodeURIComponent(code) +
+              "/kline?start_date=" + encodeURIComponent(windowStart) +
+              "&end_date=" + encodeURIComponent(windowEnd);
+          }
+          try {
+            const url =
+              "/api/boards/" + encodeURIComponent(boardType) + "/" +
+              encodeURIComponent(code) +
+              "/kline-embed?start_date=" + encodeURIComponent(windowStart) +
+              "&end_date=" + encodeURIComponent(windowEnd);
+            const response = await fetch(url);
+            const payload = await response.json();
+            if (ticket !== klineRequestId) return;
+            if (!response.ok) {
+              if (klineMeta) klineMeta.textContent = "";
+              if (klineError) {
+                klineError.hidden = false;
+                klineError.textContent = payload.detail || "K线加载失败";
+              }
+              return;
+            }
+            if (klineTitle) {
+              klineTitle.textContent =
+                (payload.board_name || name) + " · " + (payload.board_code || code);
+            }
+            if (klineMeta) klineMeta.textContent = payload.summary || "";
+            if (klineLink && payload.kline_href) klineLink.href = payload.kline_href;
+            if (payload.chart_html) {
+              if (typeof Plotly === "undefined") {
+                if (klineError) {
+                  klineError.hidden = false;
+                  klineError.textContent = "Plotly 尚未加载，请刷新页面后重试";
+                }
+                return;
+              }
+              mountHtmlWithScripts(klineChart, payload.chart_html);
+            } else {
+              klineChart.replaceChildren();
+              if (klineError) {
+                klineError.hidden = false;
+                klineError.textContent = "所选区间无K线数据";
+              }
+            }
+          } catch (err) {
+            if (ticket !== klineRequestId) return;
+            if (klineMeta) klineMeta.textContent = "";
+            if (klineError) {
+              klineError.hidden = false;
+              klineError.textContent = "K线加载失败";
+            }
+          }
+        }
+
+        function confirmPick() {
+          const raw = nameInput ? nameInput.value : "";
+          const idx = findBoardIndex(raw);
+          if (idx < 0) {
+            setStatus("未找到唯一" + entityLabel + "，请用「选择」点名或输入全称", "err");
+            return;
+          }
+          if (nameInput) nameInput.value = boardNames[idx];
+          highlightBoard(idx, boardNames[idx]);
+          loadBoardKline(idx, boardNames[idx]);
+        }
+
+        openBtn.addEventListener("click", openModal);
+        confirmBtn.addEventListener("click", confirmPick);
+        if (closeBtn) closeBtn.addEventListener("click", closeModal);
+        if (modal) {
+          modal.addEventListener("click", (event) => {
+            if (event.target === modal) closeModal();
+          });
+        }
+        if (filterInput) {
+          filterInput.addEventListener("input", () => renderList(filterInput.value));
+        }
+        if (nameInput) {
+          nameInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              confirmPick();
+            }
+          });
+        }
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && modal && modal.classList.contains("open")) {
+            closeModal();
+          }
+        });
+        return true;
       }
 
       function shapesForIndices(indices) {
@@ -764,6 +1767,7 @@
 
         Plotly.relayout(gd, {
           shapes: themeId ? shapesForIndices(indices) : [],
+          annotations: [],
         }).then(done, done);
       }
 
@@ -794,14 +1798,74 @@
         return true;
       }
 
+      function bindCsiRowHovers() {
+        let ready = 0;
+        if (bindCsiRowHover(industryPlot())) ready += 1;
+        if (bindCsiRowHover(conceptPlot())) ready += 1;
+        return ready;
+      }
+
+      function bindBoardPickers() {
+        let ready = 0;
+        if (
+          bindHeatBoardPicker({
+            idPrefix: "industry-board-pick",
+            entityLabel: "行业",
+            boardType: "industry",
+            boardNames: industryBoardNames,
+            boardCodes: industryBoardCodes,
+            dateCount: industryDateCount,
+            getPlot: industryPlot,
+          })
+        ) {
+          ready += 1;
+        }
+        if (
+          bindHeatBoardPicker({
+            idPrefix: "concept-board-pick",
+            entityLabel: "概念",
+            boardType: "concept",
+            boardNames: conceptBoardNames,
+            boardCodes: conceptBoardCodes,
+            dateCount: conceptDateCount,
+            getPlot: conceptPlot,
+            onBeforeHighlight: () => {
+              const select = document.getElementById("concept-theme-select");
+              if (select && select.value) {
+                select.value = "";
+                const hint = document.getElementById("concept-theme-hint");
+                if (hint) hint.textContent = "";
+              }
+            },
+          })
+        ) {
+          ready += 1;
+        }
+        return ready;
+      }
+
       const started = Date.now();
       const timer = setInterval(() => {
-        const ready = bindAll();
         const pickerReady = bindConceptThemePicker();
-        if ((ready >= 2 && pickerReady) || Date.now() - started > 8000) {
+        const boardsReady = bindBoardPickers();
+        const sliderReady = bindMapSlider();
+        const industrySliderReady = bindIndustrySlider();
+        const conceptSliderReady = bindConceptSlider();
+        const csiHoverReady = bindCsiRowHovers();
+        if (
+          ((pickerReady && boardsReady >= 1) || Date.now() - started > 8000) &&
+          (sliderReady || Date.now() - started > 8000) &&
+          (industrySliderReady || Date.now() - started > 8000) &&
+          (conceptSliderReady || Date.now() - started > 8000) &&
+          (csiHoverReady >= 1 || Date.now() - started > 8000)
+        ) {
           clearInterval(timer);
-          bindAll();
           bindConceptThemePicker();
+          bindBoardPickers();
+          bindMapSlider();
+          bindIndustrySlider();
+          bindConceptSlider();
+          bindCsiRowHovers();
         }
       }, 120);
     })();

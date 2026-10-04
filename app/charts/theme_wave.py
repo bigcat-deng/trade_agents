@@ -4,6 +4,49 @@ from __future__ import annotations
 
 import plotly.graph_objects as go
 
+from app.themes.board_cross_marks import CROSS_STYLE
+
+# Hover on CSI 500 traces draws a paper-wide row line (shared y with the heat).
+_CSI_ROW_HOVER_SCRIPT = """
+var gd = document.getElementById('{plot_id}');
+if (gd && typeof Plotly !== 'undefined' && !gd._csiRowHoverBound) {
+  gd._csiRowHoverBound = true;
+  var csiNames = {'中证500日收益': 1, '中证500成交量': 1};
+  function clearCsiRowMark() {
+    gd._csiRowY = null;
+    Plotly.relayout(gd, {shapes: []});
+  }
+  function showCsiRowMark(y) {
+    if (gd._csiRowY === y) return;
+    gd._csiRowY = y;
+    Plotly.relayout(gd, {shapes: [{
+      type: 'line',
+      xref: 'paper',
+      yref: 'y',
+      x0: 0,
+      x1: 1,
+      y0: y,
+      y1: y,
+      line: {color: 'rgba(28, 25, 23, 0.55)', width: 1},
+      layer: 'above'
+    }]});
+  }
+  gd.on('plotly_hover', function(data) {
+    var pt = data && data.points && data.points[0];
+    var name = pt && pt.data && pt.data.name;
+    if (!name || !csiNames[name] || pt.y == null) {
+      if (gd._csiRowY != null) clearCsiRowMark();
+      return;
+    }
+    showCsiRowMark(pt.y);
+  });
+  gd.on('plotly_unhover', function() {
+    if (gd._csiRowY != null) clearCsiRowMark();
+  });
+}
+"""
+
+
 _COLORSCALE = [
     [0.0, "#1e3a5f"],
     [0.35, "#0ea5e9"],
@@ -37,6 +80,43 @@ def _format_heat(value: float | None) -> str:
     if value is None:
         return "—"
     return f"{value:.3f}"
+
+
+def exceedance_label_annotations(return_exceedance: dict[str, object]) -> list[dict]:
+    """45° upward name labels for last-day ±2σ boards (Scatter has no textangle)."""
+    anns: list[dict] = []
+    for color, xs, ys, texts in (
+        (
+            "#dc2626",
+            return_exceedance.get("last_pos_x") or [],
+            return_exceedance.get("last_pos_y") or [],
+            return_exceedance.get("last_pos_text") or [],
+        ),
+        (
+            "#16a34a",
+            return_exceedance.get("last_neg_x") or [],
+            return_exceedance.get("last_neg_y") or [],
+            return_exceedance.get("last_neg_text") or [],
+        ),
+    ):
+        for x, y, text in zip(xs, ys, texts):
+            if text is None or x is None or y is None:
+                continue
+            anns.append(
+                dict(
+                    x=float(x),
+                    y=float(y),
+                    text=str(text),
+                    showarrow=False,
+                    textangle=-45,
+                    font=dict(color=color, size=9),
+                    xanchor="left",
+                    yanchor="bottom",
+                    xref="x",
+                    yref="y",
+                )
+            )
+    return anns
 
 
 def _y_ticks(dates: list[str]) -> tuple[list[int], list[str]]:
@@ -177,10 +257,18 @@ def render_theme_wave_contour(
     x_ticktext: list[str],
     include_plotlyjs: bool = False,
     height: int = 560,
-    title: str = "平面等位图 · 点击取点",
+    title: str = "平面等位图",
     xaxis_title: str = "主题光谱（防守 → 科技）",
+    entity_label: str = "主题",
+    tickangle: float = 0,
+    bottom_margin: int | None = None,
+    return_exceedance: dict[str, object] | None = None,
+    cross_marks: dict[str, object] | None = None,
+    csi500_returns: list[float | None] | None = None,
+    csi500_volumes: list[float | None] | None = None,
+    csi500_volumes_scaled: list[float | None] | None = None,
 ) -> str:
-    """2D contour for accurate theme×time picking; drives the 3D red marker."""
+    """2D contour of theme × time hotness."""
     if not dates or not x or not z:
         return "<p class='meta'>没有可绘制的等位图数据</p>"
 
@@ -191,53 +279,166 @@ def render_theme_wave_contour(
         [[theme_labels[j], dates[i], _format_heat(z[i][j])] for j in range(len(x))]
         for i in range(len(dates))
     ]
+    tickfont_size = 8 if len(x_tickvals) > 40 else 10
+    margin_b = bottom_margin if bottom_margin is not None else (110 if tickangle else 40)
+    margin_t = 88 if return_exceedance is not None else 36
+    has_csi500 = bool(csi500_returns) and any(v is not None for v in csi500_returns)
+    colorbar = dict(
+        title=dict(text="热度", side="right"),
+        ticks="outside",
+        len=0.55 if has_csi500 else 0.75,
+        x=0.79 if has_csi500 else None,
+        thickness=12 if has_csi500 else 20,
+    )
+    colorbar = {k: v for k, v in colorbar.items() if v is not None}
 
-    fig = go.Figure(
-        data=[
-            go.Contour(
-                x=x,
-                y=y,
-                z=z,
-                colorscale=_COLORSCALE,
-                zmin=0.0,
-                zmax=1.0,
-                contours=dict(
-                    coloring="heatmap",
-                    showlines=True,
-                    start=0.0,
-                    end=1.0,
-                    size=0.1,
-                ),
-                line=dict(width=0.6, color="rgba(28,25,23,0.25)"),
-                colorbar=dict(
-                    title=dict(text="热度", side="right"),
-                    ticks="outside",
-                    len=0.75,
-                ),
-                customdata=customdata,
-                hovertemplate=(
-                    "主题 %{customdata[0]}<br>"
-                    "日期 %{customdata[1]}<br>"
-                    "热度 %{customdata[2]}<extra></extra>"
-                ),
-                name="等位图",
+    traces: list = [
+        go.Contour(
+            x=x,
+            y=y,
+            z=z,
+            colorscale=_COLORSCALE,
+            zmin=0.0,
+            zmax=1.0,
+            contours=dict(
+                coloring="heatmap",
+                showlines=True,
+                start=0.0,
+                end=1.0,
+                size=0.1,
+            ),
+            line=dict(width=0.6, color="rgba(28,25,23,0.25)"),
+            colorbar=colorbar,
+            customdata=customdata,
+            hovertemplate=(
+                f"{entity_label} %{{customdata[0]}}<br>"
+                "日期 %{customdata[1]}<br>"
+                "热度 %{customdata[2]}<extra></extra>"
+            ),
+            name="等位图",
+        )
+    ]
+    if return_exceedance is not None:
+        pos_x = list(return_exceedance.get("pos_x") or [])
+        pos_y = list(return_exceedance.get("pos_y") or [])
+        neg_x = list(return_exceedance.get("neg_x") or [])
+        neg_y = list(return_exceedance.get("neg_y") or [])
+        traces.append(
+            go.Scatter(
+                x=pos_x,
+                y=pos_y,
+                mode="lines",
+                line=dict(color="#111111", width=1.2),
+                hoverinfo="skip",
+                showlegend=False,
+                name="收益>+2σ",
             )
-        ]
+        )
+        traces.append(
+            go.Scatter(
+                x=neg_x,
+                y=neg_y,
+                mode="lines",
+                line=dict(color="#ffffff", width=1.2),
+                hoverinfo="skip",
+                showlegend=False,
+                name="收益<-2σ",
+            )
+        )
+    if cross_marks is not None:
+        for key, style in CROSS_STYLE.items():
+            xs = list(cross_marks.get(f"{key}_x") or [])
+            ys = list(cross_marks.get(f"{key}_y") or [])
+            texts = list(cross_marks.get(f"{key}_text") or [])
+            traces.append(
+                go.Scatter(
+                    x=xs,
+                    y=ys,
+                    mode="markers",
+                    marker=dict(
+                        symbol=style["symbol"],
+                        size=style["size"],
+                        color=style["color"],
+                        line=dict(width=1.4, color=style["color"]),
+                    ),
+                    text=texts,
+                    hovertemplate=(
+                        f"{style['name']}<br>%{{text}}<extra></extra>"
+                    ),
+                    showlegend=False,
+                    name=style["name"],
+                )
+            )
+    if has_csi500:
+        csi_x = [v if v is not None else None for v in (csi500_returns or [])]
+        traces.append(
+            go.Scatter(
+                x=csi_x,
+                y=y,
+                mode="lines",
+                line=dict(color="#334155", width=1.3),
+                connectgaps=False,
+                customdata=dates,
+                hovertemplate="中证500<br>%{customdata}<br>日收益 %{x:.2%}<extra></extra>",
+                showlegend=False,
+                name="中证500日收益",
+                xaxis="x2",
+                yaxis="y",
+            )
+        )
+        has_vol = bool(csi500_volumes_scaled) and any(
+            v is not None for v in csi500_volumes_scaled
+        )
+        if has_vol:
+            raw_vol = list(csi500_volumes or [])
+            vol_custom = [
+                [
+                    dates[i] if i < len(dates) else "",
+                    raw_vol[i] if i < len(raw_vol) else None,
+                ]
+                for i in range(len(y))
+            ]
+            traces.append(
+                go.Scatter(
+                    x=list(csi500_volumes_scaled or []),
+                    y=y,
+                    mode="lines",
+                    line=dict(color="#c2410c", width=1.15, dash="dot"),
+                    connectgaps=False,
+                    customdata=vol_custom,
+                    hovertemplate=(
+                        "中证500成交量<br>%{customdata[0]}<br>"
+                        "成交量 %{customdata[1]:,.0f}<extra></extra>"
+                    ),
+                    showlegend=False,
+                    name="中证500成交量",
+                    xaxis="x2",
+                    yaxis="y",
+                )
+            )
+
+    fig = go.Figure(data=traces)
+    annotations = (
+        exceedance_label_annotations(return_exceedance)
+        if return_exceedance is not None
+        else []
     )
 
-    fig.update_layout(
-        margin=dict(l=48, r=8, t=36, b=40),
+    layout = dict(
+        margin=dict(l=48, r=56 if has_csi500 else 8, t=margin_t, b=margin_b),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="#fffdf8",
         font=dict(family="IBM Plex Sans, Noto Sans SC, sans-serif", size=12, color="#1c1917"),
         title=dict(text=title, x=0, xanchor="left", font=dict(size=15)),
+        annotations=annotations,
         xaxis=dict(
             title=dict(text=xaxis_title, font=dict(size=12)),
             tickmode="array",
             tickvals=x_tickvals,
             ticktext=x_ticktext,
-            tickfont=dict(size=10),
+            tickfont=dict(size=tickfont_size),
+            tickangle=tickangle,
             gridcolor="#e7e5e4",
             zeroline=False,
         ),
@@ -251,11 +452,30 @@ def render_theme_wave_contour(
             zeroline=False,
         ),
     )
-    return fig.to_html(
+    if has_csi500:
+        layout["hovermode"] = "closest"
+        layout["hoverdistance"] = 80
+        layout["xaxis"]["domain"] = [0.0, 0.78]
+        layout["xaxis2"] = dict(
+            title=dict(text="中证500收益/量", font=dict(size=10)),
+            side="right",
+            anchor="y",
+            domain=[0.88, 1.0],
+            tickformat=".1%",
+            tickfont=dict(size=8),
+            zeroline=True,
+            zerolinecolor="#a8a29e",
+            gridcolor="#e7e5e4",
+        )
+    fig.update_layout(**layout)
+    html_kw: dict = dict(
         full_html=False,
         include_plotlyjs="cdn" if include_plotlyjs else False,
         config={"displayModeBar": False, "responsive": True},
     )
+    if has_csi500:
+        html_kw["post_script"] = _CSI_ROW_HOVER_SCRIPT
+    return fig.to_html(**html_kw)
 
 
 def render_board_heat_heatmap(
