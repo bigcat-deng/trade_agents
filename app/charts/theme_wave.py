@@ -7,42 +7,61 @@ import plotly.graph_objects as go
 from app.themes.board_cross_marks import CROSS_STYLE
 
 # Hover on CSI 500 traces draws a paper-wide row line (shared y with the heat).
+# Also force dual-subplot double-click to reset heat x + CSI x2 + shared y.
 _CSI_ROW_HOVER_SCRIPT = """
 var gd = document.getElementById('{plot_id}');
-if (gd && typeof Plotly !== 'undefined' && !gd._csiRowHoverBound) {
-  gd._csiRowHoverBound = true;
-  var csiNames = {'中证500日收益': 1, '中证500成交量': 1};
-  function clearCsiRowMark() {
-    gd._csiRowY = null;
-    Plotly.relayout(gd, {shapes: []});
+if (gd && typeof Plotly !== 'undefined') {
+  if (!gd._heatZoomResetBound) {
+    gd._heatZoomResetBound = true;
+    gd.on('plotly_doubleclick', function() {
+      var update = {'xaxis.autorange': true, 'yaxis.autorange': true};
+      if (gd.layout && gd.layout.xaxis2) update['xaxis2.autorange'] = true;
+      Plotly.relayout(gd, update);
+    });
   }
-  function showCsiRowMark(y) {
-    if (gd._csiRowY === y) return;
-    gd._csiRowY = y;
-    Plotly.relayout(gd, {shapes: [{
-      type: 'line',
-      xref: 'paper',
-      yref: 'y',
-      x0: 0,
-      x1: 1,
-      y0: y,
-      y1: y,
-      line: {color: 'rgba(28, 25, 23, 0.55)', width: 1},
-      layer: 'above'
-    }]});
-  }
-  gd.on('plotly_hover', function(data) {
-    var pt = data && data.points && data.points[0];
-    var name = pt && pt.data && pt.data.name;
-    if (!name || !csiNames[name] || pt.y == null) {
-      if (gd._csiRowY != null) clearCsiRowMark();
-      return;
+  if (!gd._csiRowHoverBound) {
+    gd._csiRowHoverBound = true;
+    var csiNames = {'中证500日收益': 1, '中证500成交量': 1};
+    function nonCsiShapes() {
+      return (gd.layout.shapes || []).filter(function(s) {
+        return s && s.name !== 'csi-row-mark';
+      });
     }
-    showCsiRowMark(pt.y);
-  });
-  gd.on('plotly_unhover', function() {
-    if (gd._csiRowY != null) clearCsiRowMark();
-  });
+    function clearCsiRowMark() {
+      gd._csiRowY = null;
+      Plotly.relayout(gd, {shapes: nonCsiShapes()});
+    }
+    function showCsiRowMark(y) {
+      if (gd._csiRowY === y) return;
+      gd._csiRowY = y;
+      var shapes = nonCsiShapes();
+      shapes.push({
+        type: 'line',
+        name: 'csi-row-mark',
+        xref: 'paper',
+        yref: 'y',
+        x0: 0,
+        x1: 1,
+        y0: y,
+        y1: y,
+        line: {color: 'rgba(28, 25, 23, 0.55)', width: 1},
+        layer: 'above'
+      });
+      Plotly.relayout(gd, {shapes: shapes});
+    }
+    gd.on('plotly_hover', function(data) {
+      var pt = data && data.points && data.points[0];
+      var name = pt && pt.data && pt.data.name;
+      if (!name || !csiNames[name] || pt.y == null) {
+        if (gd._csiRowY != null) clearCsiRowMark();
+        return;
+      }
+      showCsiRowMark(pt.y);
+    });
+    gd.on('plotly_unhover', function() {
+      if (gd._csiRowY != null) clearCsiRowMark();
+    });
+  }
 }
 """
 

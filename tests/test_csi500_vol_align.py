@@ -68,6 +68,8 @@ class CsiRowHoverScriptTests(unittest.TestCase):
             csi500_volumes_scaled=[0.01, -0.02, 0.03],
         )
         self.assertIn("plotly_hover", html)
+        self.assertIn("plotly_doubleclick", html)
+        self.assertIn("xaxis2.autorange", html)
         self.assertIn("xref: 'paper'", html)
         self.assertIn("中证500日收益", html)
         self.assertIn("中证500成交量", html)

@@ -1187,6 +1187,30 @@
         return anns;
       }
 
+      function nonCsiShapes(gd) {
+        return (gd.layout.shapes || []).filter((s) => s && s.name !== "csi-row-mark");
+      }
+
+      function bindHeatZoomReset(gd) {
+        // Dual subplot (heat x + CSI x2, shared y): Plotly's default double-click
+        // only resets the subplot under the cursor, so zooming the heat then
+        // double-clicking the CSI strip leaves xaxis zoomed. Force full reset.
+        if (!gd || typeof Plotly === "undefined" || typeof gd.on !== "function") return false;
+        if (gd._heatZoomResetBound) return true;
+        gd._heatZoomResetBound = true;
+        gd.on("plotly_doubleclick", function () {
+          const update = {
+            "xaxis.autorange": true,
+            "yaxis.autorange": true,
+          };
+          if (gd.layout && gd.layout.xaxis2) {
+            update["xaxis2.autorange"] = true;
+          }
+          Plotly.relayout(gd, update);
+        });
+        return true;
+      }
+
       function bindCsiRowHover(gd) {
         if (!gd || typeof Plotly === "undefined" || typeof gd.on !== "function") return false;
         if (gd._csiRowHoverBound) return true;
@@ -1194,24 +1218,25 @@
         const csiNames = { "中证500日收益": 1, "中证500成交量": 1 };
         function clearCsiRowMark() {
           gd._csiRowY = null;
-          Plotly.relayout(gd, { shapes: [] });
+          Plotly.relayout(gd, { shapes: nonCsiShapes(gd) });
         }
         function showCsiRowMark(y) {
           if (gd._csiRowY === y) return;
           gd._csiRowY = y;
-          Plotly.relayout(gd, {
-            shapes: [{
-              type: "line",
-              xref: "paper",
-              yref: "y",
-              x0: 0,
-              x1: 1,
-              y0: y,
-              y1: y,
-              line: { color: "rgba(28, 25, 23, 0.55)", width: 1 },
-              layer: "above",
-            }],
+          const shapes = nonCsiShapes(gd);
+          shapes.push({
+            type: "line",
+            name: "csi-row-mark",
+            xref: "paper",
+            yref: "y",
+            x0: 0,
+            x1: 1,
+            y0: y,
+            y1: y,
+            line: { color: "rgba(28, 25, 23, 0.55)", width: 1 },
+            layer: "above",
           });
+          Plotly.relayout(gd, { shapes: shapes });
         }
         gd.on("plotly_hover", function (data) {
           const pt = data && data.points && data.points[0];
@@ -1805,6 +1830,13 @@
         return ready;
       }
 
+      function bindHeatZoomResets() {
+        let ready = 0;
+        if (bindHeatZoomReset(industryPlot())) ready += 1;
+        if (bindHeatZoomReset(conceptPlot())) ready += 1;
+        return ready;
+      }
+
       function bindBoardPickers() {
         let ready = 0;
         if (
@@ -1852,12 +1884,14 @@
         const industrySliderReady = bindIndustrySlider();
         const conceptSliderReady = bindConceptSlider();
         const csiHoverReady = bindCsiRowHovers();
+        const zoomResetReady = bindHeatZoomResets();
         if (
           ((pickerReady && boardsReady >= 1) || Date.now() - started > 8000) &&
           (sliderReady || Date.now() - started > 8000) &&
           (industrySliderReady || Date.now() - started > 8000) &&
           (conceptSliderReady || Date.now() - started > 8000) &&
-          (csiHoverReady >= 1 || Date.now() - started > 8000)
+          (csiHoverReady >= 1 || Date.now() - started > 8000) &&
+          (zoomResetReady >= 1 || Date.now() - started > 8000)
         ) {
           clearInterval(timer);
           bindConceptThemePicker();
@@ -1866,6 +1900,7 @@
           bindIndustrySlider();
           bindConceptSlider();
           bindCsiRowHovers();
+          bindHeatZoomResets();
         }
       }, 120);
     })();
