@@ -31,6 +31,7 @@ from app.db import (
     fetch_heat_dates_ending,
     fetch_industry_heat_window,
     fetch_rotation_dates,
+    fetch_stock_code_names,
     fetch_trading_dates_ending,
     fetch_latest_trading_stocks,
 )
@@ -66,6 +67,7 @@ from app.themes.industry_wave import (
     build_industry_board_heat_payload,
     build_industry_scrub_frames,
 )
+from app.themes.stock_basket_wave import build_stock_basket_page_payload
 from app.themes.wave_surface import (
     build_map_scrub_frames,
     build_map_slider_dates,
@@ -447,6 +449,26 @@ def concept_themes_wave_page(
         include_plotlyjs=False,
     )
     return templates.TemplateResponse(request, "theme_wave.html", payload)
+
+
+@app.get("/boards/stocks/heat", response_class=HTMLResponse)
+def stock_basket_heat_page(
+    request: Request,
+    names: str = "",
+    days: int = Query(40, ge=20, le=180),
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = build_stock_basket_page_payload(
+        names_text=names,
+        as_of=requested,
+        days=days,
+        include_plotlyjs=False,
+    )
+    return templates.TemplateResponse(request, "stock_basket_heat.html", payload)
 
 
 @app.get("/boards/concept/themes/wave/reading", response_class=HTMLResponse)
@@ -1763,6 +1785,120 @@ def concept_kline_page(
     end_date: str | None = None,
 ) -> HTMLResponse:
     return _board_kline_page(request, "concept", board_code, start_date, end_date)
+
+
+def _stock_display_name(code: str) -> str:
+    names = fetch_stock_code_names([code])
+    return names.get(code) or code
+
+
+@app.get("/stocks/{code}/kline", response_class=HTMLResponse)
+def stock_kline_page(
+    request: Request,
+    code: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> HTMLResponse:
+    stock_name = _stock_display_name(code)
+    today = date.today()
+    start = today
+    end = today
+    error = None
+    try:
+        if start_date is None and end_date is None:
+            days = fetch_trading_dates_ending("industry", today, 100)
+            if days:
+                start = days[0]
+        else:
+            start = _parse_day(start_date, today)
+            end = _parse_day(end_date, today)
+            if start > end:
+                raise RuntimeError("开始日期不能晚于结束日期")
+    except ValueError:
+        error = "日期格式应为 YYYY-MM-DD"
+    except RuntimeError as exc:
+        error = str(exc)
+
+    chart_html = None
+    summary = None
+    title = f"{stock_name} {code}"
+    if error is None:
+        records = fetch_daily_bars_from_db(code, start, end)
+        if records:
+            chart_html = render_kline(records, title=title, code=code)
+            summary = f"{title} · {len(records)} 根K线 · {start} ~ {end}"
+        else:
+            summary = f"{title} · 所选区间无数据"
+
+    return templates.TemplateResponse(
+        request,
+        "board_kline.html",
+        {
+            "board_code": code,
+            "board_name": stock_name,
+            "kind_label": "个股",
+            "back_href": "/boards/stocks/heat",
+            "form_action": f"/stocks/{code}/kline",
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "chart_html": chart_html,
+            "summary": summary,
+            "error": error,
+        },
+    )
+
+
+@app.get("/api/stocks/{code}/kline-embed")
+def stock_kline_embed_api(
+    code: str,
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+) -> dict:
+    stock_name = _stock_display_name(code)
+    try:
+        start = _parse_day(start_date, date.today())
+        end = _parse_day(end_date, date.today())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD") from exc
+    if start > end:
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
+    title = f"{stock_name} {code}"
+    records = fetch_daily_bars_from_db(code, start, end)
+    if not records:
+        return {
+            "board_code": code,
+            "board_name": stock_name,
+            "kind_label": "个股",
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "kline_href": (
+                f"/stocks/{code}/kline"
+                f"?start_date={start.isoformat()}&end_date={end.isoformat()}"
+            ),
+            "summary": f"{title} · 所选区间无数据",
+            "chart_html": None,
+            "error": None,
+        }
+    chart_html = render_kline(
+        records,
+        title=title,
+        code=code,
+        include_plotlyjs=False,
+    )
+    return {
+        "board_code": code,
+        "board_name": stock_name,
+        "kind_label": "个股",
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "kline_href": (
+            f"/stocks/{code}/kline"
+            f"?start_date={start.isoformat()}&end_date={end.isoformat()}"
+        ),
+        "summary": f"{title} · {len(records)} 根K线 · {start} ~ {end}",
+        "chart_html": chart_html,
+        "error": None,
+    }
 
 
 @app.get("/charts/kline-demo", response_class=HTMLResponse)

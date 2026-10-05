@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.85rem;
+      line-height: 1.55;
+    }
+    form.query {
+      display: grid;
+      gap: 0.55rem;
+      margin: 0 0 1rem;
+      padding: 0.85rem 0.95rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    form.query textarea {
+      width: 100%;
+      min-height: 5.5rem;
+      font: inherit;
+      padding: 0.45rem 0.55rem;
+      border: 1px solid var(--line);
+      resize: vertical;
+    }
+    form.query .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 1rem;
+      align-items: center;
+    }
+    form.query label {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    form.query input[type="date"],
+    form.query input[type="number"] {
+      font: inherit;
+      padding: 0.28rem 0.45rem;
+      border: 1px solid var(--line);
+    }
+    form.query button {
+      font: inherit;
+      padding: 0.35rem 0.9rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      cursor: pointer;
+    }
+    form.query button:hover { border-color: #1d4ed8; color: #1d4ed8; }
+    .panel { overflow-x: auto; }
+    .map-slider {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.35rem 0.85rem;
+      align-items: center;
+      margin: 0.75rem 0 0.35rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .map-slider strong {
+      font-variant-numeric: tabular-nums;
+      min-width: 7.5rem;
+    }
+    .map-slider input[type="range"] { width: 100%; }
+    .map-slider .ends {
+      grid-column: 2;
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .map-slider .hint {
+      grid-column: 1 / -1;
+      margin: 0.15rem 0 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+    .board-pick {
+      margin: 0.7rem 0 0.55rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 0.55rem;
+      align-items: center;
+    }
+    .board-pick button,
+    .board-pick input {
+      font: inherit;
+      font-size: 0.9rem;
+    }
+    .board-pick button {
+      padding: 0.32rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      cursor: pointer;
+    }
+    .board-pick button:hover { border-color: #b91c1c; color: #b91c1c; }
+    .board-pick input[type="text"] {
+      flex: 1 1 14rem;
+      min-width: 10rem;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid var(--line);
+    }
+    .board-pick .pick-status {
+      flex: 1 1 100%;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+    .board-pick .pick-status.err,
+    .board-pick .pick-status.ok { color: #b91c1c; }
+    .board-pick-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(28, 25, 23, 0.28);
+      z-index: 20;
+      align-items: center;
+      justify-content: center;
+    }
+    .board-pick-modal.open { display: flex; }
+    .board-pick-dialog {
+      width: min(420px, 100%);
+      max-height: min(70vh, 560px);
+      display: flex;
+      flex-direction: column;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .board-pick-dialog header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .board-pick-dialog header h3 { margin: 0; font-size: 0.98rem; }
+    .board-pick-dialog header button {
+      font: inherit;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    .board-pick-dialog .filter {
+      margin: 0.55rem 0.75rem 0.35rem;
+      padding: 0.32rem 0.55rem;
+      border: 1px solid var(--line);
+      font: inherit;
+    }
+    .board-pick-dialog ul {
+      list-style: none;
+      margin: 0;
+      padding: 0.25rem 0 0.55rem;
+      overflow: auto;
+    }
+    .board-pick-dialog li button {
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      padding: 0.4rem 0.85rem;
+      font: inherit;
+      cursor: pointer;
+    }
+    .board-pick-dialog li button:hover { background: #fef2f2; color: #b91c1c; }
+    .board-kline-embed {
+      margin: 0 0 0.75rem;
+      padding: 0.65rem 0.75rem 0.85rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .board-kline-embed[hidden] { display: none; }
+    .board-kline-embed .kline-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 0.45rem 1rem;
+      margin: 0 0 0.45rem;
+    }
+    .board-kline-embed .kline-head h3 { margin: 0; font-size: 1.05rem; }
+    .board-kline-embed .kline-head a { color: #1d4ed8; text-decoration: none; font-size: 0.88rem; }
+    .board-kline-embed .kline-meta { margin: 0 0 0.55rem; color: var(--muted); font-size: 0.86rem; }
+    .board-kline-embed .kline-error { color: #b91c1c; }
+  </style>
+  <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
+</head>
+<body>
+  <main>
+    <a class="back" href="/">← 热度轮转</a>
+    <h1>{{ title }}</h1>
+    <form class="query" method="get" action="/boards/stocks/heat">
+      <textarea name="names" placeholder="半导体, 新能源车, 算力… 用逗号或换行分隔行业/概念名">{{ names_text }}</textarea>
+      <div class="row">
+        <label>as of <input type="date" name="as_of" value="{{ as_of }}"></label>
+        <label>窗口天数 <input type="number" name="days" min="20" max="180" value="{{ days }}"></label>
+        <button type="submit">绘制</button>
+      </div>
+    </form>
+    {% if meta_line %}<p class="meta">{{ meta_line }}</p>{% endif %}
+    {% if empty_message and not chart_html %}
+    <p class="meta">{{ empty_message }}</p>
+    {% endif %}
+    {% if chart_html %}
+    <p class="meta">{{ axis_note }}</p>
+    <div class="panel" id="stock-heat-chart">{{ chart_html | safe }}</div>
+    {% if slider_dates and slider_dates|length > 1 %}
+    <div class="map-slider">
+      <strong id="stock-slider-date">{{ slider_dates[slider_index] }}</strong>
+      <input
+        id="stock-slider-input"
+        type="range"
+        min="0"
+        max="{{ slider_dates|length - 1 }}"
+        value="{{ slider_index }}"
+        step="1"
+        aria-label="个股热度图时间"
+      >
+      <div class="ends">
+        <span>{{ slider_dates[0] }}</span>
+        <span>{{ slider_dates[-1] }}</span>
+      </div>
+      <p class="hint">只带动本图演变；横轴叶序与入选名单固定。方格下沿黑/白细线=当日收盘收益超过近100日波动率2倍（黑正白负）；顶上红/绿字=最后交易日正超/负超个股；小交叉×=MACD（上穿橙、下穿蓝）；右侧实线=中证500同日收盘收益，虚线=成交量（按双方波动对齐到收益尺度）。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
+    </div>
+    {% endif %}
+    <div class="board-pick" id="stock-pick" aria-label="定位个股">
+      <button type="button" id="stock-pick-open">选择</button>
+      <input type="text" id="stock-pick-name" placeholder="个股名称" autocomplete="off" spellcheck="false">
+      <button type="button" id="stock-pick-confirm">确定</button>
+      <p class="pick-status" id="stock-pick-status"></p>
+    </div>
+    <div class="board-pick-modal" id="stock-pick-modal" aria-hidden="true">
+      <div class="board-pick-dialog" role="dialog" aria-modal="true">
+        <header>
+          <h3>选择个股</h3>
+          <button type="button" id="stock-pick-close" aria-label="关闭">×</button>
+        </header>
+        <input class="filter" type="search" id="stock-pick-filter" placeholder="筛选名称…" autocomplete="off">
+        <ul id="stock-pick-list"></ul>
+      </div>
+    </div>
+    <section class="board-kline-embed" id="stock-kline-embed" hidden>
+      <div class="kline-head">
+        <h3 id="stock-kline-title">K线</h3>
+        <a id="stock-kline-link" href="#" target="_blank" rel="noopener">打开完整K线页 →</a>
+      </div>
+      <p class="kline-meta" id="stock-kline-meta"></p>
+      <p class="kline-error" id="stock-kline-error" hidden></p>
+      <div class="kline-chart" id="stock-kline-chart"></div>
+    </section>
+    {% endif %}
+  </main>
+  <script>
+    (function () {
+      const windowStart = {{ window_start | tojson }};
+      const windowEnd = {{ window_end | tojson }};
+      const boardNames = {{ board_names | default([]) | tojson }};
+      const boardCodes = {{ board_codes | default([]) | tojson }};
+      const dateCount = {{ date_count | default(0) | tojson }};
+      const sliderDates = {{ slider_dates | default([]) | tojson }};
+      const scrubFrames = {{ scrub_frames | default([]) | tojson }};
+
+      function plotIn(panel) {
+        return panel ? panel.querySelector(".js-plotly-plot") : null;
+      }
+      function stockPlot() {
+        return plotIn(document.getElementById("stock-heat-chart"));
+      }
+      function yTicks(dates) {
+        const n = dates.length;
+        if (!n) return { tickvals: [], ticktext: [] };
+        const step = Math.max(1, Math.floor(n / 6));
+        const tickvals = [];
+        for (let i = 0; i < n; i += step) tickvals.push(i);
+        if (tickvals[tickvals.length - 1] !== n - 1) tickvals.push(n - 1);
+        return { tickvals, ticktext: tickvals.map((i) => dates[i]) };
+      }
+      function themeLabelForX(xValue, tickvals, ticktext) {
+        if (!tickvals || !tickvals.length || !ticktext || !ticktext.length) {
+          return "轴 " + Number(xValue).toFixed(2);
+        }
+        for (let i = 0; i < tickvals.length; i += 1) {
+          if (Math.abs(Number(tickvals[i]) - Number(xValue)) < 1e-9) return ticktext[i];
+        }
+        for (let i = 0; i < tickvals.length - 1; i += 1) {
+          const left = Number(tickvals[i]);
+          const right = Number(tickvals[i + 1]);
+          if (left <= xValue && xValue <= right) return ticktext[i] + " ↔ " + ticktext[i + 1];
+        }
+        if (xValue < Number(tickvals[0])) return ticktext[0];
+        return ticktext[ticktext.length - 1];
+      }
+      function formatHeat(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+        return Number(value).toFixed(3);
+      }
+      function buildCustomdata(dates, xs, zs, tickvals, ticktext) {
+        const labels = xs.map((x) => themeLabelForX(x, tickvals, ticktext));
+        return dates.map((day, i) =>
+          xs.map((_, j) => [labels[j], day, formatHeat(zs[i] ? zs[i][j] : null)])
+        );
+      }
+      function industryExceedanceAnnotations(marks) {
+        const anns = [];
+        const groups = [
+          { color: "#dc2626", xs: marks.last_pos_x || [], ys: marks.last_pos_y || [], texts: marks.last_pos_text || [] },
+          { color: "#16a34a", xs: marks.last_neg_x || [], ys: marks.last_neg_y || [], texts: marks.last_neg_text || [] },
+        ];
+        groups.forEach((g) => {
+          for (let i = 0; i < g.texts.length; i += 1) {
+            if (g.texts[i] == null || g.xs[i] == null || g.ys[i] == null) continue;
+            anns.push({
+              x: g.xs[i], y: g.ys[i], text: g.texts[i], showarrow: false, textangle: -45,
+              font: { color: g.color, size: 9 }, xanchor: "left", yanchor: "bottom", xref: "x", yref: "y",
+            });
+          }
+        });
+        return anns;
+      }
+      function nonCsiShapes(gd) {
+        return (gd.layout.shapes || []).filter((s) => s && s.name !== "csi-row-mark");
+      }
+      function bindHeatZoomReset(gd) {
+        if (!gd || typeof Plotly === "undefined" || typeof gd.on !== "function") return false;
+        if (gd._heatZoomResetBound) return true;
+        gd._heatZoomResetBound = true;
+        gd.on("plotly_doubleclick", function () {
+          const update = { "xaxis.autorange": true, "yaxis.autorange": true };
+          if (gd.layout && gd.layout.xaxis2) update["xaxis2.autorange"] = true;
+          Plotly.relayout(gd, update);
+        });
+        return true;
+      }
+      function bindCsiRowHover(gd) {
+        if (!gd || typeof Plotly === "undefined" || typeof gd.on !== "function") return false;
+        if (gd._csiRowHoverBound) return true;
+        gd._csiRowHoverBound = true;
+        const csiNames = { "中证500日收益": 1, "中证500成交量": 1 };
+        function clearCsiRowMark() {
+          gd._csiRowY = null;
+          Plotly.relayout(gd, { shapes: nonCsiShapes(gd) });
+        }
+        function showCsiRowMark(y) {
+          gd._csiRowY = y;
+          const shapes = nonCsiShapes(gd);
+          shapes.push({
+            type: "line", name: "csi-row-mark", xref: "paper", yref: "y",
+            x0: 0, x1: 1, y0: y, y1: y,
+            line: { color: "rgba(28, 25, 23, 0.55)", width: 1 }, layer: "above",
+          });
+          Plotly.relayout(gd, { shapes: shapes });
+        }
+        gd.on("plotly_hover", function (data) {
+          const pt = data && data.points && data.points[0];
+          const name = pt && pt.data && pt.data.name;
+          if (!name || !csiNames[name] || pt.y == null) {
+            if (gd._csiRowY != null) clearCsiRowMark();
+            return;
+          }
+          showCsiRowMark(pt.y);
+        });
+        gd.on("plotly_unhover", function () {
+          if (gd._csiRowY != null) clearCsiRowMark();
+        });
+        return true;
+      }
+      function restyleCsi500Overlay(gd, frame, dates, y) {
+        const csiIdx = gd.data.findIndex((t) => t.name === "中证500日收益");
+        if (csiIdx >= 0) {
+          Plotly.restyle(gd, { x: [frame.csi500_returns || []], y: [y], customdata: [dates] }, [csiIdx]);
+        }
+        const volIdx = gd.data.findIndex((t) => t.name === "中证500成交量");
+        if (volIdx >= 0) {
+          const rawVol = frame.csi500_volumes || [];
+          const custom = dates.map((day, i) => [day, rawVol[i] == null ? null : rawVol[i]]);
+          Plotly.restyle(gd, { x: [frame.csi500_volumes_scaled || []], y: [y], customdata: [custom] }, [volIdx]);
+        }
+      }
+      function restyleExceedanceOverlay(gd, marks) {
+        const posIdx = gd.data.findIndex((t) => t.name === "收益>+2σ");
+        const negIdx = gd.data.findIndex((t) => t.name === "收益<-2σ");
+        if (posIdx >= 0 && negIdx >= 0) {
+          Plotly.restyle(gd, {
+            x: [marks.pos_x || [], marks.neg_x || []],
+            y: [marks.pos_y || [], marks.neg_y || []],
+          }, [posIdx, negIdx]);
+        }
+        Plotly.relayout(gd, { annotations: industryExceedanceAnnotations(marks) });
+      }
+      function restyleCrossMarks(gd, marks) {
+        [["MACD上穿", "macd_up"], ["MACD下穿", "macd_down"]].forEach(([name, key]) => {
+          const idx = gd.data.findIndex((t) => t.name === name);
+          if (idx < 0) return;
+          Plotly.restyle(gd, {
+            x: [marks[key + "_x"] || []],
+            y: [marks[key + "_y"] || []],
+            text: [marks[key + "_text"] || []],
+          }, [idx]);
+        });
+      }
+      function applyFrame(index) {
+        if (!scrubFrames || !scrubFrames.length) return;
+        const frame = scrubFrames[index];
+        if (!frame) return;
+        const dateLabel = document.getElementById("stock-slider-date");
+        if (dateLabel) dateLabel.textContent = frame.as_of || sliderDates[index] || "";
+        const gd = stockPlot();
+        if (!gd || typeof Plotly === "undefined" || !gd.data || !gd.data[0]) return;
+        const dates = frame.dates || [];
+        const y = dates.map((_, i) => i);
+        const ticks = yTicks(dates);
+        const xs = gd.data[0].x;
+        const tickvals = gd.layout.xaxis.tickvals;
+        const ticktext = gd.layout.xaxis.ticktext;
+        Plotly.update(gd, {
+          z: [frame.z_short],
+          y: [y],
+          customdata: [buildCustomdata(dates, xs, frame.z_short, tickvals, ticktext)],
+        }, {
+          "yaxis.tickvals": ticks.tickvals,
+          "yaxis.ticktext": ticks.ticktext,
+        }, [0]);
+        restyleExceedanceOverlay(gd, frame.return_exceedance || {});
+        restyleCrossMarks(gd, frame.cross_marks || {});
+        restyleCsi500Overlay(gd, frame, dates, y);
+      }
+      function bindSlider() {
+        const slider = document.getElementById("stock-slider-input");
+        if (!slider || !scrubFrames || scrubFrames.length < 2) return false;
+        if (slider.dataset.bound === "1") return true;
+        slider.dataset.bound = "1";
+        slider.addEventListener("input", () => applyFrame(Number(slider.value)));
+        return true;
+      }
+      function mountHtmlWithScripts(container, html) {
+        container.innerHTML = html;
+        container.querySelectorAll("script").forEach((oldScript) => {
+          const script = document.createElement("script");
+          for (const attr of oldScript.attributes) script.setAttribute(attr.name, attr.value);
+          script.text = oldScript.textContent || "";
+          oldScript.replaceWith(script);
+        });
+      }
+      function bindPicker() {
+        const openBtn = document.getElementById("stock-pick-open");
+        const confirmBtn = document.getElementById("stock-pick-confirm");
+        const nameInput = document.getElementById("stock-pick-name");
+        const statusEl = document.getElementById("stock-pick-status");
+        const modal = document.getElementById("stock-pick-modal");
+        const closeBtn = document.getElementById("stock-pick-close");
+        const filterInput = document.getElementById("stock-pick-filter");
+        const listEl = document.getElementById("stock-pick-list");
+        const klineEmbedEl = document.getElementById("stock-kline-embed");
+        const klineTitle = document.getElementById("stock-kline-title");
+        const klineMeta = document.getElementById("stock-kline-meta");
+        const klineError = document.getElementById("stock-kline-error");
+        const klineChart = document.getElementById("stock-kline-chart");
+        const klineLink = document.getElementById("stock-kline-link");
+        let baseAnnotations = null;
+        let baseShapes = null;
+        let klineRequestId = 0;
+        if (!openBtn || !confirmBtn || !Array.isArray(boardNames) || !boardNames.length) return false;
+        if (openBtn.dataset.bound === "1") return true;
+        openBtn.dataset.bound = "1";
+        function setStatus(text, kind) {
+          if (!statusEl) return;
+          statusEl.textContent = text || "";
+          statusEl.className = "pick-status" + (kind ? " " + kind : "");
+        }
+        function findIndex(raw) {
+          const q = String(raw || "").trim();
+          if (!q) return -1;
+          const exact = boardNames.findIndex((n) => n === q);
+          if (exact >= 0) return exact;
+          const codeHit = boardCodes.findIndex((c) => c === q);
+          if (codeHit >= 0) return codeHit;
+          const hits = [];
+          boardNames.forEach((n, i) => { if (String(n).includes(q)) hits.push(i); });
+          return hits.length === 1 ? hits[0] : -1;
+        }
+        function renderList(filterText) {
+          if (!listEl) return;
+          const q = String(filterText || "").trim();
+          listEl.replaceChildren();
+          boardNames.forEach((name, idx) => {
+            if (q && !String(name).includes(q) && !(boardCodes[idx] || "").includes(q)) return;
+            const li = document.createElement("li");
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = idx + " · " + name + " · " + (boardCodes[idx] || "");
+            btn.addEventListener("click", () => {
+              if (nameInput) nameInput.value = name;
+              closeModal();
+              if (nameInput) nameInput.focus();
+            });
+            li.appendChild(btn);
+            listEl.appendChild(li);
+          });
+        }
+        function openModal() {
+          if (!modal) return;
+          modal.classList.add("open");
+          modal.setAttribute("aria-hidden", "false");
+          if (filterInput) { filterInput.value = ""; renderList(""); filterInput.focus(); }
+          else renderList("");
+        }
+        function closeModal() {
+          if (!modal) return;
+          modal.classList.remove("open");
+          modal.setAttribute("aria-hidden", "true");
+        }
+        function highlight(idx, name) {
+          const gd = stockPlot();
+          if (!gd || typeof Plotly === "undefined") {
+            setStatus("图尚未就绪，请稍后重试", "err");
+            return false;
+          }
+          if (baseAnnotations === null) baseAnnotations = JSON.parse(JSON.stringify(gd.layout.annotations || []));
+          if (baseShapes === null) baseShapes = JSON.parse(JSON.stringify(gd.layout.shapes || []));
+          const nDates = Math.max(1, Number(dateCount) || 1);
+          const shapes = (baseShapes || []).slice();
+          const annotations = (baseAnnotations || []).slice();
+          shapes.push({
+            type: "rect", xref: "x", yref: "y",
+            x0: idx - 0.5, x1: idx + 0.5, y0: -0.5, y1: nDates - 0.5,
+            fillcolor: "rgba(15, 23, 42, 0.30)", line: { width: 0 }, layer: "above",
+          });
+          shapes.push({
+            type: "rect", xref: "x", yref: "y",
+            x0: idx - 0.5, x1: idx + 0.5, y0: -0.5, y1: nDates - 0.5,
+            fillcolor: "rgba(0,0,0,0)", line: { color: "#dc2626", width: 2.2 }, layer: "above",
+          });
+          annotations.push({
+            xref: "x", yref: "y", x: idx, y: nDates - 0.5,
+            text: "<b>" + idx + "</b>", showarrow: false,
+            font: { color: "#dc2626", size: 13, family: "IBM Plex Sans, Noto Sans SC, sans-serif" },
+            bgcolor: "rgba(255,253,248,0.82)", borderpad: 2, yanchor: "bottom", yshift: 8,
+          });
+          Plotly.relayout(gd, { shapes: shapes, annotations: annotations });
+          setStatus("下标 " + idx + " · " + name, "ok");
+          return true;
+        }
+        async function loadKline(idx, name) {
+          const code = Array.isArray(boardCodes) ? boardCodes[idx] : null;
+          if (!klineEmbedEl || !klineChart) return;
+          if (!code || !windowStart || !windowEnd) {
+            klineEmbedEl.hidden = false;
+            if (klineTitle) klineTitle.textContent = name;
+            if (klineError) { klineError.hidden = false; klineError.textContent = "缺少代码或窗口日期，无法加载K线"; }
+            klineChart.replaceChildren();
+            return;
+          }
+          const ticket = ++klineRequestId;
+          klineEmbedEl.hidden = false;
+          if (klineTitle) klineTitle.textContent = name + " · " + code;
+          if (klineMeta) klineMeta.textContent = "正在加载 " + windowStart + " → " + windowEnd + " …";
+          if (klineError) { klineError.hidden = true; klineError.textContent = ""; }
+          klineChart.replaceChildren();
+          if (klineLink) {
+            klineLink.href = "/stocks/" + encodeURIComponent(code) +
+              "/kline?start_date=" + encodeURIComponent(windowStart) +
+              "&end_date=" + encodeURIComponent(windowEnd);
+          }
+          try {
+            const url = "/api/stocks/" + encodeURIComponent(code) +
+              "/kline-embed?start_date=" + encodeURIComponent(windowStart) +
+              "&end_date=" + encodeURIComponent(windowEnd);
+            const response = await fetch(url);
+            const payload = await response.json();
+            if (ticket !== klineRequestId) return;
+            if (!response.ok) {
+              if (klineMeta) klineMeta.textContent = "";
+              if (klineError) { klineError.hidden = false; klineError.textContent = payload.detail || "K线加载失败"; }
+              return;
+            }
+            if (klineTitle) klineTitle.textContent = (payload.board_name || name) + " · " + (payload.board_code || code);
+            if (klineMeta) klineMeta.textContent = payload.summary || "";
+            if (klineLink && payload.kline_href) klineLink.href = payload.kline_href;
+            if (payload.chart_html) {
+              if (typeof Plotly === "undefined") {
+                if (klineError) { klineError.hidden = false; klineError.textContent = "Plotly 尚未加载，请刷新页面后重试"; }
+                return;
+              }
+              mountHtmlWithScripts(klineChart, payload.chart_html);
+            } else {
+              klineChart.replaceChildren();
+              if (klineError) { klineError.hidden = false; klineError.textContent = "所选区间无K线数据"; }
+            }
+          } catch (err) {
+            if (ticket !== klineRequestId) return;
+            if (klineMeta) klineMeta.textContent = "";
+            if (klineError) { klineError.hidden = false; klineError.textContent = "K线加载失败"; }
+          }
+        }
+        function confirmPick() {
+          const idx = findIndex(nameInput ? nameInput.value : "");
+          if (idx < 0) {
+            setStatus("未找到唯一个股，请用「选择」点名或输入全称/代码", "err");
+            return;
+          }
+          if (nameInput) nameInput.value = boardNames[idx];
+          highlight(idx, boardNames[idx]);
+          loadKline(idx, boardNames[idx]);
+        }
+        openBtn.addEventListener("click", openModal);
+        confirmBtn.addEventListener("click", confirmPick);
+        if (closeBtn) closeBtn.addEventListener("click", closeModal);
+        if (modal) modal.addEventListener("click", (event) => { if (event.target === modal) closeModal(); });
+        if (filterInput) filterInput.addEventListener("input", () => renderList(filterInput.value));
+        if (nameInput) {
+          nameInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") { event.preventDefault(); confirmPick(); }
+          });
+        }
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && modal && modal.classList.contains("open")) closeModal();
+        });
+        return true;
+      }
+      const started = Date.now();
+      const timer = setInterval(() => {
+        const gd = stockPlot();
+        const ready = gd && gd.data && gd.data[0];
+        if (ready || Date.now() - started > 8000) {
+          clearInterval(timer);
+          bindSlider();
+          bindPicker();
+          bindCsiRowHover(gd);
+          bindHeatZoomReset(gd);
+        }
+      }, 120);
+    })();
+  </script>
+</body>
+</html>

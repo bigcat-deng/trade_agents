@@ -470,6 +470,31 @@ def fetch_trading_dates_ending(
             return [row[0] for row in cur.fetchall()]
 
 
+def fetch_trading_dates_after(
+    board_type: str,
+    after: date,
+    limit: int,
+) -> list[date]:
+    """Up to `limit` distinct bar dates strictly after the day, oldest first."""
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date
+                FROM board_daily_bar
+                WHERE board_type = %s
+                  AND trade_date > %s
+                GROUP BY trade_date
+                ORDER BY trade_date
+                LIMIT %s
+                """,
+                (board_type, after, limit),
+            )
+            return [row[0] for row in cur.fetchall()]
+
+
 def fetch_board_close_heat(
     board_type: str,
     board_codes: list[str],
@@ -899,6 +924,91 @@ def fetch_board_constituents_many(
     for board_code, stock_code in rows:
         out.setdefault(str(board_code), set()).add(str(stock_code))
     return out
+
+
+def fetch_board_constituents_named(
+    board_type: str,
+    board_codes: list[str],
+    as_of: date | None = None,
+) -> dict[str, list[tuple[str, str]]]:
+    """Latest constituent snapshot per board: (stock_code, stock_name)."""
+    if not board_codes:
+        return {}
+    codes = list(dict.fromkeys(board_codes))
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            if as_of is None:
+                cur.execute(
+                    """
+                    SELECT c.board_code, c.stock_code, COALESCE(c.stock_name, '')
+                    FROM board_constituent_daily AS c
+                    JOIN (
+                        SELECT board_code, MAX(trade_date) AS trade_date
+                        FROM board_constituent_daily
+                        WHERE board_type = %s
+                          AND board_code = ANY(%s)
+                        GROUP BY board_code
+                    ) AS latest
+                      ON c.board_code = latest.board_code
+                     AND c.trade_date = latest.trade_date
+                    WHERE c.board_type = %s
+                    """,
+                    (board_type, codes, board_type),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT c.board_code, c.stock_code, COALESCE(c.stock_name, '')
+                    FROM board_constituent_daily AS c
+                    JOIN (
+                        SELECT board_code,
+                               COALESCE(
+                                   MAX(trade_date) FILTER (
+                                       WHERE trade_date <= %s
+                                   ),
+                                   MAX(trade_date)
+                               ) AS trade_date
+                        FROM board_constituent_daily
+                        WHERE board_type = %s
+                          AND board_code = ANY(%s)
+                        GROUP BY board_code
+                    ) AS latest
+                      ON c.board_code = latest.board_code
+                     AND c.trade_date = latest.trade_date
+                    WHERE c.board_type = %s
+                    """,
+                    (as_of, board_type, codes, board_type),
+                )
+            rows = cur.fetchall()
+    out: dict[str, list[tuple[str, str]]] = {code: [] for code in codes}
+    seen: dict[str, set[str]] = {code: set() for code in codes}
+    for board_code, stock_code, stock_name in rows:
+        key = str(board_code)
+        code = str(stock_code)
+        if code in seen.setdefault(key, set()):
+            continue
+        seen[key].add(code)
+        out.setdefault(key, []).append((code, str(stock_name or "")))
+    return out
+
+
+def fetch_stock_code_names(codes: list[str]) -> dict[str, str]:
+    """Latest known code_name for each stock code."""
+    if not codes:
+        return {}
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (code) code, code_name
+                FROM stock_universe_daily
+                WHERE code = ANY(%s)
+                ORDER BY code, trade_date DESC
+                """,
+                (codes,),
+            )
+            rows = cur.fetchall()
+    return {str(row[0]): str(row[1] or row[0]) for row in rows}
 
 
 def fetch_stock_bars_for_codes(

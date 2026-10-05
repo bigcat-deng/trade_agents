@@ -354,9 +354,8 @@ def render_theme_wave_contour(
                         line=dict(width=1.4, color=style["color"]),
                     ),
                     text=texts,
-                    hovertemplate=(
-                        f"{style['name']}<br>%{{text}}<extra></extra>"
-                    ),
+                    hoverinfo="skip",
+                    hovertemplate=None,
                     showlegend=False,
                     name=style["name"],
                 )

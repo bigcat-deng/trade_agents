@@ -107,6 +107,8 @@ class BoardCrossMarkTests(unittest.TestCase):
         self.assertNotIn("diamond", html)
         self.assertNotIn("heat_up", html)
         self.assertNotIn("heat_down", html)
+        self.assertNotIn("MACD上穿<br>", html)
+        self.assertNotIn("MACD下穿<br>", html)
 
 
 if __name__ == "__main__":
