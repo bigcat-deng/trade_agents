@@ -11,6 +11,29 @@ from app.db import fetch_daily_bars_from_db
 from app.market_data.providers import baostock_kline
 
 CSI500_CODE = "sh.000905"
+# Theme-wave industry/concept overlays share one pull ending at the page as-of.
+CSI500_THEME_WAVE_LOOKBACK = 200
+
+
+def csi500_maps_ending(
+    end: date,
+    *,
+    trading_days: int = CSI500_THEME_WAVE_LOOKBACK,
+    board_type: str = "concept",
+) -> tuple[dict[date, float], dict[date, float]]:
+    """One CSI 500 pull: ``trading_days`` board sessions ending at ``end``.
+
+    Fetches one extra session so the oldest day in the lookback can still form a
+    close-to-close return.
+    """
+    from app.db import fetch_trading_dates_ending
+
+    if trading_days < 1:
+        return {}, {}
+    calendar = fetch_trading_dates_ending(board_type, end, trading_days + 1)
+    if not calendar:
+        return {}, {}
+    return csi500_close_volume_maps(calendar[0], end)
 
 
 def csi500_overlay_for_dates(window_dates: list[date]) -> dict[str, list[float | None]]:

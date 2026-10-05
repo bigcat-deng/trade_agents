@@ -379,9 +379,12 @@ def build_theme_wave_reading_prompt(
     industry_dates = fetch_heat_dates_ending("industry", selected, window)
     if not industry_dates:
         raise RuntimeError("no industry heat window to interpret")
+    # Prompt text does not use CSI overlay; pass empty maps to skip baostock.
     industry = build_industry_board_heat_payload(
         window_dates=industry_dates,
         heat_rows=fetch_industry_heat_window(industry_dates[0], industry_dates[-1]),
+        csi500_closes={},
+        csi500_volumes={},
     )
     if industry.get("empty_message"):
         raise RuntimeError(industry["empty_message"])
@@ -391,6 +394,8 @@ def build_theme_wave_reading_prompt(
         heat_rows=fetch_concept_heat_named_window(
             window_dates[0], window_dates[-1]
         ),
+        csi500_closes={},
+        csi500_volumes={},
     )
     if concept_top.get("empty_message"):
         raise RuntimeError(concept_top["empty_message"])

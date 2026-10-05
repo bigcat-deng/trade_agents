@@ -7,6 +7,7 @@ from typing import Any
 
 from app.themes.concept_wave import CONCEPT_TOP_N, build_concept_top_heat_payload
 from app.themes.heat_wavelet2d import (
+    DEFAULT_WINDOW_DAYS,
     FEATURE_TOP_N,
     LEVEL,
     WAVELET,
@@ -14,6 +15,7 @@ from app.themes.heat_wavelet2d import (
 )
 
 __all__ = [
+    "DEFAULT_WINDOW_DAYS",
     "FEATURE_TOP_N",
     "build_concept_wavelet_payload",
 ]
@@ -44,8 +46,10 @@ def build_concept_wavelet_payload(
     n = concept_top["board_count"]
     base_top_n = concept_top.get("top_n") or CONCEPT_TOP_N
     theme_added = int(concept_top.get("theme_added") or 0)
+    # Prefer undensified board columns; densified z_short is plot-only.
+    z_for_wavelet = concept_top.get("z_boards") or concept_top["z_short"]
     result = analyze_heat_wavelet2d(
-        z_short=concept_top["z_short"],
+        z_short=z_for_wavelet,
         dates=concept_top["dates"],
         board_names=concept_top["board_names"],
         board_codes=concept_top["board_codes"],

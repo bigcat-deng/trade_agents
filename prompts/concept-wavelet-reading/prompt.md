@@ -1,7 +1,7 @@
 ---
 name: concept-wavelet-reading
 description: 解读概念短热 TopN 二维小波页——能量结构如何映射到具体概念
-window_trading_days: 60
+window_trading_days: 120
 board_type: concept
 output_format: prose
 model:

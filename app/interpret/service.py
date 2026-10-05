@@ -32,6 +32,7 @@ from app.interpret.medicine_theme import (
     prose_reading,
 )
 from app.interpret.theme_wave import build_theme_wave_reading_prompt
+from app.themes.heat_wavelet2d import DEFAULT_WINDOW_DAYS as WAVELET_WINDOW_DAYS
 from app.interpret.concept_wavelet import build_concept_wavelet_reading_prompt
 from app.interpret.industry_wavelet import build_industry_wavelet_reading_prompt
 from app.prompts.template import load_prompt
@@ -205,10 +206,12 @@ def _interpret_prose(
         template, prompt, resolved = builder(
             as_of, window_trading_days=window_trading_days
         )
-        # Include window in cache key so ?days=40 and ?days=60 do not collide.
+        # Include window in cache key so different ?days= values do not collide.
         resolved_window = window_trading_days
         if resolved_window is None:
-            resolved_window = int(template.config.get("window_trading_days") or 60)
+            resolved_window = int(
+                template.config.get("window_trading_days") or WAVELET_WINDOW_DAYS
+            )
         resolved_window = max(20, min(180, int(resolved_window)))
         cache_name = f"{template.name}#d{resolved_window}"
     else:

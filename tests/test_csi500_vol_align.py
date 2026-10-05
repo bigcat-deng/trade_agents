@@ -3,9 +3,33 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, timedelta
+from unittest.mock import patch
 
-from app.market_data.csi500 import csi500_overlay_series, scale_to_peer_volatility
+from app.market_data.csi500 import (
+    CSI500_THEME_WAVE_LOOKBACK,
+    csi500_maps_ending,
+    csi500_overlay_series,
+    scale_to_peer_volatility,
+)
+
+
+class Csi500MapsEndingTests(unittest.TestCase):
+    def test_requests_lookback_plus_one_session(self) -> None:
+        end = date(2026, 9, 24)
+        cal = [end - timedelta(days=i) for i in range(201, -1, -1)]
+        with patch(
+            "app.db.fetch_trading_dates_ending", return_value=cal
+        ) as mock_cal, patch(
+            "app.market_data.csi500.csi500_close_volume_maps",
+            return_value=({end: 1.0}, {end: 100.0}),
+        ) as mock_maps:
+            closes, volumes = csi500_maps_ending(end, trading_days=200)
+        mock_cal.assert_called_once_with("concept", end, 201)
+        mock_maps.assert_called_once_with(cal[0], end)
+        self.assertEqual(closes, {end: 1.0})
+        self.assertEqual(volumes, {end: 100.0})
+        self.assertEqual(CSI500_THEME_WAVE_LOOKBACK, 200)
 
 
 class ScaleToPeerVolatilityTests(unittest.TestCase):

@@ -359,84 +359,25 @@
       border-color: #1d4ed8;
       color: #1d4ed8;
     }
-    .reading {
-      margin: 1.1rem 0 0.35rem;
-      padding: 0.75rem 0.85rem 0.95rem;
-      background: var(--card);
-      border: 1px solid var(--line);
-    }
-    .reading-head {
+    .page-links {
+      margin: 0.75rem 0 0.35rem;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      margin: 0 0 0.35rem;
+      flex-wrap: wrap;
+      gap: 0.55rem 0.75rem;
     }
-    .reading-head h2 {
-      margin: 0;
-    }
-    .reading-head button {
+    .page-links a {
+      display: inline-block;
       font: inherit;
-      font-size: 0.88rem;
-      padding: 0.3rem 0.65rem;
+      font-size: 0.92rem;
+      padding: 0.4rem 0.85rem;
       border: 1px solid var(--line);
       background: #fff;
       color: var(--ink);
-      cursor: pointer;
+      text-decoration: none;
     }
-    .reading-head button:hover:not(:disabled) {
+    .page-links a:hover {
       border-color: #1d4ed8;
       color: #1d4ed8;
-    }
-    .reading-head button:disabled {
-      opacity: 0.55;
-      cursor: default;
-    }
-    .reading .conclusion {
-      margin-top: 0.35rem;
-    }
-    .reading .reading-block {
-      margin: 0 0 0.85rem;
-    }
-    .reading .reading-block:last-child {
-      margin-bottom: 0;
-    }
-    .reading .reading-title {
-      margin: 0 0 0.28rem;
-      color: #b91c1c;
-      font-weight: 700;
-      font-size: 0.98rem;
-    }
-    .reading .reading-para {
-      margin: 0;
-      line-height: 1.65;
-      white-space: pre-wrap;
-    }
-    .reading .reading-table-wrap {
-      margin: 0.45rem 0 0.7rem;
-      overflow-x: auto;
-    }
-    .reading .reading-table-caption {
-      margin: 0 0 0.25rem;
-      color: var(--muted);
-      font-size: 0.88rem;
-    }
-    .reading table.reading-table {
-      border-collapse: collapse;
-      width: max-content;
-      min-width: 100%;
-      font-size: 0.88rem;
-    }
-    .reading table.reading-table th,
-    .reading table.reading-table td {
-      border: 1px solid var(--line);
-      padding: 0.28rem 0.45rem;
-      text-align: left;
-      white-space: nowrap;
-    }
-    .reading table.reading-table th {
-      background: #f5f5f4;
-      font-weight: 650;
     }
     .shape-glossary {
       margin: 0.55rem 0 0.15rem;
@@ -473,9 +414,6 @@
       color: var(--muted);
       font-size: 0.86rem;
       line-height: 1.5;
-    }
-    .reading .shape-glossary {
-      margin: 0.35rem 0 0.65rem;
     }
     .foot {
       color: var(--muted);
@@ -546,14 +484,9 @@
     {% else %}
     <p class="meta">窗口 {{ dates[0] if dates else "—" }} → {{ dates[-1] if dates else "—" }}（{{ dates|length }} 个交易日）· 颜色为各主题群 A 热度分位翻转（越红越热）· 主题之间已插值 · 左光谱序、右近热排序</p>
 
-    <section class="reading" id="chart-reading">
-      <div class="reading-head">
-        <h2>轮转解读</h2>
-        <button type="button" id="reread-btn">重新解读</button>
-      </div>
-      <p class="meta" id="reading-meta">正在解读…</p>
-      <div class="conclusion" id="reading-body"></div>
-    </section>
+    {% if reading_href %}
+    <p class="page-links"><a href="{{ reading_href }}">轮转解读 →</a></p>
+    {% endif %}
 
     <h2>主题等位图</h2>
     <div class="wave-pair" data-wave-pair="maps">
@@ -791,8 +724,6 @@
   <script>
     (function () {
       const conceptThemeOptions = {{ concept_theme_options | tojson }};
-      const interpretTemplate = {{ interpret_template | tojson }};
-      const readingAsOf = {{ as_of | tojson }};
       const windowStart = {{ window_start | tojson }};
       const windowEnd = {{ window_end | tojson }};
       const industryBoardNames = {{ industry_board_names | default([]) | tojson }};
@@ -810,229 +741,6 @@
       const conceptSliderDates = {{ concept_slider_dates | default([]) | tojson }};
       const conceptSliderIndex = {{ concept_slider_index | default(0) | tojson }};
       const conceptScrubFrames = {{ concept_scrub_frames | default([]) | tojson }};
-      let interpretRequestId = 0;
-
-      const READING_TITLES = new Set([
-        "定性总领",
-        "当前冷热",
-        "行业时间形态",
-        "三层轮转",
-        "热度衔接",
-        "下文推演",
-        "继续观察",
-      ]);
-
-      function normalizeReadingTitle(line) {
-        return line
-          .trim()
-          .replace(/^[0-9０-９]+[、.．)）]\s*/, "")
-          .replace(/[：:]\s*$/, "")
-          .replace(/\s+/g, "");
-      }
-
-      function isReadingTitle(line) {
-        const raw = line.trim().replace(/[：:]\s*$/, "");
-        if (READING_TITLES.has(raw)) return raw;
-        const compact = normalizeReadingTitle(line);
-        for (const title of READING_TITLES) {
-          if (normalizeReadingTitle(title) === compact) return title;
-        }
-        return null;
-      }
-
-      function isMarkdownTableLine(line) {
-        return /^\s*\|.+\|\s*$/.test(line);
-      }
-
-      function isMarkdownSeparator(line) {
-        return /^\s*\|?\s*:?-{3,}.*\|\s*$/.test(line);
-      }
-
-      function splitMarkdownRow(line) {
-        const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-        return trimmed.split("|").map((cell) => cell.trim());
-      }
-
-      function appendMarkdownTables(text, wrap) {
-        const lines = String(text || "").split("\n");
-        let i = 0;
-        while (i < lines.length) {
-          while (i < lines.length && !lines[i].trim()) i += 1;
-          if (i >= lines.length) break;
-
-          if (!isMarkdownTableLine(lines[i])) {
-            const paraLines = [];
-            while (i < lines.length && !isMarkdownTableLine(lines[i])) {
-              if (lines[i].trim()) paraLines.push(lines[i]);
-              i += 1;
-            }
-            if (paraLines.length) {
-              const p = document.createElement("p");
-              p.className = "reading-para";
-              p.textContent = paraLines.join("\n");
-              wrap.appendChild(p);
-            }
-            continue;
-          }
-
-          const tableLines = [];
-          while (i < lines.length && isMarkdownTableLine(lines[i])) {
-            tableLines.push(lines[i]);
-            i += 1;
-          }
-          if (tableLines.length < 2) {
-            const p = document.createElement("p");
-            p.className = "reading-para";
-            p.textContent = tableLines.join("\n");
-            wrap.appendChild(p);
-            continue;
-          }
-
-          const header = splitMarkdownRow(tableLines[0]);
-          let dataStart = 1;
-          if (isMarkdownSeparator(tableLines[1])) dataStart = 2;
-          const bodyRows = tableLines
-            .slice(dataStart)
-            .map(splitMarkdownRow)
-            .filter((row) => row.some((cell) => cell));
-
-          const box = document.createElement("div");
-          box.className = "reading-table-wrap";
-          const table = document.createElement("table");
-          table.className = "reading-table";
-          const thead = document.createElement("thead");
-          const headTr = document.createElement("tr");
-          header.forEach((cell) => {
-            const th = document.createElement("th");
-            th.textContent = cell;
-            headTr.appendChild(th);
-          });
-          thead.appendChild(headTr);
-          table.appendChild(thead);
-          const tbody = document.createElement("tbody");
-          bodyRows.forEach((row) => {
-            const tr = document.createElement("tr");
-            for (let c = 0; c < header.length; c += 1) {
-              const td = document.createElement("td");
-              td.textContent = row[c] || "";
-              tr.appendChild(td);
-            }
-            tbody.appendChild(tr);
-          });
-          table.appendChild(tbody);
-          box.appendChild(table);
-          wrap.appendChild(box);
-        }
-      }
-
-      function appendShapeGlossary(wrap) {
-        const aside = document.createElement("aside");
-        aside.className = "shape-glossary";
-        aside.setAttribute("aria-label", "行业时间形态读法说明");
-        aside.innerHTML = [
-          "<p>读法列说明</p>",
-          "<dl>",
-          '<div class="term"><dt>主线占位</dt><dd>长红柱且截止日仍偏热：占得久、现在还守着。</dd></div>',
-          '<div class="term"><dt>占位回落</dt><dd>曾是长红柱，但截止热度已明显低于窗内均值：近端在退热。</dd></div>',
-          '<div class="term"><dt>二波回补</dt><dd>先高、中段冷却、近端再抬：更像第二波。</dd></div>',
-          '<div class="term"><dt>候补龙头</dt><dd>截止非最热，但近端升温靠前且已进前列；盯会否超过当前最热。</dd></div>',
-          "</dl>",
-        ].join("");
-        wrap.appendChild(aside);
-      }
-
-      function renderProseReading(text, bodyEl) {
-        bodyEl.replaceChildren();
-        const blocks = String(text || "")
-          .trim()
-          .split(/\n\s*\n/);
-        for (const block of blocks) {
-          const lines = block.split("\n");
-          const title = isReadingTitle(lines[0] || "");
-          const wrap = document.createElement("div");
-          wrap.className = "reading-block";
-          if (title) {
-            const h = document.createElement("p");
-            h.className = "reading-title";
-            h.textContent = title;
-            wrap.appendChild(h);
-            const rest = lines.slice(1).join("\n").trim();
-            if (rest) {
-              if (title === "行业时间形态") {
-                appendShapeGlossary(wrap);
-                appendMarkdownTables(rest, wrap);
-              } else {
-                const p = document.createElement("p");
-                p.className = "reading-para";
-                p.textContent = rest;
-                wrap.appendChild(p);
-              }
-            }
-          } else if (block.includes("|")) {
-            appendMarkdownTables(block, wrap);
-          } else {
-            const p = document.createElement("p");
-            p.className = "reading-para";
-            p.textContent = block;
-            wrap.appendChild(p);
-          }
-          bodyEl.appendChild(wrap);
-        }
-      }
-
-      async function loadReading(asOf, force) {
-        const metaEl = document.getElementById("reading-meta");
-        const bodyEl = document.getElementById("reading-body");
-        const rereadBtn = document.getElementById("reread-btn");
-        if (!metaEl || !bodyEl || !interpretTemplate || !asOf) return;
-        const ticket = ++interpretRequestId;
-        metaEl.textContent = force ? "正在重新解读…" : "正在解读…";
-        bodyEl.replaceChildren();
-        if (rereadBtn) rereadBtn.disabled = true;
-        try {
-          const response = await fetch("/api/interpret/" + interpretTemplate, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ as_of: asOf, force: !!force }),
-          });
-          const payload = await response.json();
-          if (ticket !== interpretRequestId) return;
-          if (!response.ok) {
-            metaEl.textContent = "解读失败";
-            bodyEl.textContent = payload.detail || "解读失败";
-            return;
-          }
-          const cached = payload.cached ? " · 缓存" : "";
-          metaEl.textContent = "截至 " + payload.as_of + " · " + payload.model + cached;
-          const conclusion = (payload.reading && payload.reading.conclusion) || "";
-          if (!conclusion) {
-            bodyEl.textContent = "解读失败";
-            return;
-          }
-          renderProseReading(conclusion, bodyEl);
-        } catch (err) {
-          if (ticket !== interpretRequestId) return;
-          metaEl.textContent = "解读失败";
-          bodyEl.textContent = "解读失败";
-        } finally {
-          if (ticket === interpretRequestId && rereadBtn) {
-            rereadBtn.disabled = false;
-          }
-        }
-      }
-
-      const rereadBtn = document.getElementById("reread-btn");
-      if (rereadBtn) {
-        rereadBtn.addEventListener("click", () => {
-          loadReading(readingAsOf, true);
-        });
-      }
-      if (readingAsOf) {
-        loadReading(readingAsOf, false);
-      } else {
-        const metaEl = document.getElementById("reading-meta");
-        if (metaEl) metaEl.textContent = "暂无截止日，无法解读";
-      }
 
       function plotIn(panel) {
         return panel ? panel.querySelector(".js-plotly-plot") : null;

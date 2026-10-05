@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any
 
 from app.themes.heat_wavelet2d import (
+    DEFAULT_WINDOW_DAYS,
     FEATURE_TOP_N,
     LEVEL,
     WAVELET,
@@ -14,6 +15,7 @@ from app.themes.heat_wavelet2d import (
 from app.themes.industry_wave import build_industry_board_heat_payload
 
 __all__ = [
+    "DEFAULT_WINDOW_DAYS",
     "FEATURE_TOP_N",
     "build_industry_wavelet_payload",
 ]
@@ -40,8 +42,10 @@ def build_industry_wavelet_payload(
         }
 
     n = industry["board_count"]
+    # Prefer undensified board columns; densified z_short is plot-only.
+    z_for_wavelet = industry.get("z_boards") or industry["z_short"]
     return analyze_heat_wavelet2d(
-        z_short=industry["z_short"],
+        z_short=z_for_wavelet,
         dates=industry["dates"],
         board_names=industry["board_names"],
         board_codes=industry["board_codes"],

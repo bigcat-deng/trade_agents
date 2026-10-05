@@ -69,6 +69,8 @@ def build_industry_board_heat_payload(
     window_dates: list[date],
     heat_rows: list[tuple[date, str, str, object | None, object | None]],
     densify: int = INDUSTRY_DENSIFY,
+    csi500_closes: dict[date, float] | None = None,
+    csi500_volumes: dict[date, float] | None = None,
 ) -> dict:
     """Return industry short-heat plane with trajectory-seriation X order."""
     empty = {
@@ -155,7 +157,14 @@ def build_industry_board_heat_payload(
         close_heat_by_code=close_heat,
         names=names,
     )
-    _csi = csi500_overlay_for_dates(window_dates)
+    if csi500_closes is not None:
+        _csi = csi500_overlay_series(
+            window_dates,
+            closes=csi500_closes,
+            volumes=csi500_volumes or {},
+        )
+    else:
+        _csi = csi500_overlay_for_dates(window_dates)
 
     payload = attach_surface_flags(
         {
@@ -181,6 +190,8 @@ def build_industry_board_heat_payload(
     dense_x, dense_z = densify_hotness_plane(
         theme_x=theme_x, z_short=z_raw, densify=densify
     )
+    # Densified plane is for plotting; wavelet/features need native board columns.
+    payload["z_boards"] = z_raw
     payload["x"] = dense_x
     payload["z_short"] = dense_z
     return payload

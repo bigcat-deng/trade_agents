@@ -11,6 +11,9 @@ WAVELET = "db4"
 LEVEL = 3
 DWT_MODE = "symmetric"
 FEATURE_TOP_N = 10
+# db4×3 needs ≥56 on the short axis to avoid boundary-effect warnings; 120
+# leaves headroom so A3 is not pressed against the max level.
+DEFAULT_WINDOW_DAYS = 120
 LATE_FRAC = 5  # late window = max(5, T // 5)
 EXTREMUM_DAYS = 3  # read-chart extrema: last ≤3 trading days (≠ structure late_n)
 EXTREMUM_TOP_N = 3
@@ -55,6 +58,25 @@ def analyze_heat_wavelet2d(
         }
 
     t0, n0 = z.shape
+    n_boards = len(board_codes)
+    if n_boards and n0 != n_boards:
+        # Densified plot planes insert columns between boards; features index by
+        # board. Keep only native board columns (every densify step).
+        if n_boards > 1 and (n0 - 1) % (n_boards - 1) == 0:
+            steps = (n0 - 1) // (n_boards - 1)
+            z = z[:, ::steps][:, :n_boards]
+            t0, n0 = z.shape
+        else:
+            return {
+                "empty_message": (
+                    f"热度列数({n0})与板块数({n_boards})不一致，无法做小波特征"
+                ),
+                "as_of": as_of,
+                "dates": [],
+                "board_names": [],
+                "board_codes": [],
+                "top_n": top_n,
+            }
     late_n = max(5, t0 // LATE_FRAC)
     early_n = max(5, t0 // 3)
 

@@ -11,9 +11,7 @@ from app.db import (
     fetch_industry_heat_window,
 )
 from app.prompts.template import PromptTemplate, load_prompt
-from app.themes.industry_wavelet import build_industry_wavelet_payload
-
-DEFAULT_WINDOW_DAYS = 60
+from app.themes.industry_wavelet import DEFAULT_WINDOW_DAYS, build_industry_wavelet_payload
 
 
 def _fmt(value: object, digits: int = 3) -> str:

@@ -110,6 +110,8 @@ def build_concept_top_heat_payload(
     heat_rows: list[tuple[date, str, str, object | None, object | None]],
     top_n: int = CONCEPT_TOP_N,
     densify: int = CONCEPT_DENSIFY,
+    csi500_closes: dict[date, float] | None = None,
+    csi500_volumes: dict[date, float] | None = None,
 ) -> dict:
     """Return concept short-heat plane: TopN ∪ theme members, fused seriation."""
     axis_note = _axis_note(top_n=top_n, top_count=0, theme_added=0, board_count=0)
@@ -235,7 +237,14 @@ def build_concept_top_heat_payload(
         close_heat_by_code=close_heat,
         names=names,
     )
-    _csi = csi500_overlay_for_dates(window_dates)
+    if csi500_closes is not None:
+        _csi = csi500_overlay_series(
+            window_dates,
+            closes=csi500_closes,
+            volumes=csi500_volumes or {},
+        )
+    else:
+        _csi = csi500_overlay_for_dates(window_dates)
     payload = attach_surface_flags(
         {
             "dates": [day.isoformat() for day in window_dates],
@@ -270,6 +279,8 @@ def build_concept_top_heat_payload(
     dense_x, dense_z = densify_hotness_plane(
         theme_x=theme_x, z_short=z_raw, densify=densify
     )
+    # Densified plane is for plotting; wavelet/features need native board columns.
+    payload["z_boards"] = z_raw
     payload["x"] = dense_x
     payload["z_short"] = dense_z
     return payload

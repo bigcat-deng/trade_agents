@@ -43,7 +43,10 @@ from app.interpret.service import (
     interpret,
 )
 from app.market_data.board_heat import top_short_heat_keys
-from app.market_data.csi500 import fetch_csi500_closes, csi500_close_volume_maps
+from app.market_data.csi500 import (
+    csi500_maps_ending,
+    fetch_csi500_closes,
+)
 from app.market_data.providers import baostock_kline
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
@@ -53,6 +56,7 @@ from app.themes.concept_wave import (
     build_concept_top_heat_payload,
 )
 from app.themes.concept_wavelet import FEATURE_TOP_N, build_concept_wavelet_payload
+from app.themes.heat_wavelet2d import DEFAULT_WINDOW_DAYS as WAVELET_WINDOW_DAYS
 from app.themes.industry_wavelet import build_industry_wavelet_payload
 from app.themes.config import ThemeConfig, theme_board_codes
 from app.themes.board_cross_marks import CROSS_HISTORY_DAYS
@@ -440,10 +444,24 @@ def concept_themes_wave_page(
     return templates.TemplateResponse(request, "theme_wave.html", payload)
 
 
+@app.get("/boards/concept/themes/wave/reading", response_class=HTMLResponse)
+def concept_themes_wave_reading_page(
+    request: Request,
+    days: int = Query(40, ge=20, le=180),
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = _themes_wave_reading_page_payload(days=days, as_of=requested)
+    return templates.TemplateResponse(request, "theme_wave_reading.html", payload)
+
+
 @app.get("/boards/concept/themes/wave/wavelet", response_class=HTMLResponse)
 def concept_themes_wave_wavelet_page(
     request: Request,
-    days: int = Query(60, ge=20, le=180),
+    days: int = Query(WAVELET_WINDOW_DAYS, ge=20, le=180),
     as_of: str | None = Query(None),
 ) -> HTMLResponse:
     try:
@@ -459,7 +477,7 @@ def concept_themes_wave_wavelet_page(
 @app.get("/boards/concept/themes/wave/industry-wavelet", response_class=HTMLResponse)
 def concept_themes_wave_industry_wavelet_page(
     request: Request,
-    days: int = Query(60, ge=20, le=180),
+    days: int = Query(WAVELET_WINDOW_DAYS, ge=20, le=180),
     as_of: str | None = Query(None),
 ) -> HTMLResponse:
     try:
@@ -549,19 +567,22 @@ def _themes_wave_empty(
         "concept_select_from": None,
         "concept_select_to": None,
         "concept_theme_options": [],
-        "interpret_template": "theme-wave-reading",
         "spectrum_chart_html": "",
         "spectrum_map_html": "",
         "ranked_chart_html": "",
         "ranked_map_html": "",
         "industry_short_html": "",
         "concept_short_html": "",
+        "reading_href": (
+            f"/boards/concept/themes/wave/reading?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
         "wavelet_href": (
-            f"/boards/concept/themes/wave/wavelet?days={days}"
+            f"/boards/concept/themes/wave/wavelet?days={WAVELET_WINDOW_DAYS}"
             f"&as_of={requested.isoformat()}"
         ),
         "industry_wavelet_href": (
-            f"/boards/concept/themes/wave/industry-wavelet?days={days}"
+            f"/boards/concept/themes/wave/industry-wavelet?days={WAVELET_WINDOW_DAYS}"
             f"&as_of={requested.isoformat()}"
         ),
         "spectrum_links": [],
@@ -615,6 +636,37 @@ def _concept_theme_highlight_options(board_codes: list[str]) -> list[dict]:
             }
         )
     return options
+
+
+def _themes_wave_reading_page_payload(
+    *,
+    days: int,
+    as_of: date | None,
+) -> dict:
+    requested = as_of or date.today()
+    selected = _resolve_heat_as_of("concept", requested)
+    wave_back = (
+        f"/boards/concept/themes/wave?days={days}&as_of={requested.isoformat()}"
+    )
+    if selected is None:
+        return {
+            "title": "轮转解读",
+            "days": days,
+            "as_of": None,
+            "requested_as_of": requested.isoformat(),
+            "interpret_template": "theme-wave-reading",
+            "wave_back_href": wave_back,
+            "empty_message": "还没有概念热度。",
+        }
+    return {
+        "title": "轮转解读",
+        "days": days,
+        "as_of": selected.isoformat(),
+        "requested_as_of": requested.isoformat(),
+        "interpret_template": "theme-wave-reading",
+        "wave_back_href": wave_back,
+        "empty_message": None,
+    }
 
 
 def _themes_wave_page_payload(
@@ -714,9 +766,19 @@ def _themes_wave_page_payload(
     industry_board_names: list[str] = []
     industry_board_codes: list[str] = []
     industry_date_count = 0
-    industry_slider_dates: list[date] = []
-    industry_slider_index = 0
+    industry_slider_dates, industry_slider_index = build_map_slider_dates(
+        "industry", selected
+    )
     industry_scrub_frames: list[dict] = []
+    concept_slider_dates, concept_slider_index = build_map_slider_dates(
+        "concept", selected
+    )
+    csi_end = selected
+    if industry_slider_dates:
+        csi_end = max(csi_end, industry_slider_dates[-1])
+    if concept_slider_dates:
+        csi_end = max(csi_end, concept_slider_dates[-1])
+    csi_closes, csi_volumes = csi500_maps_ending(csi_end)
     industry_dates = fetch_heat_dates_ending("industry", selected, days)
     if industry_dates:
         industry_rows = fetch_industry_heat_window(
@@ -725,6 +787,8 @@ def _themes_wave_page_payload(
         industry = build_industry_board_heat_payload(
             window_dates=industry_dates,
             heat_rows=industry_rows,
+            csi500_closes=csi_closes,
+            csi500_volumes=csi_volumes,
         )
         if not industry.get("empty_message"):
             industry_axis_note = industry["axis_note"]
@@ -750,9 +814,9 @@ def _themes_wave_page_payload(
                 csi500_volumes=industry.get("csi500_volumes"),
                 csi500_volumes_scaled=industry.get("csi500_volumes_scaled"),
             )
-            industry_slider_dates, industry_slider_index = build_map_slider_dates(
-                "industry", selected
-            )
+            if not industry_slider_dates:
+                industry_slider_dates = [selected]
+                industry_slider_index = 0
             ind_lookback = (
                 days
                 + len(industry_slider_dates)
@@ -792,10 +856,6 @@ def _themes_wave_page_payload(
                 ind_bar_start,
                 industry_slider_dates[-1],
             )
-            ind_csi_start = (ind_hist[0] if ind_hist else selected) - timedelta(days=14)
-            ind_csi_closes, ind_csi_volumes = csi500_close_volume_maps(
-                ind_csi_start, industry_slider_dates[-1]
-            )
             ind_cross_start = ind_hist[0] if ind_hist else selected
             ind_close_heat = fetch_board_close_heat(
                 "industry",
@@ -813,8 +873,8 @@ def _themes_wave_page_payload(
                 bars_by_code=ind_bars,
                 vol_all_dates=ind_vol_dates or ind_hist,
                 names=dict(zip(industry_board_codes, industry_board_names)),
-                csi500_closes=ind_csi_closes,
-                csi500_volumes=ind_csi_volumes,
+                csi500_closes=csi_closes,
+                csi500_volumes=csi_volumes,
                 close_heat_by_code=ind_close_heat,
             )
 
@@ -827,8 +887,6 @@ def _themes_wave_page_payload(
     concept_board_names: list[str] = []
     concept_board_codes: list[str] = []
     concept_date_count = 0
-    concept_slider_dates: list[date] = []
-    concept_slider_index = 0
     concept_scrub_frames: list[dict] = []
     concept_named_rows = fetch_concept_heat_named_window(
         window_dates[0], window_dates[-1]
@@ -836,6 +894,8 @@ def _themes_wave_page_payload(
     concept_top = build_concept_top_heat_payload(
         window_dates=window_dates,
         heat_rows=concept_named_rows,
+        csi500_closes=csi_closes,
+        csi500_volumes=csi_volumes,
     )
     if not concept_top.get("empty_message"):
         concept_axis_note = concept_top["axis_note"]
@@ -869,9 +929,9 @@ def _themes_wave_page_payload(
             csi500_volumes=concept_top.get("csi500_volumes"),
             csi500_volumes_scaled=concept_top.get("csi500_volumes_scaled"),
         )
-        concept_slider_dates, concept_slider_index = build_map_slider_dates(
-            "concept", selected
-        )
+        if not concept_slider_dates:
+            concept_slider_dates = [selected]
+            concept_slider_index = 0
         con_lookback = (
             days
             + len(concept_slider_dates)
@@ -910,10 +970,6 @@ def _themes_wave_page_payload(
             con_bar_start,
             concept_slider_dates[-1],
         )
-        con_csi_start = (con_hist[0] if con_hist else selected) - timedelta(days=14)
-        con_csi_closes, con_csi_volumes = csi500_close_volume_maps(
-            con_csi_start, concept_slider_dates[-1]
-        )
         con_cross_start = con_hist[0] if con_hist else selected
         con_close_heat = fetch_board_close_heat(
             "concept",
@@ -931,8 +987,8 @@ def _themes_wave_page_payload(
             bars_by_code=con_bars,
             vol_all_dates=con_vol_dates or con_hist,
             names=dict(zip(concept_board_codes, concept_board_names)),
-            csi500_closes=con_csi_closes,
-            csi500_volumes=con_csi_volumes,
+            csi500_closes=csi_closes,
+            csi500_volumes=csi_volumes,
             close_heat_by_code=con_close_heat,
         )
 
@@ -960,19 +1016,22 @@ def _themes_wave_page_payload(
         "concept_board_names": concept_board_names,
         "concept_board_codes": concept_board_codes,
         "concept_date_count": concept_date_count,
-        "interpret_template": "theme-wave-reading",
         "spectrum_chart_html": "",
         "spectrum_map_html": spectrum_map_html,
         "ranked_chart_html": "",
         "ranked_map_html": ranked_map_html,
         "industry_short_html": industry_short_html,
         "concept_short_html": concept_short_html,
+        "reading_href": (
+            f"/boards/concept/themes/wave/reading?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
         "wavelet_href": (
-            f"/boards/concept/themes/wave/wavelet?days={days}"
+            f"/boards/concept/themes/wave/wavelet?days={WAVELET_WINDOW_DAYS}"
             f"&as_of={requested.isoformat()}"
         ),
         "industry_wavelet_href": (
-            f"/boards/concept/themes/wave/industry-wavelet?days={days}"
+            f"/boards/concept/themes/wave/industry-wavelet?days={WAVELET_WINDOW_DAYS}"
             f"&as_of={requested.isoformat()}"
         ),
         "spectrum_links": list(zip(spectrum["theme_labels"], spectrum["theme_hrefs"])),
@@ -1026,7 +1085,7 @@ def _wavelet_page_empty(
         "days": days,
         "requested_as_of": requested.isoformat(),
         "wave_back_href": (
-            f"/boards/concept/themes/wave?days={days}&as_of={requested.isoformat()}"
+            f"/boards/concept/themes/wave?days=40&as_of={requested.isoformat()}"
         ),
         "top_n": 0,
         "late_days": 0,
@@ -1198,7 +1257,7 @@ def _themes_wave_wavelet_page_payload(
         "days": days,
         "requested_as_of": requested.isoformat(),
         "wave_back_href": (
-            f"/boards/concept/themes/wave?days={days}"
+            f"/boards/concept/themes/wave?days=40"
             f"&as_of={requested.isoformat()}"
         ),
         "top_n": payload["top_n"],
