@@ -797,6 +797,7 @@
       const interpretTemplate = {{ interpret_template | tojson }};
       const readingAsOf = {{ as_of | tojson }};
       const readingDays = {{ window_days | tojson }};
+      const readingRosterDays = {{ roster_days | default(40) | tojson }};
       const mapSectionTitle = {{ map_section_title | tojson }};
       let interpretRequestId = 0;
       const READING_TITLES = new Set([
@@ -964,6 +965,10 @@
               as_of: asOf,
               force: !!force,
               window_trading_days: readingDays || undefined,
+              roster_trading_days:
+                interpretTemplate === "concept-wavelet-reading"
+                  ? (readingRosterDays || undefined)
+                  : undefined,
             }),
           });
           const payload = await response.json();

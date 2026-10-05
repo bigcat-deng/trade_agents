@@ -110,6 +110,7 @@ def interpret(
     *,
     force: bool = False,
     window_trading_days: int | None = None,
+    roster_trading_days: int | None = None,
 ) -> Interpretation:
     """Fill one prompt template and return the model reading, using a saved result when present."""
     builder = BUILDERS.get(template_name)
@@ -127,6 +128,7 @@ def interpret(
             as_of,
             force=force,
             window_trading_days=window_trading_days,
+            roster_trading_days=roster_trading_days,
         )
 
     if window_trading_days is not None:
@@ -201,11 +203,23 @@ def _interpret_prose(
     *,
     force: bool = False,
     window_trading_days: int | None = None,
+    roster_trading_days: int | None = None,
 ) -> Interpretation:
     if template_name in WAVELET_READING_TEMPLATES:
-        template, prompt, resolved = builder(
-            as_of, window_trading_days=window_trading_days
-        )
+        if template_name == "concept-wavelet-reading":
+            template, prompt, resolved = builder(
+                as_of,
+                window_trading_days=window_trading_days,
+                roster_trading_days=roster_trading_days,
+            )
+        else:
+            if roster_trading_days is not None:
+                raise InterpretError(
+                    "roster_trading_days is only supported for concept-wavelet-reading"
+                )
+            template, prompt, resolved = builder(
+                as_of, window_trading_days=window_trading_days
+            )
         # Include window in cache key so different ?days= values do not collide.
         resolved_window = window_trading_days
         if resolved_window is None:
@@ -214,10 +228,24 @@ def _interpret_prose(
             )
         resolved_window = max(20, min(180, int(resolved_window)))
         cache_name = f"{template.name}#d{resolved_window}"
+        if template_name == "concept-wavelet-reading":
+            from app.themes.concept_wave import CONCEPT_ROSTER_WINDOW_DAYS
+
+            roster_key = (
+                int(roster_trading_days)
+                if roster_trading_days is not None
+                else CONCEPT_ROSTER_WINDOW_DAYS
+            )
+            roster_key = max(20, min(180, roster_key))
+            cache_name = f"{cache_name}#r{roster_key}"
     else:
         if window_trading_days is not None:
             raise InterpretError(
                 f"window_trading_days is not supported for template {template_name}"
+            )
+        if roster_trading_days is not None:
+            raise InterpretError(
+                f"roster_trading_days is not supported for template {template_name}"
             )
         template, prompt, resolved = builder(as_of)
         cache_name = template.name

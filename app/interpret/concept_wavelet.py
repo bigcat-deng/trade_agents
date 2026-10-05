@@ -11,7 +11,11 @@ from app.db import (
     fetch_heat_dates_ending,
 )
 from app.prompts.template import PromptTemplate, load_prompt
-from app.themes.concept_wavelet import DEFAULT_WINDOW_DAYS, build_concept_wavelet_payload
+from app.themes.concept_wavelet import (
+    CONCEPT_ROSTER_WINDOW_DAYS,
+    DEFAULT_WINDOW_DAYS,
+    build_concept_wavelet_payload,
+)
 
 
 def _fmt(value: object, digits: int = 3) -> str:
@@ -100,11 +104,18 @@ def build_concept_wavelet_reading_prompt(
     as_of: date | None = None,
     *,
     window_trading_days: int | None = None,
+    roster_trading_days: int | None = None,
 ) -> tuple[PromptTemplate, str, date]:
     template = load_prompt("concept-wavelet-reading")
     default_window = int(template.config.get("window_trading_days") or DEFAULT_WINDOW_DAYS)
     window = int(window_trading_days) if window_trading_days is not None else default_window
     window = max(20, min(180, window))
+    roster_days = (
+        int(roster_trading_days)
+        if roster_trading_days is not None
+        else CONCEPT_ROSTER_WINDOW_DAYS
+    )
+    roster_days = max(20, min(180, roster_days))
 
     target = as_of or date.today()
     ending = fetch_heat_dates_ending("concept", target, 1)
@@ -115,12 +126,16 @@ def build_concept_wavelet_reading_prompt(
     window_dates = fetch_heat_dates_ending("concept", selected, window)
     if not window_dates:
         raise RuntimeError("no concept heat window to interpret")
+    roster_window = fetch_heat_dates_ending("concept", selected, roster_days)
+    if not roster_window:
+        roster_window = window_dates
 
     payload = build_concept_wavelet_payload(
         window_dates=window_dates,
         heat_rows=fetch_concept_heat_named_window(
             window_dates[0], window_dates[-1]
         ),
+        roster_window_dates=roster_window,
     )
     if payload.get("empty_message"):
         raise RuntimeError(payload["empty_message"])

@@ -52,6 +52,7 @@ from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
 from app.themes import build_theme_view, get_theme, list_themes
 from app.themes.concept_wave import (
+    CONCEPT_ROSTER_WINDOW_DAYS,
     build_concept_scrub_frames,
     build_concept_top_heat_payload,
 )
@@ -116,6 +117,7 @@ class InterpretRequest(BaseModel):
     as_of: str | None = None
     force: bool = False
     window_trading_days: int | None = Field(default=None, ge=20, le=180)
+    roster_trading_days: int | None = Field(default=None, ge=20, le=180)
 
 
 @app.post("/api/interpret/{template_name}")
@@ -131,6 +133,9 @@ def interpret_api(template_name: str, body: InterpretRequest | None = None) -> d
             force=bool(body.force) if body else False,
             window_trading_days=(
                 body.window_trading_days if body else None
+            ),
+            roster_trading_days=(
+                body.roster_trading_days if body else None
             ),
         )
     except UnknownTemplate as exc:
@@ -462,6 +467,7 @@ def concept_themes_wave_reading_page(
 def concept_themes_wave_wavelet_page(
     request: Request,
     days: int = Query(WAVELET_WINDOW_DAYS, ge=20, le=180),
+    roster_days: int = Query(CONCEPT_ROSTER_WINDOW_DAYS, ge=20, le=180),
     as_of: str | None = Query(None),
 ) -> HTMLResponse:
     try:
@@ -469,7 +475,10 @@ def concept_themes_wave_wavelet_page(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
     payload = _themes_wave_wavelet_page_payload(
-        scope="concept", days=days, as_of=requested
+        scope="concept",
+        days=days,
+        as_of=requested,
+        roster_days=roster_days,
     )
     return templates.TemplateResponse(request, "theme_wave_wavelet.html", payload)
 
@@ -579,6 +588,7 @@ def _themes_wave_empty(
         ),
         "wavelet_href": (
             f"/boards/concept/themes/wave/wavelet?days={WAVELET_WINDOW_DAYS}"
+            f"&roster_days={days}"
             f"&as_of={requested.isoformat()}"
         ),
         "industry_wavelet_href": (
@@ -1028,6 +1038,7 @@ def _themes_wave_page_payload(
         ),
         "wavelet_href": (
             f"/boards/concept/themes/wave/wavelet?days={WAVELET_WINDOW_DAYS}"
+            f"&roster_days={days}"
             f"&as_of={requested.isoformat()}"
         ),
         "industry_wavelet_href": (
@@ -1067,6 +1078,7 @@ def _wavelet_page_empty(
     roster_note: str,
     board_type: str = "concept",
     days: int = 60,
+    roster_days: int = CONCEPT_ROSTER_WINDOW_DAYS,
     requested_as_of: date | None = None,
 ) -> dict:
     requested = requested_as_of or date.today()
@@ -1083,9 +1095,11 @@ def _wavelet_page_empty(
         "board_type": board_type,
         "window_days": 0,
         "days": days,
+        "roster_days": roster_days,
         "requested_as_of": requested.isoformat(),
         "wave_back_href": (
-            f"/boards/concept/themes/wave?days=40&as_of={requested.isoformat()}"
+            f"/boards/concept/themes/wave?days={roster_days}"
+            f"&as_of={requested.isoformat()}"
         ),
         "top_n": 0,
         "late_days": 0,
@@ -1114,6 +1128,7 @@ def _themes_wave_wavelet_page_payload(
     scope: str,
     days: int,
     as_of: date | None,
+    roster_days: int = CONCEPT_ROSTER_WINDOW_DAYS,
 ) -> dict:
     if scope == "industry":
         board_type = "industry"
@@ -1137,7 +1152,7 @@ def _themes_wave_wavelet_page_payload(
         map_heading = "概念映射表"
         map_section_title = "概念映射"
         roster_note = (
-            f"与上方概念叶序一致（近端 Top∪主题）；"
+            f"与上方概念叶序一致（入选对齐水面近 {roster_days} 日窗的 Top∪主题）；"
             f"每类按特征分排序取前 {FEATURE_TOP_N}。"
             "解读与本表同一窗口，只串读点名、不再制表。"
         )
@@ -1155,6 +1170,7 @@ def _themes_wave_wavelet_page_payload(
         roster_note=roster_note,
         board_type=board_type,
         days=days,
+        roster_days=roster_days,
         requested_as_of=requested,
     )
     if selected is None:
@@ -1173,11 +1189,15 @@ def _themes_wave_wavelet_page_payload(
             ),
         )
     else:
+        roster_window = fetch_heat_dates_ending(
+            "concept", selected, roster_days
+        )
         payload = build_concept_wavelet_payload(
             window_dates=window_dates,
             heat_rows=fetch_concept_heat_named_window(
                 window_dates[0], window_dates[-1]
             ),
+            roster_window_dates=roster_window or None,
         )
     if payload.get("empty_message"):
         return _wavelet_page_empty(
@@ -1238,7 +1258,8 @@ def _themes_wave_wavelet_page_payload(
         )
     else:
         roster_note = (
-            f"与上方概念叶序一致（近端 Top∪主题，共 {payload['board_count']} 列）；"
+            f"与上方概念叶序一致（入选对齐水面近 {roster_days} 日窗；"
+            f"Top∪主题共 {payload['board_count']} 列）；"
             f"每类按特征分排序取前 {FEATURE_TOP_N}。"
             "解读与本表同一窗口，只串读点名、不再制表。"
         )
@@ -1255,9 +1276,10 @@ def _themes_wave_wavelet_page_payload(
         "board_type": board_type,
         "window_days": payload["window_days"],
         "days": days,
+        "roster_days": roster_days,
         "requested_as_of": requested.isoformat(),
         "wave_back_href": (
-            f"/boards/concept/themes/wave?days=40"
+            f"/boards/concept/themes/wave?days={roster_days}"
             f"&as_of={requested.isoformat()}"
         ),
         "top_n": payload["top_n"],

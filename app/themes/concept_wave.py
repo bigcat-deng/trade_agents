@@ -43,6 +43,8 @@ from app.themes.service import list_themes
 CONCEPT_TOP_N = 200
 CONCEPT_DENSIFY = DEFAULT_PLANE_DENSIFY
 CONCEPT_TRAJ_WEIGHT = DEFAULT_TRAJ_WEIGHT
+# Theme-wave surface default window; concept wavelet reuses this for TopN∪theme.
+CONCEPT_ROSTER_WINDOW_DAYS = 40
 
 
 def _empty_return_overlay() -> dict[str, object]:
@@ -112,8 +114,14 @@ def build_concept_top_heat_payload(
     densify: int = CONCEPT_DENSIFY,
     csi500_closes: dict[date, float] | None = None,
     csi500_volumes: dict[date, float] | None = None,
+    roster_window_dates: list[date] | None = None,
 ) -> dict:
-    """Return concept short-heat plane: TopN ∪ theme members, fused seriation."""
+    """Return concept short-heat plane: TopN ∪ theme members, fused seriation.
+
+    ``roster_window_dates`` (if set) controls TopN∪theme selection and leaf order;
+    the painted / analyzed grid still uses ``window_dates``. This lets the wavelet
+    page keep a longer analysis window while matching the theme-wave roster.
+    """
     axis_note = _axis_note(top_n=top_n, top_count=0, theme_added=0, board_count=0)
     empty = {
         "dates": [],
@@ -132,6 +140,7 @@ def build_concept_top_heat_payload(
         "top_count": 0,
         "theme_added": 0,
         "densify": densify,
+        "roster_window_days": 0,
         "return_exceedance": _empty_return_overlay(),
         "cross_marks": empty_cross_mark_overlay(),
         "csi500_returns": [],
@@ -141,6 +150,17 @@ def build_concept_top_heat_payload(
     }
     if not window_dates:
         return attach_surface_flags(empty)
+
+    roster_window = list(roster_window_dates) if roster_window_dates else list(window_dates)
+    if not roster_window:
+        return attach_surface_flags(empty)
+    # Roster must end on the same as-of as the paint window.
+    if roster_window[-1] != window_dates[-1]:
+        roster_window = [d for d in roster_window if d <= window_dates[-1]]
+        if not roster_window or roster_window[-1] != window_dates[-1]:
+            # Fall back to a trailing slice of the paint window.
+            n = min(len(window_dates), len(roster_window_dates or window_dates))
+            roster_window = window_dates[-n:]
 
     short_by_day: dict[date, dict[str, float]] = {}
     names: dict[str, str] = {}
@@ -159,12 +179,20 @@ def build_concept_top_heat_payload(
 
     for code in all_codes:
         names.setdefault(code, code)
-    available = set(all_codes)
+    # Match theme-wave availability: only codes with short-heat in the roster window.
+    roster_present = {
+        code
+        for day in roster_window
+        for code in short_by_day.get(day, {})
+    }
+    roster_candidates = [code for code in all_codes if code in roster_present]
+    if not roster_candidates:
+        return attach_surface_flags(empty)
 
     top_selected = select_top_codes_by_late_short_heat(
-        window_dates=window_dates,
+        window_dates=roster_window,
         heat_by_day=short_by_day,
-        candidate_codes=all_codes,
+        candidate_codes=roster_candidates,
         top_n=top_n,
     )
     if not top_selected:
@@ -173,16 +201,16 @@ def build_concept_top_heat_payload(
     selected_set = set(top_selected)
     theme_added_codes: list[str] = []
     for code in _theme_member_codes():
-        if code not in available or code in selected_set:
+        if code not in roster_present or code in selected_set:
             continue
         selected_set.add(code)
         theme_added_codes.append(code)
 
     selected = list(top_selected) + theme_added_codes
-    late_days = late_quarter_dates(window_dates)
+    late_days = late_quarter_dates(roster_window)
     as_of = window_dates[-1]
     series_by_code = hotness_series_by_code(
-        window_dates=window_dates,
+        window_dates=roster_window,
         codes=selected,
         heat_by_day=short_by_day,
     )
@@ -268,6 +296,7 @@ def build_concept_top_heat_payload(
             "top_count": top_count,
             "theme_added": theme_added,
             "densify": densify,
+            "roster_window_days": len(roster_window),
             "return_exceedance": return_exceedance,
             "cross_marks": cross_marks,
             "csi500_returns": _csi["returns"],

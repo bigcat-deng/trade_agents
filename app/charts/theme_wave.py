@@ -337,33 +337,6 @@ def render_theme_wave_contour(
             name="等位图",
         )
     ]
-    if return_exceedance is not None:
-        pos_x = list(return_exceedance.get("pos_x") or [])
-        pos_y = list(return_exceedance.get("pos_y") or [])
-        neg_x = list(return_exceedance.get("neg_x") or [])
-        neg_y = list(return_exceedance.get("neg_y") or [])
-        traces.append(
-            go.Scatter(
-                x=pos_x,
-                y=pos_y,
-                mode="lines",
-                line=dict(color="#111111", width=1.2),
-                hoverinfo="skip",
-                showlegend=False,
-                name="收益>+2σ",
-            )
-        )
-        traces.append(
-            go.Scatter(
-                x=neg_x,
-                y=neg_y,
-                mode="lines",
-                line=dict(color="#ffffff", width=1.2),
-                hoverinfo="skip",
-                showlegend=False,
-                name="收益<-2σ",
-            )
-        )
     if cross_marks is not None:
         for key, style in CROSS_STYLE.items():
             xs = list(cross_marks.get(f"{key}_x") or [])
@@ -435,6 +408,34 @@ def render_theme_wave_contour(
                     yaxis="y",
                 )
             )
+    # Draw ±2σ cell ticks last so cross marks / CSI overlays cannot cover them.
+    if return_exceedance is not None:
+        pos_x = list(return_exceedance.get("pos_x") or [])
+        pos_y = list(return_exceedance.get("pos_y") or [])
+        neg_x = list(return_exceedance.get("neg_x") or [])
+        neg_y = list(return_exceedance.get("neg_y") or [])
+        traces.append(
+            go.Scatter(
+                x=pos_x,
+                y=pos_y,
+                mode="lines",
+                line=dict(color="#111111", width=1.2),
+                hoverinfo="skip",
+                showlegend=False,
+                name="收益>+2σ",
+            )
+        )
+        traces.append(
+            go.Scatter(
+                x=neg_x,
+                y=neg_y,
+                mode="lines",
+                line=dict(color="#ffffff", width=1.2),
+                hoverinfo="skip",
+                showlegend=False,
+                name="收益<-2σ",
+            )
+        )
 
     fig = go.Figure(data=traces)
     annotations = (
