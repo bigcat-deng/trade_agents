@@ -1,4 +1,4 @@
-"""MACD / short-long heat cross markers for industry & concept heat planes."""
+"""MACD cross markers for industry & concept heat planes."""
 
 from __future__ import annotations
 
@@ -7,25 +7,10 @@ from datetime import date
 # Warm-up for MACD(12,26,9); matches interpret/cross_stats.
 CROSS_HISTORY_DAYS = 120
 
-# Plotly marker styles: × = MACD, ◆ = heat; color by direction.
+# Plotly marker styles: × = MACD; orange up, blue down.
 CROSS_STYLE = {
     "macd_up": {"symbol": "x", "color": "#ea580c", "name": "MACD上穿", "size": 8},
     "macd_down": {"symbol": "x", "color": "#2563eb", "name": "MACD下穿", "size": 8},
-    "heat_up": {"symbol": "diamond", "color": "#ea580c", "name": "热度上穿", "size": 7},
-    "heat_down": {
-        "symbol": "diamond",
-        "color": "#2563eb",
-        "name": "热度下穿",
-        "size": 7,
-    },
-}
-
-# Slight column offset so MACD × and heat ◆ on the same day stay readable.
-_X_OFFSET = {
-    "macd_up": -0.12,
-    "macd_down": -0.12,
-    "heat_up": 0.12,
-    "heat_down": 0.12,
 }
 
 
@@ -46,7 +31,7 @@ def build_cross_mark_overlay(
     close_heat_by_code: dict[str, list[tuple[date, object, object, object]]],
     names: dict[str, str] | None = None,
 ) -> dict[str, object]:
-    """Scatter coords for MACD/heat crosses that fall inside ``window_dates``."""
+    """Scatter coords for MACD crosses that fall inside ``window_dates``."""
     # Lazy import: cross_stats → concept/industry_wave → this module.
     from app.interpret.cross_stats import list_cross_event_dates
 
@@ -71,11 +56,10 @@ def build_cross_mark_overlay(
         for key, days in events.items():
             if key not in buckets:
                 continue
-            dx = _X_OFFSET[key]
             for day in days:
                 if day not in window_set:
                     continue
-                buckets[key].append((x0 + dx, day_y[day], f"{label}<br>{day.isoformat()}"))
+                buckets[key].append((x0, day_y[day], f"{label}<br>{day.isoformat()}"))
 
     out = empty_cross_mark_overlay()
     for key, points in buckets.items():

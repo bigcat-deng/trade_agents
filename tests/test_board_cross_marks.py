@@ -1,4 +1,4 @@
-"""MACD / heat cross markers on heat planes."""
+"""MACD cross markers on heat planes."""
 
 from __future__ import annotations
 
@@ -18,13 +18,16 @@ def _days(n: int, start: date = date(2026, 1, 2)) -> list[date]:
 
 
 class BoardCrossMarkTests(unittest.TestCase):
-    def test_empty_overlay_has_four_series(self) -> None:
+    def test_empty_overlay_has_macd_series_only(self) -> None:
         empty = empty_cross_mark_overlay()
+        self.assertEqual(set(CROSS_STYLE), {"macd_up", "macd_down"})
         for key in CROSS_STYLE:
             self.assertEqual(empty[f"{key}_x"], [])
             self.assertEqual(empty[f"{key}_count"], 0)
+        self.assertNotIn("heat_up_x", empty)
+        self.assertNotIn("heat_down_x", empty)
 
-    def test_maps_events_to_cell_centers_with_offsets(self) -> None:
+    def test_maps_macd_events_to_cell_centers(self) -> None:
         days = _days(5)
         window = days[1:4]
         rows = [(day, 100.0, 10.0, 20.0) for day in days]
@@ -45,17 +48,14 @@ class BoardCrossMarkTests(unittest.TestCase):
                 names={"mid": "中板"},
             )
         self.assertEqual(overlay["macd_up_count"], 1)
-        self.assertEqual(overlay["heat_down_count"], 1)
-        # mid column index = 1; MACD left of center, heat right of center
-        self.assertAlmostEqual(overlay["macd_up_x"][0], 1.0 - 0.12)
-        self.assertAlmostEqual(overlay["heat_down_x"][0], 1.0 + 0.12)
-        # window index of days[2] is 1
+        self.assertNotIn("heat_down_count", overlay)
+        # mid column index = 1; no offset now that heat ◆ is gone
+        self.assertAlmostEqual(overlay["macd_up_x"][0], 1.0)
         self.assertAlmostEqual(overlay["macd_up_y"][0], 1.0)
         self.assertIn("中板", overlay["macd_up_text"][0])
         self.assertEqual(CROSS_STYLE["macd_up"]["symbol"], "x")
-        self.assertEqual(CROSS_STYLE["heat_down"]["symbol"], "diamond")
         self.assertEqual(CROSS_STYLE["macd_up"]["color"], "#ea580c")
-        self.assertEqual(CROSS_STYLE["heat_down"]["color"], "#2563eb")
+        self.assertEqual(CROSS_STYLE["macd_down"]["color"], "#2563eb")
 
     def test_skips_events_outside_window(self) -> None:
         days = _days(5)
@@ -76,7 +76,7 @@ class BoardCrossMarkTests(unittest.TestCase):
             )
         self.assertEqual(overlay["macd_up_count"], 0)
 
-    def test_contour_includes_cross_trace_names(self) -> None:
+    def test_contour_includes_macd_trace_names_only(self) -> None:
         from app.charts.theme_wave import render_theme_wave_contour
 
         html = render_theme_wave_contour(
@@ -96,22 +96,17 @@ class BoardCrossMarkTests(unittest.TestCase):
                 "macd_up_x": [0.0],
                 "macd_up_y": [1.0],
                 "macd_up_text": ["A<br>2026-09-02"],
-                "macd_down_x": [],
-                "macd_down_y": [],
-                "macd_down_text": [],
-                "heat_up_x": [],
-                "heat_up_y": [],
-                "heat_up_text": [],
-                "heat_down_x": [1.0],
-                "heat_down_y": [0.0],
-                "heat_down_text": ["B<br>2026-09-01"],
+                "macd_down_x": [1.0],
+                "macd_down_y": [0.0],
+                "macd_down_text": ["B<br>2026-09-01"],
             },
         )
-        # Plotly unicode-escapes Chinese in JSON; check escaped forms.
         self.assertIn("MACD", html)
-        self.assertIn("diamond", html)
         self.assertIn("ea580c", html)
         self.assertIn("2563eb", html)
+        self.assertNotIn("diamond", html)
+        self.assertNotIn("heat_up", html)
+        self.assertNotIn("heat_down", html)
 
 
 if __name__ == "__main__":
