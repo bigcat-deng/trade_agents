@@ -10,6 +10,16 @@ RETURN_VOL_LOOKBACK = 100
 RETURN_VOL_MULT = 2.0
 _MIN_RETURNS_FOR_SIGMA = 40
 
+# Near-end unfit gates for warming candidates (launched or exhausted).
+STARTED_CHECK_DAYS = 3
+VOL_SURGE_LOOKBACK = 20
+VOL_SURGE_MULT = 2.0
+_MIN_VOLS_FOR_MEDIAN = 8
+# Long upper shadow: upper dominates range, body stays small.
+UPPER_SHADOW_MIN_FRAC = 0.55
+UPPER_SHADOW_BODY_MAX_FRAC = 0.35
+UPPER_SHADOW_MIN_RANGE_FRAC = 0.008
+
 
 def _closes_by_day(
     bars: list[dict[str, object]],
@@ -211,3 +221,149 @@ def build_return_exceedance_overlay(
         "lookback": lookback,
         "mult": mult,
     }
+
+
+def collect_started_codes(
+    *,
+    codes: list[str],
+    as_of: date,
+    bars_by_code: dict[str, list[dict[str, object]]],
+    vol_calendar: list[date],
+    check_days: int = STARTED_CHECK_DAYS,
+    ret_lookback: int = RETURN_VOL_LOOKBACK,
+    ret_mult: float = RETURN_VOL_MULT,
+    vol_lookback: int = VOL_SURGE_LOOKBACK,
+    vol_mult: float = VOL_SURGE_MULT,
+) -> frozenset[str]:
+    """Codes unfit as warming candidates near ``as_of``.
+
+    Flags near-end big-yang, volume surge, big-yin, or long-upper-shadow
+    exhaustion — keep candidates that have not launched and not rolled over.
+    """
+    if not codes or not vol_calendar:
+        return frozenset()
+    tip_i = max((i for i, d in enumerate(vol_calendar) if d <= as_of), default=-1)
+    if tip_i < 0:
+        return frozenset()
+    n_check = max(1, int(check_days))
+    check_window = vol_calendar[max(0, tip_i - n_check + 1) : tip_i + 1]
+    if not check_window:
+        return frozenset()
+
+    pos, neg = compute_return_exceedance_cells(
+        ordered_codes=codes,
+        window_dates=check_window,
+        bars_by_code=bars_by_code,
+        vol_calendar=vol_calendar,
+        lookback=ret_lookback,
+        mult=ret_mult,
+    )
+    unfit = {str(code) for code, _day in pos}
+    unfit.update(str(code) for code, _day in neg)
+
+    v_lb = max(2, int(vol_lookback))
+    v_mult = float(vol_mult)
+    for code in codes:
+        code_s = str(code)
+        if code_s in unfit:
+            continue
+        bars = bars_by_code.get(code) or []
+        vols = _volumes_by_day(bars)
+        ohlc = _ohlc_by_day(bars)
+        for day in check_window:
+            if _is_long_upper_shadow(ohlc.get(day)):
+                unfit.add(code_s)
+                break
+            cur = vols.get(day)
+            if cur is None or cur <= 0:
+                continue
+            day_i = next(
+                (i for i, d in enumerate(vol_calendar) if d == day), -1
+            )
+            if day_i <= 0:
+                continue
+            prior_days = vol_calendar[max(0, day_i - v_lb) : day_i]
+            prior = [vols[d] for d in prior_days if d in vols and vols[d] > 0]
+            if len(prior) < _MIN_VOLS_FOR_MEDIAN:
+                continue
+            med = float(np.median(np.asarray(prior, dtype=float)))
+            if med <= 0:
+                continue
+            if cur >= v_mult * med:
+                unfit.add(code_s)
+                break
+    return frozenset(unfit)
+
+
+def is_long_upper_shadow(
+    *,
+    open_: float,
+    high: float,
+    low: float,
+    close: float,
+    upper_frac: float = UPPER_SHADOW_MIN_FRAC,
+    body_max_frac: float = UPPER_SHADOW_BODY_MAX_FRAC,
+    min_range_frac: float = UPPER_SHADOW_MIN_RANGE_FRAC,
+) -> bool:
+    """True when upper shadow dominates and the body stays small (乏力冲高)."""
+    rng = high - low
+    if rng <= 0 or close <= 0:
+        return False
+    if rng / close < min_range_frac:
+        return False
+    body_top = max(open_, close)
+    upper = high - body_top
+    body = abs(close - open_)
+    if upper / rng < upper_frac:
+        return False
+    if body / rng > body_max_frac:
+        return False
+    return True
+
+
+def _is_long_upper_shadow(
+    ohlc: tuple[float, float, float, float] | None,
+) -> bool:
+    if ohlc is None:
+        return False
+    o, h, l, c = ohlc
+    return is_long_upper_shadow(open_=o, high=h, low=l, close=c)
+
+
+def _ohlc_by_day(
+    bars: list[dict[str, object]],
+) -> dict[date, tuple[float, float, float, float]]:
+    out: dict[date, tuple[float, float, float, float]] = {}
+    for bar in bars:
+        day = bar.get("trade_date")
+        if day is None:
+            continue
+        try:
+            d = day if isinstance(day, date) else date.fromisoformat(str(day))
+            o = float(bar.get("open"))  # type: ignore[arg-type]
+            h = float(bar.get("high"))  # type: ignore[arg-type]
+            l = float(bar.get("low"))  # type: ignore[arg-type]
+            c = float(bar.get("close"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        out[d] = (o, h, l, c)
+    return out
+
+
+def _volumes_by_day(
+    bars: list[dict[str, object]],
+) -> dict[date, float]:
+    out: dict[date, float] = {}
+    for bar in bars:
+        day = bar.get("trade_date")
+        vol = bar.get("volume")
+        if day is None or vol is None:
+            continue
+        try:
+            d = day if isinstance(day, date) else date.fromisoformat(str(day))
+            v = float(vol)
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            out[d] = v
+    return out

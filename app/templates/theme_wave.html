@@ -172,6 +172,48 @@
       white-space: normal;
       max-width: 18rem;
     }
+    .rim-read {
+      margin: 0.75rem 0 0.85rem;
+      padding: 0.7rem 0.85rem 0.8rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .rim-read h3 {
+      margin: 0 0 0.2rem;
+      font-size: 1.02rem;
+    }
+    .rim-read .meta { margin: 0 0 0.55rem; }
+    .rim-read .table-wrap { overflow-x: auto; }
+    .rim-read table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .rim-read th,
+    .rim-read td {
+      padding: 0.32rem 0.5rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      white-space: nowrap;
+    }
+    .rim-read td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .rim-read .macd-yes { color: #c2410c; font-weight: 650; }
+    .rim-read td.wrap {
+      white-space: normal;
+      max-width: 16rem;
+      line-height: 1.35;
+    }
+    .rim-read .lic-watch { color: #0f766e; font-weight: 650; }
+    .rim-read .lic-pressure { color: #9a3412; font-weight: 650; }
+    .rim-read .cand-rel {
+      display: block;
+      margin-top: 0.15rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
     .concept-theme-picker {
       margin: 0.65rem 0 0;
       display: flex;
@@ -592,6 +634,43 @@
       <p class="hint">只带动行业热度图演变；横轴叶序固定。方格下沿黑/白细线=当日收盘收益超过近100日波动率2倍（黑正白负）；顶上红/绿字=最后交易日正超/负超行业；小交叉×=MACD（上穿橙、下穿蓝）；右侧实线=中证500同日收盘收益，虚线=成交量（按双方波动对齐到收益尺度）。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
     </div>
     {% endif %}
+    <section class="rim-read" aria-label="行业主线政权">
+      <h3>主线政权 · 近 {{ industry_rim.display_days if industry_rim and industry_rim.display_days else 10 }} 日</h3>
+      <p class="meta">{{ industry_rim.note if industry_rim else "" }}</p>
+      {% if industry_rim and industry_rim.rows %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>政权</th>
+              <th>主线成员</th>
+              <th>许可</th>
+              <th>候选</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in industry_rim.rows %}
+            <tr>
+              <td class="num">{{ row.signal_date[5:] }}</td>
+              <td>{{ row.regime }}</td>
+              <td class="wrap">{{ row.members }}</td>
+              <td class="{{ 'lic-watch' if row.cand_license == '可关注' else ('lic-pressure' if row.cand_license == '受压' else '') }}">{{ row.cand_license }}</td>
+              <td class="wrap">
+                {{ row.cand_members }}
+                {% if row.cand_relation and row.cand_relation != '—' %}
+                <span class="cand-rel">{{ row.cand_relation }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="meta">近端没有可标的主线政权。</p>
+      {% endif %}
+    </section>
     <aside class="shape-glossary" aria-label="行业时间形态读法说明">
       <p>行业时间形态 · 读法说明（解读表「读法」列同义）</p>
       <dl>
@@ -676,6 +755,43 @@
       <p class="hint">只带动概念热度图演变；横轴叶序与入选名单固定。方格下沿黑/白细线=当日收盘收益超过近100日波动率2倍（黑正白负）；顶上红/绿字=最后交易日正超/负超概念；小交叉×=MACD（上穿橙、下穿蓝）；右侧实线=中证500同日收盘收益，虚线=成交量（按双方波动对齐到收益尺度）。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
     </div>
     {% endif %}
+    <section class="rim-read" aria-label="概念主线政权">
+      <h3>主线政权 · 近 {{ concept_rim.display_days if concept_rim and concept_rim.display_days else 10 }} 日</h3>
+      <p class="meta">{{ concept_rim.note if concept_rim else "" }}</p>
+      {% if concept_rim and concept_rim.rows %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>政权</th>
+              <th>主线成员</th>
+              <th>许可</th>
+              <th>候选</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in concept_rim.rows %}
+            <tr>
+              <td class="num">{{ row.signal_date[5:] }}</td>
+              <td>{{ row.regime }}</td>
+              <td class="wrap">{{ row.members }}</td>
+              <td class="{{ 'lic-watch' if row.cand_license == '可关注' else ('lic-pressure' if row.cand_license == '受压' else '') }}">{{ row.cand_license }}</td>
+              <td class="wrap">
+                {{ row.cand_members }}
+                {% if row.cand_relation and row.cand_relation != '—' %}
+                <span class="cand-rel">{{ row.cand_relation }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="meta">近端没有可标的主线政权。</p>
+      {% endif %}
+    </section>
     <div class="board-pick" id="concept-board-pick" aria-label="定位概念">
       <button type="button" id="concept-board-pick-open">选择</button>
       <input type="text" id="concept-board-pick-name" placeholder="板块名称" autocomplete="off" spellcheck="false">

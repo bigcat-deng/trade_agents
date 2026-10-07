@@ -6,8 +6,10 @@ import unittest
 from datetime import date, timedelta
 
 from app.themes.industry_return_flags import (
+    collect_started_codes,
     compute_return_exceedance_cells,
     exceedance_to_line_xy,
+    is_long_upper_shadow,
     sigma_from_returns,
 )
 
@@ -76,6 +78,161 @@ class ReturnExceedanceTests(unittest.TestCase):
         self.assertEqual(xs, [1.0])
         self.assertEqual(ys, [2.5])
         self.assertEqual(texts, ["白酒"])
+
+
+class StartedCodesTests(unittest.TestCase):
+    def test_yang_marks_started(self) -> None:
+        cal = _calendar(101)
+        px = 100.0
+        bars = []
+        for i, day in enumerate(cal):
+            if i == 0:
+                bars.append({"trade_date": day, "close": px, "volume": 1000})
+                continue
+            if day == cal[-1]:
+                px *= 1.08
+            else:
+                px *= 1.001
+            bars.append({"trade_date": day, "close": px, "volume": 1000})
+        started = collect_started_codes(
+            codes=["A"],
+            as_of=cal[-1],
+            bars_by_code={"A": bars},
+            vol_calendar=cal,
+            check_days=3,
+        )
+        self.assertIn("A", started)
+
+    def test_volume_surge_marks_started(self) -> None:
+        cal = _calendar(40)
+        bars = []
+        px = 100.0
+        for i, day in enumerate(cal):
+            if i > 0:
+                px *= 1.001  # quiet returns — no yang
+            vol = 10_000 if i < len(cal) - 1 else 30_000  # 3× prior
+            bars.append({"trade_date": day, "close": px, "volume": vol})
+        started = collect_started_codes(
+            codes=["B"],
+            as_of=cal[-1],
+            bars_by_code={"B": bars},
+            vol_calendar=cal,
+            check_days=1,
+            vol_lookback=20,
+            vol_mult=2.0,
+        )
+        self.assertIn("B", started)
+
+    def test_quiet_name_not_started(self) -> None:
+        cal = _calendar(101)
+        px = 100.0
+        bars = []
+        for i, day in enumerate(cal):
+            if i > 0:
+                px *= 1.001
+            bars.append(
+                {
+                    "trade_date": day,
+                    "open": px,
+                    "high": px * 1.002,
+                    "low": px * 0.998,
+                    "close": px,
+                    "volume": 1000,
+                }
+            )
+        started = collect_started_codes(
+            codes=["C"],
+            as_of=cal[-1],
+            bars_by_code={"C": bars},
+            vol_calendar=cal,
+        )
+        self.assertNotIn("C", started)
+
+    def test_long_upper_shadow_helper(self) -> None:
+        # open 10, close 10.2, high 11.5, low 10 → upper dominates, body small
+        self.assertTrue(
+            is_long_upper_shadow(open_=10.0, high=11.5, low=10.0, close=10.2)
+        )
+        # solid big body up day — not exhaustion
+        self.assertFalse(
+            is_long_upper_shadow(open_=10.0, high=11.2, low=10.0, close=11.1)
+        )
+
+    def test_long_upper_shadow_marks_unfit(self) -> None:
+        cal = _calendar(40)
+        bars = []
+        px = 100.0
+        for i, day in enumerate(cal):
+            if i > 0:
+                px *= 1.001
+            if i == len(cal) - 1:
+                # Quiet return but long upper: open≈close, spike high
+                o = px
+                c = px * 1.002
+                h = px * 1.04
+                l = px * 0.998
+            else:
+                o = c = px
+                h = px * 1.002
+                l = px * 0.998
+            bars.append(
+                {
+                    "trade_date": day,
+                    "open": o,
+                    "high": h,
+                    "low": l,
+                    "close": c,
+                    "volume": 1000,
+                }
+            )
+        started = collect_started_codes(
+            codes=["D"],
+            as_of=cal[-1],
+            bars_by_code={"D": bars},
+            vol_calendar=cal,
+            check_days=1,
+        )
+        self.assertIn("D", started)
+
+    def test_big_yin_marks_unfit(self) -> None:
+        cal = _calendar(101)
+        px = 100.0
+        bars = []
+        for i, day in enumerate(cal):
+            if i == 0:
+                bars.append(
+                    {
+                        "trade_date": day,
+                        "open": px,
+                        "high": px,
+                        "low": px,
+                        "close": px,
+                        "volume": 1000,
+                    }
+                )
+                continue
+            if day == cal[-1]:
+                px *= 0.92  # -8% big yin vs quiet σ
+            else:
+                px *= 1.001
+            bars.append(
+                {
+                    "trade_date": day,
+                    "open": px / 0.92 if day == cal[-1] else px,
+                    "high": px * 1.002,
+                    "low": px * 0.998,
+                    "close": px,
+                    "volume": 1000,
+                }
+            )
+        started = collect_started_codes(
+            codes=["E"],
+            as_of=cal[-1],
+            bars_by_code={"E": bars},
+            vol_calendar=cal,
+            check_days=1,
+        )
+        self.assertIn("E", started)
 
 
 class Csi500ReturnAlignTests(unittest.TestCase):

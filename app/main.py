@@ -62,11 +62,20 @@ from app.themes.heat_wavelet2d import DEFAULT_WINDOW_DAYS as WAVELET_WINDOW_DAYS
 from app.themes.industry_wavelet import build_industry_wavelet_payload
 from app.themes.config import ThemeConfig, theme_board_codes
 from app.themes.board_cross_marks import CROSS_HISTORY_DAYS
-from app.themes.industry_return_flags import RETURN_VOL_LOOKBACK
+from app.themes.industry_return_flags import (
+    RETURN_VOL_LOOKBACK,
+)
 from app.themes.industry_wave import (
     build_industry_board_heat_payload,
     build_industry_scrub_frames,
 )
+from app.themes.heat_rim_regime import (
+    REGIME_DISPLAY_DAYS,
+    REGIME_PLANE_WINDOW,
+    REGIME_WARMUP_DAYS,
+    build_regime_panel_payload,
+)
+from app.themes.heat_seriation import as_float
 from app.themes.stock_basket_wave import build_stock_basket_page_payload
 from app.themes.wave_surface import (
     build_map_scrub_frames,
@@ -798,6 +807,7 @@ def _themes_wave_page_payload(
     industry_board_names: list[str] = []
     industry_board_codes: list[str] = []
     industry_date_count = 0
+    industry_rim: dict = {"rows": [], "note": ""}
     industry_slider_dates, industry_slider_index = build_map_slider_dates(
         "industry", selected
     )
@@ -828,6 +838,50 @@ def _themes_wave_page_payload(
             industry_board_names = list(industry.get("board_names") or [])
             industry_board_codes = list(industry.get("board_codes") or [])
             industry_date_count = len(industry.get("dates") or [])
+            regime_need = (
+                REGIME_DISPLAY_DAYS + REGIME_WARMUP_DAYS + REGIME_PLANE_WINDOW
+            )
+            regime_calendar = fetch_trading_dates_ending(
+                "industry", industry_dates[-1], regime_need
+            )
+            if regime_calendar:
+                tip = industry_dates[-1]
+                regime_rows = fetch_industry_heat_window(
+                    regime_calendar[0], tip
+                )
+                regime_heat: dict[date, dict[str, float]] = {}
+                regime_names: dict[str, str] = {}
+                for trade_date, board_code, board_name, heat_short, _long in regime_rows:
+                    code = str(board_code)
+                    if board_name:
+                        regime_names[code] = str(board_name)
+                    val = as_float(heat_short)
+                    if val is None:
+                        continue
+                    regime_heat.setdefault(trade_date, {})[code] = val
+                bar_cal = fetch_trading_dates_ending(
+                    "industry",
+                    tip,
+                    regime_need + RETURN_VOL_LOOKBACK + 5,
+                )
+                regime_bars = (
+                    fetch_board_daily_bars_many(
+                        "industry",
+                        list(regime_names.keys()),
+                        bar_cal[0],
+                        tip,
+                    )
+                    if bar_cal and regime_names
+                    else {}
+                )
+                industry_rim = build_regime_panel_payload(
+                    as_of=tip,
+                    calendar=regime_calendar,
+                    heat_by_day=regime_heat,
+                    names=regime_names,
+                    bars_by_code=regime_bars,
+                    vol_calendar=bar_cal or regime_calendar,
+                )
             industry_short_html = render_theme_wave_contour(
                 dates=industry["dates"],
                 x=industry["x"],
@@ -920,6 +974,7 @@ def _themes_wave_page_payload(
     concept_board_codes: list[str] = []
     concept_date_count = 0
     concept_scrub_frames: list[dict] = []
+    concept_rim: dict = {"rows": [], "note": ""}
     concept_named_rows = fetch_concept_heat_named_window(
         window_dates[0], window_dates[-1]
     )
@@ -940,6 +995,60 @@ def _themes_wave_page_payload(
         concept_theme_options = _concept_theme_highlight_options(
             concept_top["board_codes"]
         )
+        concept_window = [
+            date.fromisoformat(day) if isinstance(day, str) else day
+            for day in (concept_top.get("dates") or [])
+        ]
+        concept_tip = concept_window[-1] if concept_window else selected
+        regime_need = (
+            REGIME_DISPLAY_DAYS + REGIME_WARMUP_DAYS + REGIME_PLANE_WINDOW
+        )
+        concept_regime_calendar = fetch_trading_dates_ending(
+            "concept", concept_tip, regime_need
+        )
+        if concept_regime_calendar:
+            concept_regime_rows = fetch_concept_heat_named_window(
+                concept_regime_calendar[0], concept_tip
+            )
+            concept_regime_heat: dict[date, dict[str, float]] = {}
+            concept_regime_names: dict[str, str] = {}
+            for (
+                trade_date,
+                board_code,
+                board_name,
+                heat_short,
+                _long,
+            ) in concept_regime_rows:
+                code = str(board_code)
+                if board_name:
+                    concept_regime_names[code] = str(board_name)
+                val = as_float(heat_short)
+                if val is None:
+                    continue
+                concept_regime_heat.setdefault(trade_date, {})[code] = val
+            concept_bar_cal = fetch_trading_dates_ending(
+                "concept",
+                concept_tip,
+                regime_need + RETURN_VOL_LOOKBACK + 5,
+            )
+            concept_regime_bars = (
+                fetch_board_daily_bars_many(
+                    "concept",
+                    list(concept_regime_names.keys()),
+                    concept_bar_cal[0],
+                    concept_tip,
+                )
+                if concept_bar_cal and concept_regime_names
+                else {}
+            )
+            concept_rim = build_regime_panel_payload(
+                as_of=concept_tip,
+                calendar=concept_regime_calendar,
+                heat_by_day=concept_regime_heat,
+                names=concept_regime_names,
+                bars_by_code=concept_regime_bars,
+                vol_calendar=concept_bar_cal or concept_regime_calendar,
+            )
         concept_short_html = render_theme_wave_contour(
             dates=concept_top["dates"],
             x=concept_top["x"],
@@ -1045,9 +1154,11 @@ def _themes_wave_page_payload(
         "industry_board_names": industry_board_names,
         "industry_board_codes": industry_board_codes,
         "industry_date_count": industry_date_count,
+        "industry_rim": industry_rim,
         "concept_board_names": concept_board_names,
         "concept_board_codes": concept_board_codes,
         "concept_date_count": concept_date_count,
+        "concept_rim": concept_rim,
         "spectrum_chart_html": "",
         "spectrum_map_html": spectrum_map_html,
         "ranked_chart_html": "",

@@ -16,6 +16,12 @@ from app.themes.board_cross_marks import (
     build_cross_mark_overlay,
     empty_cross_mark_overlay,
 )
+from app.themes.heat_rim_regime import (
+    REGIME_DISPLAY_DAYS,
+    REGIME_PLANE_WINDOW,
+    REGIME_WARMUP_DAYS,
+    build_regime_panel_payload,
+)
 from app.themes.heat_seriation import (
     DEFAULT_PLANE_DENSIFY,
     as_float,
@@ -423,6 +429,7 @@ def build_stock_basket_page_payload(
         "slider_dates": [day.isoformat() for day in slider_dates],
         "slider_index": slider_index,
         "scrub_frames": [],
+        "stock_rim": {"rows": [], "note": ""},
         "include_plotlyjs": include_plotlyjs,
     }
     if not queries:
@@ -487,11 +494,13 @@ def build_stock_basket_page_payload(
         return base
 
     slider_end = slider_dates[-1] if slider_dates else selected
-    lookback = (
+    regime_need = REGIME_DISPLAY_DAYS + REGIME_WARMUP_DAYS + REGIME_PLANE_WINDOW
+    lookback = max(
         days
         + len(slider_dates)
         + max(RETURN_VOL_LOOKBACK, CROSS_HISTORY_DAYS)
-        + 25
+        + 25,
+        regime_need + 5,
     )
     all_dates = fetch_trading_dates_ending("industry", slider_end, lookback)
     if not all_dates:
@@ -548,9 +557,18 @@ def build_stock_basket_page_payload(
         val = as_float(heat_short)
         if val is None:
             continue
-        heat_by_day.setdefault(trade_date, {})[board_code] = val
+        heat_by_day.setdefault(trade_date, {})[str(board_code)] = val
     ordered = list(plane.get("board_codes") or [])
-    name_map = dict(plane.get("names") or names)
+    board_names = list(plane.get("board_names") or [])
+    name_map = {str(k): str(v) for k, v in (plane.get("names") or names).items()}
+    stock_rim = build_regime_panel_payload(
+        as_of=selected,
+        calendar=all_dates,
+        heat_by_day=heat_by_day,
+        names=name_map,
+        bars_by_code=bars_by_code,
+        vol_calendar=all_dates,
+    )
     scrub = build_industry_scrub_frames(
         slider_dates=slider_dates,
         window_days=days,
@@ -572,10 +590,11 @@ def build_stock_basket_page_payload(
             "empty_message": None,
             "window_start": window_dates[0].isoformat() if window_dates else None,
             "window_end": window_dates[-1].isoformat() if window_dates else None,
-            "board_names": list(plane.get("board_names") or []),
+            "board_names": board_names,
             "board_codes": ordered,
             "date_count": len(plane.get("dates") or []),
             "scrub_frames": scrub,
+            "stock_rim": stock_rim,
             "universe_n": len(ordered),
         }
     )
