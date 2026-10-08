@@ -69,6 +69,7 @@ from app.themes.industry_wave import (
     build_industry_board_heat_payload,
     build_industry_scrub_frames,
 )
+from app.themes.llm_heat_forecast import build_industry_forecast_page_payload
 from app.themes.heat_rim_regime import (
     REGIME_DISPLAY_DAYS,
     REGIME_PLANE_WINDOW,
@@ -494,6 +495,26 @@ def concept_themes_wave_reading_page(
     return templates.TemplateResponse(request, "theme_wave_reading.html", payload)
 
 
+@app.get("/boards/concept/themes/wave/industry-forecast", response_class=HTMLResponse)
+def industry_heat_forecast_page(
+    request: Request,
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    """Industry 5-day heat forecast page; as_of from industry short-heat page."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = build_industry_forecast_page_payload(
+        as_of=requested,
+        include_plotlyjs=True,
+        run_llm=True,
+    )
+    return templates.TemplateResponse(
+        request, "industry_heat_forecast.html", payload
+    )
+
+
 @app.get("/boards/concept/themes/wave/wavelet", response_class=HTMLResponse)
 def concept_themes_wave_wavelet_page(
     request: Request,
@@ -808,6 +829,7 @@ def _themes_wave_page_payload(
     industry_board_codes: list[str] = []
     industry_date_count = 0
     industry_rim: dict = {"rows": [], "note": ""}
+    industry_forecast_href = ""
     industry_slider_dates, industry_slider_index = build_map_slider_dates(
         "industry", selected
     )
@@ -882,6 +904,10 @@ def _themes_wave_page_payload(
                     bars_by_code=regime_bars,
                     vol_calendar=bar_cal or regime_calendar,
                 )
+            industry_forecast_href = (
+                "/boards/concept/themes/wave/industry-forecast"
+                f"?as_of={industry_dates[-1].isoformat()}"
+            )
             industry_short_html = render_theme_wave_contour(
                 dates=industry["dates"],
                 x=industry["x"],
@@ -1155,6 +1181,7 @@ def _themes_wave_page_payload(
         "industry_board_codes": industry_board_codes,
         "industry_date_count": industry_date_count,
         "industry_rim": industry_rim,
+        "industry_forecast_href": industry_forecast_href,
         "concept_board_names": concept_board_names,
         "concept_board_codes": concept_board_codes,
         "concept_date_count": concept_date_count,

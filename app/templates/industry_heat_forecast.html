@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.65rem;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      margin: 1.35rem 0 0.35rem;
+      font-size: 1.15rem;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.75rem;
+      line-height: 1.55;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.35rem;
+      margin: 0 0 0.85rem;
+      overflow-x: auto;
+    }
+    .error {
+      color: #b91c1c;
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+      padding: 0.65rem 0.8rem;
+      margin: 0 0 0.85rem;
+      line-height: 1.5;
+    }
+    details.prompt {
+      margin: 1rem 0 0.5rem;
+      border: 1px solid var(--line);
+      background: var(--card);
+      padding: 0.55rem 0.75rem;
+    }
+    details.prompt summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    details.prompt pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: var(--ink);
+      margin: 0.55rem 0 0;
+    }
+  </style>
+  {% if include_plotlyjs %}
+  <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
+  {% else %}
+  <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
+  {% endif %}
+</head>
+<body>
+  <main>
+    <a class="back" href="{{ back_href }}">← 返回行业短热</a>
+    <h1>{{ title }}</h1>
+    <p class="meta">
+      截止日期 {{ as_of or "—" }}
+      {% if forecast_dates %} · 推演日 {{ forecast_dates | join("、") }}{% endif %}
+      · 叶序锁定截止日 · 情景推演，非点预测
+    </p>
+    {% if empty_message %}
+    <p class="meta">{{ empty_message }}</p>
+    {% endif %}
+
+    <h2>1. 轨迹延续推演</h2>
+    <p class="meta">{{ slope_note }}</p>
+    {% if slope_scenario %}<p class="meta">{{ slope_scenario }}</p>{% endif %}
+    {% if slope_html %}
+    <div class="panel">{{ slope_html | safe }}</div>
+    {% else %}
+    <p class="meta">轨迹延续推演暂不可用。</p>
+    {% endif %}
+
+    <h2>2. DeepSeek 看图续气泡</h2>
+    <p class="meta">{{ llm_note }}</p>
+    {% if llm_scenario %}<p class="meta">{{ llm_scenario }}</p>{% endif %}
+    {% if llm_error %}
+    <div class="error">DeepSeek 推演失败：{{ llm_error }}</div>
+    {% endif %}
+    {% if llm_html %}
+    <div class="panel">{{ llm_html | safe }}</div>
+    {% elif not llm_error %}
+    <p class="meta">DeepSeek 推演暂不可用。</p>
+    {% endif %}
+
+    {% if prompt_preview %}
+    <details class="prompt">
+      <summary>查看本次「看图续气泡」prompt（附图为截止日前实盘底图）</summary>
+      <pre>{{ prompt_preview }}</pre>
+    </details>
+    {% endif %}
+  </main>
+</body>
+</html>
