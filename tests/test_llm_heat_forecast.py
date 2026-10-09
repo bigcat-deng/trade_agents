@@ -6,12 +6,12 @@ import unittest
 from datetime import date, timedelta
 from unittest.mock import patch
 
+from app.prompts.template import load_prompt
 from app.themes.llm_heat_forecast import (
     TEMPLATE_NAME,
     build_industry_heat_forecast_prompt,
     build_llm_forecast_plane,
 )
-from app.prompts.template import load_prompt
 
 
 class LlmHeatForecastTests(unittest.TestCase):
@@ -107,7 +107,6 @@ class LlmHeatForecastTests(unittest.TestCase):
         self.assertIsNone(out.get("empty_message"))
         self.assertEqual(len(out["forecast_dates"]), 5)
         self.assertIn("测试", out["scenario_note"])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -69,7 +69,11 @@ from app.themes.industry_wave import (
     build_industry_board_heat_payload,
     build_industry_scrub_frames,
 )
-from app.themes.llm_heat_forecast import build_industry_forecast_page_payload
+from app.themes.llm_heat_forecast import (
+    build_concept_forecast_page_payload,
+    build_industry_forecast_page_payload,
+    build_stock_basket_forecast_page_payload,
+)
 from app.themes.heat_rim_regime import (
     REGIME_DISPLAY_DAYS,
     REGIME_PLANE_WINDOW,
@@ -481,6 +485,27 @@ def stock_basket_heat_page(
     return templates.TemplateResponse(request, "stock_basket_heat.html", payload)
 
 
+@app.get("/boards/stocks/heat/forecast", response_class=HTMLResponse)
+def stock_basket_heat_forecast_page(
+    request: Request,
+    names: str = "",
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    """Constituent-stock basket 5-day heat forecast; same roster as the wave page."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = build_stock_basket_forecast_page_payload(
+        names_text=names,
+        as_of=requested,
+        include_plotlyjs=True,
+    )
+    return templates.TemplateResponse(
+        request, "industry_heat_forecast.html", payload
+    )
+
+
 @app.get("/boards/concept/themes/wave/reading", response_class=HTMLResponse)
 def concept_themes_wave_reading_page(
     request: Request,
@@ -508,7 +533,25 @@ def industry_heat_forecast_page(
     payload = build_industry_forecast_page_payload(
         as_of=requested,
         include_plotlyjs=True,
-        run_llm=True,
+    )
+    return templates.TemplateResponse(
+        request, "industry_heat_forecast.html", payload
+    )
+
+
+@app.get("/boards/concept/themes/wave/concept-forecast", response_class=HTMLResponse)
+def concept_heat_forecast_page(
+    request: Request,
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    """Concept Top∪theme 5-day heat forecast page; as_of from concept short-heat."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = build_concept_forecast_page_payload(
+        as_of=requested,
+        include_plotlyjs=True,
     )
     return templates.TemplateResponse(
         request, "industry_heat_forecast.html", payload
@@ -647,6 +690,8 @@ def _themes_wave_empty(
             f"/boards/concept/themes/wave/industry-wavelet?days={WAVELET_WINDOW_DAYS}"
             f"&as_of={requested.isoformat()}"
         ),
+        "industry_forecast_href": "",
+        "concept_forecast_href": "",
         "spectrum_links": [],
         "ranked_links": [],
         "scenarios": [],
@@ -780,6 +825,8 @@ def _themes_wave_page_payload(
         include_plotlyjs=include_plotlyjs,
         title="光谱等位图",
         xaxis_title="主题光谱（防守 → 科技）",
+        tickangle=-45,
+        show_colorbar=False,
     )
     ranked_map_html = render_theme_wave_contour(
         dates=ranked["dates"],
@@ -790,6 +837,8 @@ def _themes_wave_page_payload(
         include_plotlyjs=False,
         title=f"近热排序等位图 · 中间日 {rank_as_of}",
         xaxis_title="近热排序（高 → 低）",
+        tickangle=-45,
+        show_colorbar=False,
     )
 
     slider_dates, slider_index = build_map_slider_dates("concept", selected)
@@ -830,6 +879,7 @@ def _themes_wave_page_payload(
     industry_date_count = 0
     industry_rim: dict = {"rows": [], "note": ""}
     industry_forecast_href = ""
+    concept_forecast_href = ""
     industry_slider_dates, industry_slider_index = build_map_slider_dates(
         "industry", selected
     )
@@ -925,6 +975,7 @@ def _themes_wave_page_payload(
                 csi500_returns=industry.get("csi500_returns"),
                 csi500_volumes=industry.get("csi500_volumes"),
                 csi500_volumes_scaled=industry.get("csi500_volumes_scaled"),
+                show_colorbar=False,
             )
             if not industry_slider_dates:
                 industry_slider_dates = [selected]
@@ -1026,6 +1077,10 @@ def _themes_wave_page_payload(
             for day in (concept_top.get("dates") or [])
         ]
         concept_tip = concept_window[-1] if concept_window else selected
+        concept_forecast_href = (
+            "/boards/concept/themes/wave/concept-forecast"
+            f"?as_of={concept_tip.isoformat()}"
+        )
         regime_need = (
             REGIME_DISPLAY_DAYS + REGIME_WARMUP_DAYS + REGIME_PLANE_WINDOW
         )
@@ -1095,6 +1150,7 @@ def _themes_wave_page_payload(
             csi500_returns=concept_top.get("csi500_returns"),
             csi500_volumes=concept_top.get("csi500_volumes"),
             csi500_volumes_scaled=concept_top.get("csi500_volumes_scaled"),
+            show_colorbar=False,
         )
         if not concept_slider_dates:
             concept_slider_dates = [selected]
@@ -1182,6 +1238,7 @@ def _themes_wave_page_payload(
         "industry_date_count": industry_date_count,
         "industry_rim": industry_rim,
         "industry_forecast_href": industry_forecast_href,
+        "concept_forecast_href": concept_forecast_href,
         "concept_board_names": concept_board_names,
         "concept_board_codes": concept_board_codes,
         "concept_date_count": concept_date_count,

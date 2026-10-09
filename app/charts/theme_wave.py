@@ -101,41 +101,69 @@ def _format_heat(value: float | None) -> str:
     return f"{value:.3f}"
 
 
+def _angled_name_annotations(
+    *,
+    xs: list[object],
+    ys: list[object],
+    texts: list[object],
+    color: str,
+    textangle: float = -45,
+    size: int = 9,
+) -> list[dict]:
+    """45° upward name labels (Scatter has no textangle)."""
+    anns: list[dict] = []
+    for x, y, text in zip(xs, ys, texts):
+        if text is None or x is None or y is None:
+            continue
+        anns.append(
+            dict(
+                x=float(x),
+                y=float(y),
+                text=str(text),
+                showarrow=False,
+                textangle=float(textangle),
+                font=dict(color=color, size=size),
+                xanchor="left",
+                yanchor="bottom",
+                xref="x",
+                yref="y",
+            )
+        )
+    return anns
+
+
 def exceedance_label_annotations(return_exceedance: dict[str, object]) -> list[dict]:
     """45° upward name labels for last-day ±2σ boards (Scatter has no textangle)."""
     anns: list[dict] = []
-    for color, xs, ys, texts in (
-        (
-            "#dc2626",
-            return_exceedance.get("last_pos_x") or [],
-            return_exceedance.get("last_pos_y") or [],
-            return_exceedance.get("last_pos_text") or [],
-        ),
-        (
-            "#16a34a",
-            return_exceedance.get("last_neg_x") or [],
-            return_exceedance.get("last_neg_y") or [],
-            return_exceedance.get("last_neg_text") or [],
-        ),
-    ):
-        for x, y, text in zip(xs, ys, texts):
-            if text is None or x is None or y is None:
-                continue
-            anns.append(
-                dict(
-                    x=float(x),
-                    y=float(y),
-                    text=str(text),
-                    showarrow=False,
-                    textangle=-45,
-                    font=dict(color=color, size=9),
-                    xanchor="left",
-                    yanchor="bottom",
-                    xref="x",
-                    yref="y",
-                )
-            )
+    anns.extend(
+        _angled_name_annotations(
+            xs=list(return_exceedance.get("last_pos_x") or []),
+            ys=list(return_exceedance.get("last_pos_y") or []),
+            texts=list(return_exceedance.get("last_pos_text") or []),
+            color="#dc2626",
+        )
+    )
+    anns.extend(
+        _angled_name_annotations(
+            xs=list(return_exceedance.get("last_neg_x") or []),
+            ys=list(return_exceedance.get("last_neg_y") or []),
+            texts=list(return_exceedance.get("last_neg_text") or []),
+            color="#16a34a",
+        )
+    )
     return anns
+
+
+def tip_label_annotations(tip_labels: dict[str, object]) -> list[dict]:
+    """45° red name labels at tip (e.g. forecast-end hottest names)."""
+    return _angled_name_annotations(
+        xs=list(tip_labels.get("x") or []),
+        ys=list(tip_labels.get("y") or []),
+        texts=list(tip_labels.get("text") or []),
+        color=str(tip_labels.get("color") or "#dc2626"),
+        textangle=float(tip_labels.get("textangle") or -45),
+        size=int(tip_labels.get("size") or 9),
+    )
 
 
 def _y_ticks(dates: list[str]) -> tuple[list[int], list[str]]:
@@ -282,12 +310,20 @@ def render_theme_wave_contour(
     tickangle: float = 0,
     bottom_margin: int | None = None,
     return_exceedance: dict[str, object] | None = None,
+    tip_labels: dict[str, object] | None = None,
     cross_marks: dict[str, object] | None = None,
     csi500_returns: list[float | None] | None = None,
     csi500_volumes: list[float | None] | None = None,
     csi500_volumes_scaled: list[float | None] | None = None,
+    forecast_split_y: float | None = None,
+    show_colorbar: bool = True,
 ) -> str:
-    """2D contour of theme × time hotness."""
+    """2D contour of theme × time hotness.
+
+    ``forecast_split_y`` draws a red dashed row line (y in date-index space)
+    separating actual rows below from forecast rows above.
+    ``show_colorbar=False`` hides the heat scale and widens the plot area.
+    """
     if not dates or not x or not z:
         return "<p class='meta'>没有可绘制的等位图数据</p>"
 
@@ -300,43 +336,47 @@ def render_theme_wave_contour(
     ]
     tickfont_size = 8 if len(x_tickvals) > 40 else 10
     margin_b = bottom_margin if bottom_margin is not None else (110 if tickangle else 40)
-    margin_t = 88 if return_exceedance is not None else 36
-    has_csi500 = bool(csi500_returns) and any(v is not None for v in csi500_returns)
-    colorbar = dict(
-        title=dict(text="热度", side="right"),
-        ticks="outside",
-        len=0.55 if has_csi500 else 0.75,
-        x=0.79 if has_csi500 else None,
-        thickness=12 if has_csi500 else 20,
+    margin_t = (
+        88
+        if return_exceedance is not None or tip_labels is not None
+        else 36
     )
-    colorbar = {k: v for k, v in colorbar.items() if v is not None}
-
-    traces: list = [
-        go.Contour(
-            x=x,
-            y=y,
-            z=z,
-            colorscale=_COLORSCALE,
-            zmin=0.0,
-            zmax=1.0,
-            contours=dict(
-                coloring="heatmap",
-                showlines=True,
-                start=0.0,
-                end=1.0,
-                size=0.1,
-            ),
-            line=dict(width=0.6, color="rgba(28,25,23,0.25)"),
-            colorbar=colorbar,
-            customdata=customdata,
-            hovertemplate=(
-                f"{entity_label} %{{customdata[0]}}<br>"
-                "日期 %{customdata[1]}<br>"
-                "热度 %{customdata[2]}<extra></extra>"
-            ),
-            name="等位图",
+    has_csi500 = bool(csi500_returns) and any(v is not None for v in csi500_returns)
+    contour_kw: dict = dict(
+        x=x,
+        y=y,
+        z=z,
+        colorscale=_COLORSCALE,
+        zmin=0.0,
+        zmax=1.0,
+        contours=dict(
+            coloring="heatmap",
+            showlines=True,
+            start=0.0,
+            end=1.0,
+            size=0.1,
+        ),
+        line=dict(width=0.6, color="rgba(28,25,23,0.25)"),
+        showscale=bool(show_colorbar),
+        customdata=customdata,
+        hovertemplate=(
+            f"{entity_label} %{{customdata[0]}}<br>"
+            "日期 %{customdata[1]}<br>"
+            "热度 %{customdata[2]}<extra></extra>"
+        ),
+        name="等位图",
+    )
+    if show_colorbar:
+        colorbar = dict(
+            title=dict(text="热度", side="right"),
+            ticks="outside",
+            len=0.55 if has_csi500 else 0.75,
+            x=0.79 if has_csi500 else None,
+            thickness=12 if has_csi500 else 20,
         )
-    ]
+        contour_kw["colorbar"] = {k: v for k, v in colorbar.items() if v is not None}
+
+    traces: list = [go.Contour(**contour_kw)]
     if cross_marks is not None:
         for key, style in CROSS_STYLE.items():
             xs = list(cross_marks.get(f"{key}_x") or [])
@@ -437,20 +477,49 @@ def render_theme_wave_contour(
         )
 
     fig = go.Figure(data=traces)
-    annotations = (
-        exceedance_label_annotations(return_exceedance)
-        if return_exceedance is not None
-        else []
-    )
+    annotations: list[dict] = []
+    if return_exceedance is not None:
+        annotations.extend(exceedance_label_annotations(return_exceedance))
+    if tip_labels is not None:
+        annotations.extend(tip_label_annotations(tip_labels))
+
+    shapes: list[dict] = []
+    if forecast_split_y is not None:
+        shapes.append(
+            dict(
+                type="line",
+                name="forecast-split",
+                xref="paper",
+                yref="y",
+                x0=0,
+                x1=1,
+                y0=float(forecast_split_y),
+                y1=float(forecast_split_y),
+                line=dict(color="#dc2626", width=1.8, dash="dash"),
+                layer="above",
+            )
+        )
+
+    # Without colorbar, reclaim right margin / heat domain for a wider plot.
+    if show_colorbar:
+        margin_r = 56 if has_csi500 else 8
+        heat_domain = [0.0, 0.78] if has_csi500 else None
+        csi_domain = [0.88, 1.0]
+    else:
+        margin_r = 28 if has_csi500 else 4
+        # Push heat further right; keep CSI as a thin strip.
+        heat_domain = [0.0, 0.915] if has_csi500 else None
+        csi_domain = [0.935, 1.0]
 
     layout = dict(
-        margin=dict(l=48, r=56 if has_csi500 else 8, t=margin_t, b=margin_b),
+        margin=dict(l=48, r=margin_r, t=margin_t, b=margin_b),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="#fffdf8",
         font=dict(family="IBM Plex Sans, Noto Sans SC, sans-serif", size=12, color="#1c1917"),
         title=dict(text=title, x=0, xanchor="left", font=dict(size=15)),
         annotations=annotations,
+        shapes=shapes,
         xaxis=dict(
             title=dict(text=xaxis_title, font=dict(size=12)),
             tickmode="array",
@@ -474,12 +543,12 @@ def render_theme_wave_contour(
     if has_csi500:
         layout["hovermode"] = "closest"
         layout["hoverdistance"] = 80
-        layout["xaxis"]["domain"] = [0.0, 0.78]
+        layout["xaxis"]["domain"] = heat_domain
         layout["xaxis2"] = dict(
             title=dict(text="中证500收益/量", font=dict(size=10)),
             side="right",
             anchor="y",
-            domain=[0.88, 1.0],
+            domain=csi_domain,
             tickformat=".1%",
             tickfont=dict(size=8),
             zeroline=True,

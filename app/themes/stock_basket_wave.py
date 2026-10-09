@@ -383,63 +383,40 @@ def build_trading_slider_dates(
     return dates, len(dates) - 1
 
 
-def build_stock_basket_page_payload(
+def resolve_stock_basket_universe(
     *,
     names_text: str,
-    as_of: date | None,
-    days: int = STOCK_BASKET_WINDOW_DAYS,
-    include_plotlyjs: bool = False,
+    tip: date,
 ) -> dict:
-    from app.charts.theme_wave import render_theme_wave_contour
+    """Match board/concept names → constituent union (truncated to STOCK_BASKET_MAX)."""
     from app.db import (
         fetch_board_constituents_named,
         fetch_latest_board_codes,
-        fetch_stock_bars_for_codes,
         fetch_stock_code_names,
-        fetch_trading_dates_ending,
     )
 
     queries = parse_name_query(names_text)
-    today = date.today()
-    calendar_tip = fetch_trading_dates_ending("industry", today, 1)
-    selected = as_of or (calendar_tip[-1] if calendar_tip else today)
-    slider_dates, slider_index = build_trading_slider_dates(selected)
-    if slider_dates:
-        selected = slider_dates[slider_index]
-
-    base = {
-        "title": "成分股热度水面",
-        "names_text": names_text,
-        "as_of": selected.isoformat(),
-        "days": days,
+    empty = {
         "queries": queries,
         "matched_boards": [],
         "unmatched": [],
+        "codes": [],
+        "names": {},
         "truncated": 0,
-        "universe_n": 0,
-        "chart_html": None,
-        "axis_note": STOCK_AXIS_NOTE,
+        "universe_all": 0,
         "meta_line": "",
         "empty_message": None,
-        "window_start": None,
-        "window_end": None,
-        "board_names": [],
-        "board_codes": [],
-        "date_count": 0,
-        "slider_dates": [day.isoformat() for day in slider_dates],
-        "slider_index": slider_index,
-        "scrub_frames": [],
-        "stock_rim": {"rows": [], "note": ""},
-        "include_plotlyjs": include_plotlyjs,
     }
     if not queries:
-        base["empty_message"] = "输入行业或概念名称后绘制；热度只在选出的个股并集内排名。"
-        base["meta_line"] = "尚未选择板块。"
-        return base
+        empty["empty_message"] = (
+            "输入行业或概念名称后绘制；热度只在选出的个股并集内排名。"
+        )
+        empty["meta_line"] = "尚未选择板块。"
+        return empty
 
     catalog = fetch_latest_board_codes()
     matched, unmatched = match_board_queries(queries, catalog)
-    base["matched_boards"] = [
+    matched_boards = [
         {
             "board_type": item.board_type,
             "board_code": item.board_code,
@@ -447,19 +424,22 @@ def build_stock_basket_page_payload(
         }
         for item in matched
     ]
-    base["unmatched"] = unmatched
     if not matched:
-        base["empty_message"] = "没有匹配到板块或概念。"
-        base["meta_line"] = "未匹配：" + "、".join(unmatched) if unmatched else "没有匹配。"
-        return base
+        empty["matched_boards"] = matched_boards
+        empty["unmatched"] = unmatched
+        empty["empty_message"] = "没有匹配到板块或概念。"
+        empty["meta_line"] = (
+            "未匹配：" + "、".join(unmatched) if unmatched else "没有匹配。"
+        )
+        return empty
 
     members_by_board: dict[tuple[str, str], list[tuple[str, str]]] = {}
     by_type: dict[str, list[str]] = defaultdict(list)
     for item in matched:
         by_type[item.board_type].append(item.board_code)
-    for board_type, codes in by_type.items():
-        named = fetch_board_constituents_named(board_type, codes, selected)
-        for code in codes:
+    for board_type, board_codes in by_type.items():
+        named = fetch_board_constituents_named(board_type, board_codes, tip)
+        for code in board_codes:
             members_by_board[(board_type, code)] = named.get(code) or []
 
     codes, names, _hits = union_constituents(members_by_board)
@@ -475,8 +455,7 @@ def build_stock_basket_page_payload(
             names[code] = universe_names[code]
         else:
             names.setdefault(code, code)
-    base["universe_n"] = len(codes)
-    base["truncated"] = truncated
+
     matched_label = "、".join(
         f"{item.board_name}（{item.board_type}）" for item in matched
     )
@@ -488,10 +467,106 @@ def build_stock_basket_page_payload(
         meta_bits.append(f"按成分重叠优先截取 {STOCK_BASKET_MAX} 只（余 {truncated}）")
     if unmatched:
         meta_bits.append("未匹配：" + "、".join(unmatched))
-    base["meta_line"] = " · ".join(meta_bits)
-    if not codes:
-        base["empty_message"] = "匹配到的板块没有成分股。"
+    out = {
+        "queries": queries,
+        "matched_boards": matched_boards,
+        "unmatched": unmatched,
+        "codes": codes,
+        "names": names,
+        "truncated": truncated,
+        "universe_all": universe_all,
+        "meta_line": " · ".join(meta_bits),
+        "empty_message": None if codes else "匹配到的板块没有成分股。",
+    }
+    return out
+
+
+def load_stock_basket_heat_maps(
+    *,
+    codes: list[str],
+    names: dict[str, str],
+    tip: date,
+    history_days: int,
+    bar_warmup: int = 40,
+) -> tuple[list[date], dict[date, dict[str, float]], dict[str, str]]:
+    """Trading-day history + short-heat maps for the stock basket (in-universe)."""
+    from app.db import fetch_stock_bars_for_codes, fetch_trading_dates_ending
+
+    need = max(1, int(history_days)) + max(0, int(bar_warmup))
+    all_dates = fetch_trading_dates_ending("industry", tip, need)
+    if not all_dates or not codes:
+        return [], {}, dict(names)
+    bars = fetch_stock_bars_for_codes(codes, all_dates[0], tip)
+    returns = bars_to_returns(bars)
+    heat_rows = compute_heat(returns, board_type="stock")
+    heat: dict[date, dict[str, float]] = {}
+    for row in heat_rows:
+        val = as_float(row.heat_short)
+        if val is None:
+            continue
+        heat.setdefault(row.trade_date, {})[str(row.board_code)] = val
+    hist = [d for d in all_dates if d <= tip and d in heat][-max(1, int(history_days)) :]
+    if not hist:
+        # Fall back to calendar slice even if sparse heat days.
+        hist = [d for d in all_dates if d <= tip][-max(1, int(history_days)) :]
+    return hist, heat, dict(names)
+
+
+def build_stock_basket_page_payload(
+    *,
+    names_text: str,
+    as_of: date | None,
+    days: int = STOCK_BASKET_WINDOW_DAYS,
+    include_plotlyjs: bool = False,
+) -> dict:
+    from urllib.parse import quote
+
+    from app.charts.theme_wave import render_theme_wave_contour
+    from app.db import (
+        fetch_stock_bars_for_codes,
+        fetch_trading_dates_ending,
+    )
+
+    today = date.today()
+    calendar_tip = fetch_trading_dates_ending("industry", today, 1)
+    selected = as_of or (calendar_tip[-1] if calendar_tip else today)
+    slider_dates, slider_index = build_trading_slider_dates(selected)
+    if slider_dates:
+        selected = slider_dates[slider_index]
+
+    universe = resolve_stock_basket_universe(names_text=names_text, tip=selected)
+    queries = list(universe.get("queries") or [])
+    base = {
+        "title": "成分股热度水面",
+        "names_text": names_text,
+        "as_of": selected.isoformat(),
+        "days": days,
+        "queries": queries,
+        "matched_boards": list(universe.get("matched_boards") or []),
+        "unmatched": list(universe.get("unmatched") or []),
+        "truncated": int(universe.get("truncated") or 0),
+        "universe_n": len(universe.get("codes") or []),
+        "chart_html": None,
+        "axis_note": STOCK_AXIS_NOTE,
+        "meta_line": str(universe.get("meta_line") or ""),
+        "empty_message": universe.get("empty_message"),
+        "window_start": None,
+        "window_end": None,
+        "board_names": [],
+        "board_codes": [],
+        "date_count": 0,
+        "slider_dates": [day.isoformat() for day in slider_dates],
+        "slider_index": slider_index,
+        "scrub_frames": [],
+        "stock_rim": {"rows": [], "note": ""},
+        "forecast_href": "",
+        "include_plotlyjs": include_plotlyjs,
+    }
+    if base["empty_message"] or not universe.get("codes"):
         return base
+
+    codes = list(universe["codes"])
+    names = dict(universe["names"])
 
     slider_end = slider_dates[-1] if slider_dates else selected
     regime_need = REGIME_DISPLAY_DAYS + REGIME_WARMUP_DAYS + REGIME_PLANE_WINDOW
@@ -583,6 +658,11 @@ def build_stock_basket_page_payload(
         csi500_volumes=csi_volumes,
         close_heat_by_code=close_heat,
     )
+    forecast_href = (
+        "/boards/stocks/heat/forecast"
+        f"?names={quote(names_text or '')}"
+        f"&as_of={selected.isoformat()}"
+    )
     base.update(
         {
             "chart_html": chart_html,
@@ -596,6 +676,7 @@ def build_stock_basket_page_payload(
             "scrub_frames": scrub,
             "stock_rim": stock_rim,
             "universe_n": len(ordered),
+            "forecast_href": forecast_href,
         }
     )
     extra = f" · 入选 {len(ordered)} 只 · 窗口 {base['window_start']} → {base['window_end']}"

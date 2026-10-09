@@ -205,6 +205,45 @@ def build_industry_heat_forecast_payload(
     }
 
 
+def tip_hottest_labels(
+    *,
+    ordered_codes: list[str],
+    names: dict[str, str] | list[str],
+    z_native: list[list[float | None]],
+    n_dates: int,
+    top_n: int = 5,
+) -> dict[str, object]:
+    """Red tip labels for the hottest ``top_n`` columns on the last row."""
+    empty: dict[str, object] = {"x": [], "y": [], "text": [], "color": "#dc2626"}
+    if not ordered_codes or not z_native or n_dates < 1:
+        return empty
+    tip_row = z_native[-1]
+    scored: list[tuple[float, int, str]] = []
+    for i, code in enumerate(ordered_codes):
+        if i >= len(tip_row):
+            break
+        val = tip_row[i]
+        if val is None or not np.isfinite(val):
+            continue
+        if isinstance(names, dict):
+            label = str(names.get(code, code))
+        elif i < len(names):
+            label = str(names[i])
+        else:
+            label = code
+        scored.append((float(val), i, label))
+    scored.sort(reverse=True)
+    y_top = float(n_dates - 1) + 0.5
+    xs: list[float] = []
+    ys: list[float] = []
+    texts: list[str] = []
+    for _val, idx, label in scored[: max(0, int(top_n))]:
+        xs.append(float(idx))
+        ys.append(y_top)
+        texts.append(label)
+    return {"x": xs, "y": ys, "text": texts, "color": "#dc2626"}
+
+
 def _scenario_note(
     *,
     as_of: date,

@@ -832,6 +832,11 @@
       </select>
       <span class="hint" id="concept-theme-hint"></span>
     </div>
+    {% if concept_forecast_href %}
+    <p class="page-links">
+      <a href="{{ concept_forecast_href }}">概念短热 · 5日推演 →</a>
+    </p>
+    {% endif %}
     {% if wavelet_href %}
     <p class="wavelet-link"><a href="{{ wavelet_href }}">二维小波分析 →</a></p>
     {% endif %}

@@ -61,25 +61,6 @@
       margin: 0 0 0.85rem;
       line-height: 1.5;
     }
-    details.prompt {
-      margin: 1rem 0 0.5rem;
-      border: 1px solid var(--line);
-      background: var(--card);
-      padding: 0.55rem 0.75rem;
-    }
-    details.prompt summary {
-      cursor: pointer;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-    details.prompt pre {
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 0.82rem;
-      line-height: 1.45;
-      color: var(--ink);
-      margin: 0.55rem 0 0;
-    }
   </style>
   {% if include_plotlyjs %}
   <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
@@ -89,7 +70,7 @@
 </head>
 <body>
   <main>
-    <a class="back" href="{{ back_href }}">← 返回行业短热</a>
+    <a class="back" href="{{ back_href }}">← {{ back_label or "返回水面" }}</a>
     <h1>{{ title }}</h1>
     <p class="meta">
       截止日期 {{ as_of or "—" }}
@@ -109,23 +90,16 @@
     <p class="meta">轨迹延续推演暂不可用。</p>
     {% endif %}
 
-    <h2>2. DeepSeek 看图续气泡</h2>
-    <p class="meta">{{ llm_note }}</p>
-    {% if llm_scenario %}<p class="meta">{{ llm_scenario }}</p>{% endif %}
-    {% if llm_error %}
-    <div class="error">DeepSeek 推演失败：{{ llm_error }}</div>
+    <h2>2. CWT 相位续推</h2>
+    <p class="meta">{{ cwt_note }}</p>
+    {% if cwt_scenario %}<p class="meta">{{ cwt_scenario }}</p>{% endif %}
+    {% if cwt_error %}
+    <div class="error">CWT 推演失败：{{ cwt_error }}</div>
     {% endif %}
-    {% if llm_html %}
-    <div class="panel">{{ llm_html | safe }}</div>
-    {% elif not llm_error %}
-    <p class="meta">DeepSeek 推演暂不可用。</p>
-    {% endif %}
-
-    {% if prompt_preview %}
-    <details class="prompt">
-      <summary>查看本次「看图续气泡」prompt（附图为截止日前实盘底图）</summary>
-      <pre>{{ prompt_preview }}</pre>
-    </details>
+    {% if cwt_html %}
+    <div class="panel">{{ cwt_html | safe }}</div>
+    {% elif not cwt_error %}
+    <p class="meta">CWT 相位续推暂不可用。</p>
     {% endif %}
   </main>
 </body>

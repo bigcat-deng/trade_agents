@@ -1,4 +1,4 @@
-"""DeepSeek / OpenAI-compatible industry heat forecast via prompt template."""
+"""Industry/concept short-heat 5-day forecast page payloads (slope + CWT)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Any
 from jinja2 import StrictUndefined, Template
 
 from app.db import (
+    fetch_concept_heat_named_window,
     fetch_heat_dates_ending,
     fetch_industry_heat_window,
     fetch_trading_dates_after,
@@ -23,6 +24,7 @@ from app.themes.heat_forecast import (
     FORECAST_HISTORY_DAYS,
     build_industry_heat_forecast_payload,
     resolve_forecast_dates,
+    tip_hottest_labels,
 )
 from app.themes.heat_rim_regime import (
     REGIME_DISPLAY_DAYS,
@@ -258,10 +260,13 @@ def build_industry_forecast_page_payload(
     *,
     as_of: date | None,
     include_plotlyjs: bool = False,
-    run_llm: bool = True,
 ) -> dict[str, Any]:
-    """Page payload: slope forecast + optional bubble-field vision redraw."""
+    """Page payload: slope damping continue + CWT phase continue."""
     from app.charts.theme_wave import render_theme_wave_contour
+    from app.themes.heat_cwt1d import (
+        WINDOW_DAYS as CWT_WINDOW_DAYS,
+        build_industry_cwt_forecast_plane,
+    )
 
     tip_dates = fetch_heat_dates_ending("industry", as_of or date.today(), 1)
     if not tip_dates:
@@ -271,14 +276,14 @@ def build_industry_forecast_page_payload(
             "requested_as_of": (as_of or date.today()).isoformat(),
             "empty_message": "没有可用的行业热度截止日。",
             "back_href": "/boards/concept/themes/wave",
+            "back_label": "返回行业短热",
             "slope_html": "",
-            "llm_html": "",
+            "cwt_html": "",
             "slope_note": "",
-            "llm_note": "",
+            "cwt_note": "",
             "slope_scenario": "",
-            "llm_scenario": "",
-            "llm_error": "",
-            "prompt_preview": "",
+            "cwt_scenario": "",
+            "cwt_error": "",
             "include_plotlyjs": include_plotlyjs,
         }
     tip = tip_dates[-1]
@@ -308,6 +313,13 @@ def build_industry_forecast_page_payload(
         forecast_dates=forecast_dates,
         ordered_codes=ordered,
     )
+    def _split_y(plane: dict[str, Any]) -> float | None:
+        n_ctx = len(plane.get("context_dates") or [])
+        if n_ctx < 1:
+            return None
+        # Between last actual row and first forecast row (date-index space).
+        return float(n_ctx) - 0.5
+
     slope_html = ""
     if not slope.get("empty_message"):
         slope_html = render_theme_wave_contour(
@@ -322,46 +334,44 @@ def build_industry_forecast_page_payload(
             xaxis_title="行业板块（叶序锁定截止日）",
             entity_label="行业",
             tickangle=-55,
+            forecast_split_y=_split_y(slope),
         )
 
-    llm_html = ""
-    llm_note = ""
-    llm_scenario = ""
-    llm_error = ""
-    prompt_preview = ""
-    model_id = ""
-    if run_llm:
-        try:
-            from app.themes.bubble_field_forecast import run_bubble_field_forecast
-
-            llm_plane, prompt_preview, model_id, _ref = run_bubble_field_forecast(
-                tip=tip,
-                hist=hist,
-                heat_by_day=heat,
-                names=names,
-                ordered=ordered,
-                forecast_dates=forecast_dates,
+    cwt_html = ""
+    cwt_note = ""
+    cwt_scenario = ""
+    cwt_error = ""
+    try:
+        cwt_hist = hist[-min(CWT_WINDOW_DAYS, len(hist)) :]
+        cwt_plane = build_industry_cwt_forecast_plane(
+            tip=tip,
+            hist=cwt_hist,
+            heat_by_day=heat,
+            names=names,
+            ordered=ordered,
+            forecast_dates=forecast_dates,
+        )
+        if not cwt_plane.get("empty_message"):
+            cwt_note = cwt_plane.get("axis_note") or ""
+            cwt_scenario = cwt_plane.get("scenario_note") or ""
+            cwt_html = render_theme_wave_contour(
+                dates=cwt_plane["dates"],
+                x=cwt_plane["x"],
+                z=cwt_plane["z_short"],
+                x_tickvals=cwt_plane["x_tickvals"],
+                x_ticktext=cwt_plane["x_ticktext"],
+                include_plotlyjs=False,
+                height=520,
+                title="CWT 相位续推（近端最强1模 · 自截止日无缝）",
+                xaxis_title="行业板块（叶序锁定截止日）",
+                entity_label="行业",
+                tickangle=-55,
+                forecast_split_y=_split_y(cwt_plane),
             )
-            if not llm_plane.get("empty_message"):
-                llm_note = llm_plane.get("axis_note") or ""
-                llm_scenario = llm_plane.get("scenario_note") or ""
-                if model_id:
-                    llm_scenario = f"[{model_id}] {llm_scenario}"
-                llm_html = render_theme_wave_contour(
-                    dates=llm_plane["dates"],
-                    x=llm_plane["x"],
-                    z=llm_plane["z_short"],
-                    x_tickvals=llm_plane["x_tickvals"],
-                    x_ticktext=llm_plane["x_ticktext"],
-                    include_plotlyjs=False,
-                    height=520,
-                    title="DeepSeek 看图续气泡（结构场 → 重绘）",
-                    xaxis_title="行业板块（叶序锁定截止日）",
-                    entity_label="行业",
-                    tickangle=-55,
-                )
-        except Exception as exc:  # noqa: BLE001 — surface to page
-            llm_error = str(exc)
+        else:
+            cwt_error = str(cwt_plane.get("empty_message") or "CWT 推演不可用")
+    except Exception as exc:  # noqa: BLE001 — surface to page
+        cwt_error = str(exc)
 
     return {
         "title": "行业短热 · 5日推演",
@@ -369,14 +379,14 @@ def build_industry_forecast_page_payload(
         "requested_as_of": (as_of or tip).isoformat(),
         "empty_message": None,
         "back_href": back,
+        "back_label": "返回行业短热",
         "slope_html": slope_html,
-        "llm_html": llm_html,
+        "cwt_html": cwt_html,
         "slope_note": slope.get("axis_note") or "",
-        "llm_note": llm_note,
+        "cwt_note": cwt_note,
         "slope_scenario": slope.get("scenario_note") or "",
-        "llm_scenario": llm_scenario,
-        "llm_error": llm_error,
-        "prompt_preview": prompt_preview,
+        "cwt_scenario": cwt_scenario,
+        "cwt_error": cwt_error,
         "forecast_dates": [d.isoformat() for d in forecast_dates],
         "include_plotlyjs": include_plotlyjs,
     }
@@ -417,3 +427,370 @@ def _regime_summary_line(tip: date) -> str:
         f"许可={last.get('cand_license') or '—'}；"
         f"候选={last.get('cand_members') or '—'}"
     )
+
+
+def build_concept_forecast_page_payload(
+    *,
+    as_of: date | None,
+    include_plotlyjs: bool = False,
+) -> dict[str, Any]:
+    """Page payload for concept Top∪theme: slope + CWT phase continue."""
+    from app.charts.theme_wave import render_theme_wave_contour
+    from app.themes.concept_wave import (
+        CONCEPT_ROSTER_WINDOW_DAYS,
+        CONCEPT_TOP_N,
+        build_concept_top_heat_payload,
+    )
+    from app.themes.heat_cwt1d import (
+        WINDOW_DAYS as CWT_WINDOW_DAYS,
+        build_industry_cwt_forecast_plane,
+    )
+
+    empty = {
+        "title": "概念短热 · 5日推演",
+        "as_of": None,
+        "requested_as_of": (as_of or date.today()).isoformat(),
+        "empty_message": "没有可用的概念热度截止日。",
+        "back_href": "/boards/concept/themes/wave",
+        "back_label": "返回概念短热",
+        "slope_html": "",
+        "cwt_html": "",
+        "slope_note": "",
+        "cwt_note": "",
+        "slope_scenario": "",
+        "cwt_scenario": "",
+        "cwt_error": "",
+        "include_plotlyjs": include_plotlyjs,
+    }
+    tip_dates = fetch_heat_dates_ending("concept", as_of or date.today(), 1)
+    if not tip_dates:
+        return empty
+    tip = tip_dates[-1]
+    back = f"/boards/concept/themes/wave?as_of={tip.isoformat()}"
+    hist = fetch_heat_dates_ending("concept", tip, FORECAST_HISTORY_DAYS)
+    if not hist:
+        empty["as_of"] = tip.isoformat()
+        empty["empty_message"] = "没有可用的概念热度历史。"
+        empty["back_href"] = back
+        return empty
+    rows = fetch_concept_heat_named_window(hist[0], tip)
+    heat_all, names_all = _heat_maps(rows)
+    known_fwd = fetch_trading_dates_after("concept", tip, FORECAST_DAYS)
+    forecast_dates = resolve_forecast_dates(
+        as_of=tip, n=FORECAST_DAYS, known_forward=known_fwd
+    )
+
+    roster_n = min(CONCEPT_ROSTER_WINDOW_DAYS, len(hist))
+    roster_window = hist[-roster_n:]
+    roster = build_concept_top_heat_payload(
+        window_dates=roster_window,
+        heat_rows=rows,
+        top_n=CONCEPT_TOP_N,
+        roster_window_dates=roster_window,
+    )
+    ordered = list(roster.get("board_codes") or [])
+    if not ordered or roster.get("empty_message"):
+        empty["as_of"] = tip.isoformat()
+        empty["empty_message"] = str(
+            roster.get("empty_message") or "没有可推演的概念入选名单。"
+        )
+        empty["back_href"] = back
+        return empty
+    names = dict(names_all)
+    roster_names = list(roster.get("board_names") or [])
+    for i, code in enumerate(ordered):
+        if i < len(roster_names) and roster_names[i]:
+            names[code] = str(roster_names[i])
+        else:
+            names.setdefault(code, code)
+    # Restrict heat maps to roster codes (same universe as theme-wave concept panel).
+    keep = set(ordered)
+    heat = {
+        day: {c: v for c, v in day_map.items() if c in keep}
+        for day, day_map in heat_all.items()
+    }
+
+    slope = build_industry_heat_forecast_payload(
+        as_of=tip,
+        history_dates=hist,
+        heat_by_day=heat,
+        names=names,
+        forecast_dates=forecast_dates,
+        ordered_codes=ordered,
+    )
+
+    def _split_y(plane: dict[str, Any]) -> float | None:
+        n_ctx = len(plane.get("context_dates") or [])
+        if n_ctx < 1:
+            return None
+        return float(n_ctx) - 0.5
+
+    slope_html = ""
+    if not slope.get("empty_message"):
+        slope_html = render_theme_wave_contour(
+            dates=slope["dates"],
+            x=slope["x"],
+            z=slope["z_short"],
+            x_tickvals=slope["x_tickvals"],
+            x_ticktext=slope["x_ticktext"],
+            include_plotlyjs=include_plotlyjs,
+            height=520,
+            title="轨迹延续推演（斜率阻尼 + 截面重排）",
+            xaxis_title="概念（叶序锁定截止日 · Top∪主题）",
+            entity_label="概念",
+            tickangle=-55,
+            forecast_split_y=_split_y(slope),
+        )
+
+    cwt_html = ""
+    cwt_note = ""
+    cwt_scenario = ""
+    cwt_error = ""
+    try:
+        cwt_hist = hist[-min(CWT_WINDOW_DAYS, len(hist)) :]
+        cwt_plane = build_industry_cwt_forecast_plane(
+            tip=tip,
+            hist=cwt_hist,
+            heat_by_day=heat,
+            names=names,
+            ordered=ordered,
+            forecast_dates=forecast_dates,
+        )
+        if not cwt_plane.get("empty_message"):
+            cwt_note = cwt_plane.get("axis_note") or ""
+            cwt_scenario = cwt_plane.get("scenario_note") or ""
+            cwt_html = render_theme_wave_contour(
+                dates=cwt_plane["dates"],
+                x=cwt_plane["x"],
+                z=cwt_plane["z_short"],
+                x_tickvals=cwt_plane["x_tickvals"],
+                x_ticktext=cwt_plane["x_ticktext"],
+                include_plotlyjs=False,
+                height=520,
+                title="CWT 相位续推（近端最强1模 · 自截止日无缝）",
+                xaxis_title="概念（叶序锁定截止日 · Top∪主题）",
+                entity_label="概念",
+                tickangle=-55,
+                forecast_split_y=_split_y(cwt_plane),
+            )
+        else:
+            cwt_error = str(cwt_plane.get("empty_message") or "CWT 推演不可用")
+    except Exception as exc:  # noqa: BLE001
+        cwt_error = str(exc)
+
+    roster_note = (
+        f"入选对齐水面：Top{roster.get('top_n') or CONCEPT_TOP_N}"
+        f"∪主题共 {len(ordered)} 列"
+        f"（主题补入 {roster.get('theme_added') or 0}）。"
+    )
+    return {
+        "title": "概念短热 · 5日推演",
+        "as_of": tip.isoformat(),
+        "requested_as_of": (as_of or tip).isoformat(),
+        "empty_message": None,
+        "back_href": back,
+        "back_label": "返回概念短热",
+        "slope_html": slope_html,
+        "cwt_html": cwt_html,
+        "slope_note": (slope.get("axis_note") or "") + " " + roster_note,
+        "cwt_note": cwt_note,
+        "slope_scenario": slope.get("scenario_note") or "",
+        "cwt_scenario": cwt_scenario,
+        "cwt_error": cwt_error,
+        "forecast_dates": [d.isoformat() for d in forecast_dates],
+        "include_plotlyjs": include_plotlyjs,
+    }
+
+
+def build_stock_basket_forecast_page_payload(
+    *,
+    names_text: str,
+    as_of: date | None,
+    include_plotlyjs: bool = False,
+) -> dict[str, Any]:
+    """Page payload for constituent-stock basket: slope + CWT phase continue."""
+    from urllib.parse import quote
+
+    from app.charts.theme_wave import render_theme_wave_contour
+    from app.db import fetch_trading_dates_after, fetch_trading_dates_ending
+    from app.themes.heat_cwt1d import (
+        WINDOW_DAYS as CWT_WINDOW_DAYS,
+        build_industry_cwt_forecast_plane,
+    )
+    from app.themes.stock_basket_wave import (
+        load_stock_basket_heat_maps,
+        resolve_stock_basket_universe,
+    )
+
+    requested = as_of or date.today()
+    back_q = f"?names={quote(names_text or '')}"
+    if as_of:
+        back_q += f"&as_of={as_of.isoformat()}"
+    back = f"/boards/stocks/heat{back_q}"
+    empty = {
+        "title": "成分股短热 · 5日推演",
+        "as_of": None,
+        "requested_as_of": requested.isoformat(),
+        "empty_message": "没有可用的交易截止日。",
+        "back_href": back,
+        "back_label": "返回成分股短热",
+        "slope_html": "",
+        "cwt_html": "",
+        "slope_note": "",
+        "cwt_note": "",
+        "slope_scenario": "",
+        "cwt_scenario": "",
+        "cwt_error": "",
+        "include_plotlyjs": include_plotlyjs,
+    }
+    tip_dates = fetch_trading_dates_ending("industry", requested, 1)
+    if not tip_dates:
+        return empty
+    tip = tip_dates[-1]
+    back = f"/boards/stocks/heat?names={quote(names_text or '')}&as_of={tip.isoformat()}"
+    empty["back_href"] = back
+    empty["as_of"] = tip.isoformat()
+
+    universe = resolve_stock_basket_universe(names_text=names_text, tip=tip)
+    if universe.get("empty_message") or not universe.get("codes"):
+        empty["empty_message"] = str(
+            universe.get("empty_message") or "没有可推演的成分股入选名单。"
+        )
+        return empty
+
+    codes = list(universe["codes"])
+    names = dict(universe["names"])
+    hist, heat, names = load_stock_basket_heat_maps(
+        codes=codes,
+        names=names,
+        tip=tip,
+        history_days=FORECAST_HISTORY_DAYS,
+    )
+    if not hist:
+        empty["empty_message"] = "没有可用的成分股热度历史。"
+        return empty
+
+    keep = set(codes)
+    heat = {
+        day: {c: v for c, v in day_map.items() if c in keep}
+        for day, day_map in heat.items()
+    }
+    tip_window = hist[-min(40, len(hist)) :]
+    series = hotness_series_by_code(
+        window_dates=tip_window, codes=codes, heat_by_day=heat
+    )
+    ordered = order_by_trajectory_seriation(codes, series)
+    if not ordered:
+        empty["empty_message"] = "没有可推演的成分股叶序。"
+        return empty
+
+    known_fwd = fetch_trading_dates_after("industry", tip, FORECAST_DAYS)
+    forecast_dates = resolve_forecast_dates(
+        as_of=tip, n=FORECAST_DAYS, known_forward=known_fwd
+    )
+    slope = build_industry_heat_forecast_payload(
+        as_of=tip,
+        history_dates=hist,
+        heat_by_day=heat,
+        names=names,
+        forecast_dates=forecast_dates,
+        ordered_codes=ordered,
+    )
+
+    def _split_y(plane: dict[str, Any]) -> float | None:
+        n_ctx = len(plane.get("context_dates") or [])
+        if n_ctx < 1:
+            return None
+        return float(n_ctx) - 0.5
+
+    slope_html = ""
+    if not slope.get("empty_message"):
+        slope_tip = tip_hottest_labels(
+            ordered_codes=list(slope.get("board_codes") or ordered),
+            names=list(slope.get("board_names") or []),
+            z_native=list(slope.get("z_boards") or []),
+            n_dates=len(slope.get("dates") or []),
+            top_n=5,
+        )
+        slope_html = render_theme_wave_contour(
+            dates=slope["dates"],
+            x=slope["x"],
+            z=slope["z_short"],
+            x_tickvals=slope["x_tickvals"],
+            x_ticktext=slope["x_ticktext"],
+            include_plotlyjs=include_plotlyjs,
+            height=520,
+            title="轨迹延续推演（斜率阻尼 + 截面重排）",
+            xaxis_title="个股（叶序锁定截止日 · 成分并集）",
+            entity_label="个股",
+            tickangle=-55,
+            tip_labels=slope_tip,
+            forecast_split_y=_split_y(slope),
+        )
+
+    cwt_html = ""
+    cwt_note = ""
+    cwt_scenario = ""
+    cwt_error = ""
+    try:
+        cwt_hist = hist[-min(CWT_WINDOW_DAYS, len(hist)) :]
+        cwt_plane = build_industry_cwt_forecast_plane(
+            tip=tip,
+            hist=cwt_hist,
+            heat_by_day=heat,
+            names=names,
+            ordered=ordered,
+            forecast_dates=forecast_dates,
+        )
+        if not cwt_plane.get("empty_message"):
+            cwt_note = cwt_plane.get("axis_note") or ""
+            cwt_scenario = cwt_plane.get("scenario_note") or ""
+            cwt_tip = tip_hottest_labels(
+                ordered_codes=list(cwt_plane.get("board_codes") or ordered),
+                names=list(cwt_plane.get("board_names") or []),
+                z_native=list(cwt_plane.get("z_boards") or []),
+                n_dates=len(cwt_plane.get("dates") or []),
+                top_n=5,
+            )
+            cwt_html = render_theme_wave_contour(
+                dates=cwt_plane["dates"],
+                x=cwt_plane["x"],
+                z=cwt_plane["z_short"],
+                x_tickvals=cwt_plane["x_tickvals"],
+                x_ticktext=cwt_plane["x_ticktext"],
+                include_plotlyjs=False,
+                height=520,
+                title="CWT 相位续推（近端最强1模 · 自截止日无缝）",
+                xaxis_title="个股（叶序锁定截止日 · 成分并集）",
+                entity_label="个股",
+                tickangle=-55,
+                tip_labels=cwt_tip,
+                forecast_split_y=_split_y(cwt_plane),
+            )
+        else:
+            cwt_error = str(cwt_plane.get("empty_message") or "CWT 推演不可用")
+    except Exception as exc:  # noqa: BLE001
+        cwt_error = str(exc)
+
+    roster_note = (
+        f"入选对齐水面：{universe.get('meta_line') or ''}；"
+        f"推演列 {len(ordered)} 只。"
+    )
+    slope_note = (slope.get("axis_note") or "").replace("各板块", "各成分股")
+    return {
+        "title": "成分股短热 · 5日推演",
+        "as_of": tip.isoformat(),
+        "requested_as_of": requested.isoformat(),
+        "empty_message": None,
+        "back_href": back,
+        "back_label": "返回成分股短热",
+        "slope_html": slope_html,
+        "cwt_html": cwt_html,
+        "slope_note": (slope_note + " " + roster_note).strip(),
+        "cwt_note": cwt_note,
+        "slope_scenario": slope.get("scenario_note") or "",
+        "cwt_scenario": cwt_scenario,
+        "cwt_error": cwt_error,
+        "forecast_dates": [d.isoformat() for d in forecast_dates],
+        "include_plotlyjs": include_plotlyjs,
+    }
