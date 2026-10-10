@@ -1,9 +1,10 @@
+import asyncio
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import baostock as bs
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Path as PathParam, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
@@ -70,9 +71,13 @@ from app.themes.industry_wave import (
     build_industry_scrub_frames,
 )
 from app.themes.llm_heat_forecast import (
-    build_concept_forecast_page_payload,
-    build_industry_forecast_page_payload,
-    build_stock_basket_forecast_page_payload,
+    FORECAST_CHART_PANELS,
+    build_concept_forecast_chart_payload,
+    build_concept_forecast_shell_payload,
+    build_industry_forecast_chart_payload,
+    build_industry_forecast_shell_payload,
+    build_stock_basket_forecast_chart_payload,
+    build_stock_basket_forecast_shell_payload,
 )
 from app.themes.heat_rim_regime import (
     REGIME_DISPLAY_DAYS,
@@ -486,24 +491,45 @@ def stock_basket_heat_page(
 
 
 @app.get("/boards/stocks/heat/forecast", response_class=HTMLResponse)
-def stock_basket_heat_forecast_page(
+async def stock_basket_heat_forecast_page(
     request: Request,
     names: str = "",
     as_of: str | None = Query(None),
 ) -> HTMLResponse:
-    """Constituent-stock basket 5-day heat forecast; same roster as the wave page."""
+    """Constituent-stock basket 5-day heat forecast shell (charts lazy-loaded)."""
     try:
         requested = _parse_optional_day(as_of)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
-    payload = build_stock_basket_forecast_page_payload(
+    payload = await asyncio.to_thread(
+        build_stock_basket_forecast_shell_payload,
         names_text=names,
         as_of=requested,
-        include_plotlyjs=True,
     )
     return templates.TemplateResponse(
         request, "industry_heat_forecast.html", payload
     )
+
+
+@app.get("/boards/stocks/heat/forecast/api/{panel}")
+async def stock_basket_heat_forecast_chart_api(
+    panel: str = PathParam(..., pattern="^(slope|cwt)$"),
+    names: str = "",
+    as_of: str | None = Query(None),
+) -> JSONResponse:
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    if panel not in FORECAST_CHART_PANELS:
+        raise HTTPException(status_code=404, detail="unknown panel")
+    payload = await asyncio.to_thread(
+        build_stock_basket_forecast_chart_payload,
+        names_text=names,
+        as_of=requested,
+        panel=panel,
+    )
+    return JSONResponse(payload)
 
 
 @app.get("/boards/concept/themes/wave/reading", response_class=HTMLResponse)
@@ -521,41 +547,73 @@ def concept_themes_wave_reading_page(
 
 
 @app.get("/boards/concept/themes/wave/industry-forecast", response_class=HTMLResponse)
-def industry_heat_forecast_page(
+async def industry_heat_forecast_page(
     request: Request,
     as_of: str | None = Query(None),
 ) -> HTMLResponse:
-    """Industry 5-day heat forecast page; as_of from industry short-heat page."""
+    """Industry 5-day heat forecast shell (charts lazy-loaded)."""
     try:
         requested = _parse_optional_day(as_of)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
-    payload = build_industry_forecast_page_payload(
-        as_of=requested,
-        include_plotlyjs=True,
+    payload = await asyncio.to_thread(
+        build_industry_forecast_shell_payload, as_of=requested
     )
     return templates.TemplateResponse(
         request, "industry_heat_forecast.html", payload
     )
+
+
+@app.get("/boards/concept/themes/wave/industry-forecast/api/{panel}")
+async def industry_heat_forecast_chart_api(
+    panel: str = PathParam(..., pattern="^(slope|cwt)$"),
+    as_of: str | None = Query(None),
+) -> JSONResponse:
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    if panel not in FORECAST_CHART_PANELS:
+        raise HTTPException(status_code=404, detail="unknown panel")
+    payload = await asyncio.to_thread(
+        build_industry_forecast_chart_payload, as_of=requested, panel=panel
+    )
+    return JSONResponse(payload)
 
 
 @app.get("/boards/concept/themes/wave/concept-forecast", response_class=HTMLResponse)
-def concept_heat_forecast_page(
+async def concept_heat_forecast_page(
     request: Request,
     as_of: str | None = Query(None),
 ) -> HTMLResponse:
-    """Concept Top∪theme 5-day heat forecast page; as_of from concept short-heat."""
+    """Concept Top∪theme 5-day heat forecast shell (charts lazy-loaded)."""
     try:
         requested = _parse_optional_day(as_of)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
-    payload = build_concept_forecast_page_payload(
-        as_of=requested,
-        include_plotlyjs=True,
+    payload = await asyncio.to_thread(
+        build_concept_forecast_shell_payload, as_of=requested
     )
     return templates.TemplateResponse(
         request, "industry_heat_forecast.html", payload
     )
+
+
+@app.get("/boards/concept/themes/wave/concept-forecast/api/{panel}")
+async def concept_heat_forecast_chart_api(
+    panel: str = PathParam(..., pattern="^(slope|cwt)$"),
+    as_of: str | None = Query(None),
+) -> JSONResponse:
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    if panel not in FORECAST_CHART_PANELS:
+        raise HTTPException(status_code=404, detail="unknown panel")
+    payload = await asyncio.to_thread(
+        build_concept_forecast_chart_payload, as_of=requested, panel=panel
+    )
+    return JSONResponse(payload)
 
 
 @app.get("/boards/concept/themes/wave/wavelet", response_class=HTMLResponse)

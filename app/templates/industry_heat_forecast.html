@@ -52,6 +52,7 @@
       padding: 0.35rem;
       margin: 0 0 0.85rem;
       overflow-x: auto;
+      min-height: 3.5rem;
     }
     .error {
       color: #b91c1c;
@@ -61,12 +62,13 @@
       margin: 0 0 0.85rem;
       line-height: 1.5;
     }
+    .chart-loading {
+      color: var(--muted);
+      padding: 1.25rem 0.75rem;
+      margin: 0;
+    }
   </style>
-  {% if include_plotlyjs %}
   <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
-  {% else %}
-  <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
-  {% endif %}
 </head>
 <body>
   <main>
@@ -79,28 +81,89 @@
     </p>
     {% if empty_message %}
     <p class="meta">{{ empty_message }}</p>
-    {% endif %}
-
-    <h2>1. 轨迹延续推演</h2>
-    <p class="meta">{{ slope_note }}</p>
-    {% if slope_scenario %}<p class="meta">{{ slope_scenario }}</p>{% endif %}
-    {% if slope_html %}
-    <div class="panel">{{ slope_html | safe }}</div>
     {% else %}
-    <p class="meta">轨迹延续推演暂不可用。</p>
-    {% endif %}
 
-    <h2>2. CWT 相位续推</h2>
-    <p class="meta">{{ cwt_note }}</p>
-    {% if cwt_scenario %}<p class="meta">{{ cwt_scenario }}</p>{% endif %}
-    {% if cwt_error %}
-    <div class="error">CWT 推演失败：{{ cwt_error }}</div>
-    {% endif %}
-    {% if cwt_html %}
-    <div class="panel">{{ cwt_html | safe }}</div>
-    {% elif not cwt_error %}
-    <p class="meta">CWT 相位续推暂不可用。</p>
+    <section class="forecast-panel" data-chart-url="{{ slope_chart_url }}">
+      <h2>1. 轨迹延续推演</h2>
+      <p class="meta chart-note"></p>
+      <p class="meta chart-scenario" hidden></p>
+      <div class="error chart-error" hidden></div>
+      <div class="panel chart-mount"><p class="chart-loading">加载中…</p></div>
+    </section>
+
+    <section class="forecast-panel" data-chart-url="{{ cwt_chart_url }}">
+      <h2>2. CWT 相位续推</h2>
+      <p class="meta chart-note"></p>
+      <p class="meta chart-scenario" hidden></p>
+      <div class="error chart-error" hidden></div>
+      <div class="panel chart-mount"><p class="chart-loading">加载中…</p></div>
+    </section>
     {% endif %}
   </main>
+  {% if not empty_message and lazy %}
+  <script>
+    (function () {
+      function mountHtmlWithScripts(container, html) {
+        container.innerHTML = html;
+        container.querySelectorAll("script").forEach((oldScript) => {
+          const script = document.createElement("script");
+          for (const attr of oldScript.attributes) script.setAttribute(attr.name, attr.value);
+          script.text = oldScript.textContent || "";
+          oldScript.replaceWith(script);
+        });
+      }
+
+      async function loadPanel(section) {
+        const url = section.getAttribute("data-chart-url") || "";
+        const noteEl = section.querySelector(".chart-note");
+        const scenarioEl = section.querySelector(".chart-scenario");
+        const errorEl = section.querySelector(".chart-error");
+        const mount = section.querySelector(".chart-mount");
+        if (!url || !mount) {
+          if (mount) mount.innerHTML = "<p class='meta'>推演接口未配置。</p>";
+          return;
+        }
+        try {
+          const resp = await fetch(url, { headers: { Accept: "application/json" } });
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          const data = await resp.json();
+          if (noteEl) noteEl.textContent = data.note || "";
+          if (scenarioEl) {
+            if (data.scenario) {
+              scenarioEl.hidden = false;
+              scenarioEl.textContent = data.scenario;
+            } else {
+              scenarioEl.hidden = true;
+              scenarioEl.textContent = "";
+            }
+          }
+          if (data.error) {
+            if (errorEl) {
+              errorEl.hidden = false;
+              errorEl.textContent = data.error;
+            }
+            mount.innerHTML = "<p class='meta'>该推演暂不可用。</p>";
+            return;
+          }
+          if (errorEl) errorEl.hidden = true;
+          if (data.html) {
+            mountHtmlWithScripts(mount, data.html);
+          } else {
+            mount.innerHTML = "<p class='meta'>该推演暂不可用。</p>";
+          }
+        } catch (err) {
+          if (errorEl) {
+            errorEl.hidden = false;
+            errorEl.textContent = "加载失败：" + (err && err.message ? err.message : err);
+          }
+          mount.innerHTML = "<p class='meta'>加载失败。</p>";
+        }
+      }
+
+      const panels = Array.from(document.querySelectorAll(".forecast-panel[data-chart-url]"));
+      panels.forEach((section) => { loadPanel(section); });
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>

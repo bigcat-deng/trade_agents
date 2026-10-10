@@ -7,8 +7,11 @@ the tip pixel.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
+from os import cpu_count
 from typing import Any
 
 import numpy as np
@@ -16,6 +19,10 @@ import pywt
 
 from app.themes.heat_forecast import FORECAST_CONTEXT_DAYS, FORECAST_DAYS
 from app.themes.heat_seriation import densify_hotness_plane
+
+# Forecast-page default: no x-interpolation (cuts Plotly HTML ~5× on wide rosters).
+FORECAST_PLANE_DENSIFY = 1
+_CWT_POOL_WORKERS = max(2, min(8, (cpu_count() or 4)))
 
 WINDOW_DAYS = 160
 PERIOD_MIN = 4
@@ -88,6 +95,14 @@ def _scales_for_periods(periods: np.ndarray) -> np.ndarray:
     return scales
 
 
+@lru_cache(maxsize=4)
+def _cached_period_scales(
+    period_min: int, period_max: int
+) -> tuple[np.ndarray, np.ndarray]:
+    periods = np.arange(int(period_min), int(period_max) + 1, dtype=float)
+    return periods, _scales_for_periods(periods)
+
+
 def _fill_nan_linear(h: np.ndarray) -> np.ndarray:
     x = np.arange(h.size, dtype=float)
     good = np.isfinite(h)
@@ -116,8 +131,7 @@ def energy_weighted_period_spectrum(
     period_max: int = PERIOD_MAX,
 ) -> dict[str, Any]:
     """Morlet CWT → near-end-weighted power vs period (trading days)."""
-    periods = np.arange(period_min, period_max + 1, dtype=float)
-    scales = _scales_for_periods(periods)
+    periods, scales = _cached_period_scales(int(period_min), int(period_max))
     filled = _fill_nan_linear(np.asarray(h, dtype=float))
     # Detrend so the longest scale is not just a ramp; forecast center uses tip level.
     detrended, _tip_trend = _linear_detrend(filled)
@@ -302,31 +316,37 @@ def analyze_board_series(
     heat_short: list[float | None],
     *,
     near_end_days: int = NEAR_END_DAYS,
+    light: bool = False,
 ) -> dict[str, Any]:
-    """Full per-board pack: h, mode, spectrum, asymmetry, 5-day forecast."""
+    """Full per-board pack: h, mode, spectrum, asymmetry, 5-day forecast.
+
+    ``light=True`` skips asymmetry / spectrum lists (forecast-plane path).
+    """
     h = map_heat_short_to_h(heat_short)
     mode, pack = extract_dominant_near_mode(h, near_end_days=near_end_days)
-    asym = asymmetry_stats(h)
+    asym = None if light else asymmetry_stats(h)
     if mode is None:
-        return {
+        out = {
             "h": h.tolist(),
             "mode": None,
             "asym": asym,
             "forecast": [],
             "amp": None,
             "tip_h": None,
-            "spectrum_periods": (
+            "empty_message": pack.get("empty_message"),
+        }
+        if not light:
+            out["spectrum_periods"] = (
                 pack["periods"].tolist()
                 if isinstance(pack.get("periods"), np.ndarray)
                 else pack.get("periods")
-            ),
-            "spectrum": (
+            )
+            out["spectrum"] = (
                 pack["spectrum"].tolist()
                 if isinstance(pack.get("spectrum"), np.ndarray)
                 else pack.get("spectrum")
-            ),
-            "empty_message": pack.get("empty_message"),
-        }
+            )
+        return out
     tip_h = next(
         (float(v) for v in reversed(h.tolist()) if v is not None and np.isfinite(v)),
         float(mode.center),
@@ -345,15 +365,13 @@ def analyze_board_series(
         near_n=pack["near_n"],
     )
     forecast = phase_forecast_from_mode(mode, amp=amp, tip_h=tip_h)
-    return {
+    out = {
         "h": h.tolist(),
         "mode": mode,
         "asym": asym,
         "forecast": forecast,
         "amp": amp,
         "tip_h": tip_h,
-        "spectrum_periods": pack["periods"].tolist(),
-        "spectrum": pack["spectrum"].tolist(),
         "empty_message": None,
         "amp_trend": (
             "expanding"
@@ -361,6 +379,10 @@ def analyze_board_series(
             else ("contracting" if mode.near_amp_slope < -1e-4 else "flat")
         ),
     }
+    if not light:
+        out["spectrum_periods"] = pack["periods"].tolist()
+        out["spectrum"] = pack["spectrum"].tolist()
+    return out
 
 
 def build_industry_cwt_forecast_plane(
@@ -372,6 +394,7 @@ def build_industry_cwt_forecast_plane(
     ordered: list[str],
     forecast_dates: list[date],
     context_days: int = FORECAST_CONTEXT_DAYS,
+    densify: int = FORECAST_PLANE_DENSIFY,
 ) -> dict[str, Any]:
     """Context own-window h + seamless 1-mode phase forecast, densified for plot."""
     if not hist or not ordered or not forecast_dates:
@@ -379,17 +402,24 @@ def build_industry_cwt_forecast_plane(
             "empty_message": "CWT 相位续推缺少历史或推演日",
             "as_of": tip.isoformat(),
         }
+
+    def _analyze_one(code: str) -> tuple[str, dict[str, Any]]:
+        hs = [(heat_by_day.get(day) or {}).get(code) for day in hist]
+        return code, analyze_board_series(hs, light=True)
+
     analyses: dict[str, dict[str, Any]] = {}
     h_by_code: dict[str, list[float | None]] = {}
-    for code in ordered:
-        hs = [(heat_by_day.get(day) or {}).get(code) for day in hist]
-        pack = analyze_board_series(hs)
-        analyses[code] = pack
-        raw_h = pack.get("h") or []
-        h_by_code[code] = [
-            None if v is None or (isinstance(v, float) and not np.isfinite(v)) else float(v)
-            for v in raw_h
-        ]
+    workers = min(_CWT_POOL_WORKERS, max(1, len(ordered)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for code, pack in pool.map(_analyze_one, ordered):
+            analyses[code] = pack
+            raw_h = pack.get("h") or []
+            h_by_code[code] = [
+                None
+                if v is None or (isinstance(v, float) and not np.isfinite(v))
+                else float(v)
+                for v in raw_h
+            ]
 
     ctx_n = max(5, min(int(context_days), len(hist)))
     context = hist[-ctx_n:]
@@ -409,10 +439,11 @@ def build_industry_cwt_forecast_plane(
     z_native = z_hist + z_fwd
     display_dates = list(context) + list(forecast_dates)
     x_ticks = list(range(len(ordered)))
+    densify_n = max(1, int(densify))
     dense_x, dense_z = densify_hotness_plane(
         theme_x=[float(i) for i in x_ticks],
         z_short=z_native,
-        densify=4,
+        densify=densify_n,
     )
     labels = [names.get(c, c) for c in ordered]
 
@@ -455,6 +486,6 @@ def build_industry_cwt_forecast_plane(
         "board_count": len(ordered),
         "scenario_note": scenario_note,
         "empty_message": None,
-        "densify": 4,
+        "densify": densify_n,
         "window_days": len(hist),
     }

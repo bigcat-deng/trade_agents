@@ -266,10 +266,17 @@ Edit with `crontab -e`.
 
 ### 6. Start the web service
 
+Prefer multiple workers so forecast chart APIs do not block the rest of the site:
+
 ```bash
-nohup .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 > logs/uvicorn.log 2>&1 &
+chmod +x scripts/start_web.sh
+UVICORN_WORKERS=2 ./scripts/start_web.sh
+# or:
+nohup .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 > logs/uvicorn.log 2>&1 &
 curl http://127.0.0.1:8000/health
 ```
+
+Forecast pages return a light shell first; slope/CWT charts load asynchronously from `/…/forecast/api/{slope|cwt}`.
 
 Optional: manage uvicorn with systemd for restart-on-boot.
 
