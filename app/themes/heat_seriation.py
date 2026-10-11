@@ -257,6 +257,45 @@ def hotness_grid(
     return grid
 
 
+def strength_series_by_code(
+    *,
+    window_dates: list[date],
+    codes: list[str],
+    value_by_day: dict[date, dict[str, float]],
+) -> dict[str, list[float | None]]:
+    """Cross-section percentile series (1 = strongest/largest), gap-filled."""
+    series = {code: [None] * len(window_dates) for code in codes}
+    for day_i, day in enumerate(window_dates):
+        values = value_by_day.get(day, {})
+        pct = percentiles_from_heats(values)
+        for code in codes:
+            if code in values and code in pct:
+                # Larger value → higher rank pct → keep as strength (no invert).
+                series[code][day_i] = float(pct[code])
+    return {code: fill_series(vals) for code, vals in series.items()}
+
+
+def strength_grid(
+    *,
+    window_dates: list[date],
+    ordered_codes: list[str],
+    value_by_day: dict[date, dict[str, float]],
+) -> list[list[float | None]]:
+    """Daily cross-section strength grid; 1 = largest value that day."""
+    grid: list[list[float | None]] = []
+    for day in window_dates:
+        values = value_by_day.get(day, {})
+        pct = percentiles_from_heats(values)
+        row: list[float | None] = []
+        for code in ordered_codes:
+            if code not in values or code not in pct:
+                row.append(None)
+            else:
+                row.append(float(pct[code]))
+        grid.append(row)
+    return grid
+
+
 DEFAULT_PLANE_DENSIFY = 4
 
 
@@ -356,3 +395,119 @@ def select_top_codes_by_late_short_heat(
 
     scored.sort(key=lambda item: (item[0], item[1]))
     return [code for _score, code in scored[:top_n]]
+
+
+def select_top_codes_by_late_strength(
+    *,
+    window_dates: list[date],
+    value_by_day: dict[date, dict[str, float]],
+    candidate_codes: list[str],
+    top_n: int,
+) -> list[str]:
+    """Pick top_n codes by mean value over the late quarter (higher=stronger)."""
+    if top_n < 1 or not candidate_codes:
+        return []
+    late_days = late_quarter_dates(window_dates)
+    if not late_days:
+        late_days = window_dates[-1:]
+
+    scored: list[tuple[float, str]] = []
+    for code in candidate_codes:
+        vals = [
+            value_by_day[day][code]
+            for day in late_days
+            if day in value_by_day and code in value_by_day[day]
+        ]
+        if not vals:
+            continue
+        scored.append((float(sum(vals) / len(vals)), code))
+
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [code for _score, code in scored[:top_n]]
+
+
+DEFAULT_SELF_ANOMALY_LOOKBACK = 40
+DEFAULT_SELF_ANOMALY_MIN_PERIODS = 20
+DEFAULT_SELF_ANOMALY_Z_SCALE = 1.5
+
+
+def _log_amount(value: float) -> float:
+    return float(np.log1p(max(0.0, value)))
+
+
+def rolling_self_anomaly_series(
+    *,
+    window_dates: list[date],
+    history_dates: list[date],
+    codes: list[str],
+    value_by_day: dict[date, dict[str, float]],
+    lookback: int = DEFAULT_SELF_ANOMALY_LOOKBACK,
+    min_periods: int = DEFAULT_SELF_ANOMALY_MIN_PERIODS,
+    z_scale: float = DEFAULT_SELF_ANOMALY_Z_SCALE,
+) -> dict[str, list[float | None]]:
+    """Self rolling z-score of log-amount, mapped to [0, 1] via tanh.
+
+    For day t, μ/σ use the prior ``lookback`` observations of that code
+    (strict past, excluding t). Score ``0.5 + 0.5·tanh(z / z_scale)`` so
+    ~1 = unusually high vs own recent history, ~0 = unusually low.
+    """
+    lb = max(2, int(lookback))
+    mp = max(2, min(int(min_periods), lb))
+    scale = max(1e-6, float(z_scale))
+    hist = sorted(history_dates)
+    window_set = set(window_dates)
+    series = {code: [None] * len(window_dates) for code in codes}
+    if not hist or not window_dates:
+        return series
+
+    day_index = {day: i for i, day in enumerate(window_dates)}
+    for code in codes:
+        past_logs: list[float] = []
+        for day in hist:
+            raw = (value_by_day.get(day) or {}).get(code)
+            if raw is None or raw <= 0:
+                if day in window_set:
+                    # leave None; do not advance baseline with missing
+                    pass
+                continue
+            log_x = _log_amount(float(raw))
+            if day in day_index:
+                score: float | None = None
+                if len(past_logs) >= mp:
+                    tail = past_logs[-lb:]
+                    mu = float(np.mean(tail))
+                    sigma = float(np.std(tail, ddof=0))
+                    if sigma > _VAR_EPS:
+                        z = (log_x - mu) / sigma
+                        score = 0.5 + 0.5 * float(np.tanh(z / scale))
+                    else:
+                        score = 0.5
+                series[code][day_index[day]] = score
+            past_logs.append(log_x)
+    return {code: fill_series(vals) for code, vals in series.items()}
+
+
+def rolling_self_anomaly_grid(
+    *,
+    window_dates: list[date],
+    history_dates: list[date],
+    ordered_codes: list[str],
+    value_by_day: dict[date, dict[str, float]],
+    lookback: int = DEFAULT_SELF_ANOMALY_LOOKBACK,
+    min_periods: int = DEFAULT_SELF_ANOMALY_MIN_PERIODS,
+    z_scale: float = DEFAULT_SELF_ANOMALY_Z_SCALE,
+) -> list[list[float | None]]:
+    """Grid form of ``rolling_self_anomaly_series`` (rows=dates, cols=codes)."""
+    series = rolling_self_anomaly_series(
+        window_dates=window_dates,
+        history_dates=history_dates,
+        codes=ordered_codes,
+        value_by_day=value_by_day,
+        lookback=lookback,
+        min_periods=min_periods,
+        z_scale=z_scale,
+    )
+    grid: list[list[float | None]] = []
+    for day_i in range(len(window_dates)):
+        grid.append([series[code][day_i] for code in ordered_codes])
+    return grid

@@ -417,6 +417,39 @@ def _add_heat_traces(
         )
 
 
+def _add_price_overlays(
+    fig: go.Figure,
+    overlays: Sequence[Mapping[str, Any]] | None,
+    *,
+    row: int | None,
+    col: int | None,
+) -> None:
+    """Overlay extra price-axis lines (e.g. Kalman typical price)."""
+    if not overlays:
+        return
+    for item in overlays:
+        name = str(item.get("name") or "叠加")
+        xs = item.get("x") or []
+        ys = item.get("y") or []
+        if not xs or not ys:
+            continue
+        color = str(item.get("color") or "#7c3aed")
+        width = float(item.get("width") or 1.8)
+        trace = go.Scatter(
+            x=list(xs),
+            y=list(ys),
+            name=name,
+            mode="lines",
+            connectgaps=False,
+            line=dict(color=color, width=width),
+            hovertemplate=name + " %{y:.2f}<extra></extra>",
+        )
+        if row is None or col is None:
+            fig.add_trace(trace)
+        else:
+            fig.add_trace(trace, row=row, col=col)
+
+
 def build_kline_figure(
     bars: Sequence[Mapping[str, Any]] | pd.DataFrame,
     *,
@@ -431,6 +464,7 @@ def build_kline_figure(
     macd_slow: int = MACD_SLOW,
     macd_signal: int = MACD_SIGNAL,
     heats: Sequence[Mapping[str, Any]] | None = None,
+    price_overlays: Sequence[Mapping[str, Any]] | None = None,
 ) -> go.Figure:
     frame = _as_dataframe(bars)
     if frame.empty:
@@ -539,6 +573,7 @@ def build_kline_figure(
             _add_cross_markers(
                 fig, frame, bb_mid, dif, dea, heats, row=1, col=2
             )
+        _add_price_overlays(fig, price_overlays, row=1, col=2)
 
         colors = [
             "#dc2626" if close_v >= open_v else "#16a34a"
@@ -595,6 +630,7 @@ def build_kline_figure(
                 _add_cross_markers(
                     fig, frame, bb_mid, dif, dea, heats, row=1, col=1
                 )
+            _add_price_overlays(fig, price_overlays, row=1, col=1)
             fig.update_yaxes(title_text="Price", row=1, col=1)
             fig.update_xaxes(rangeslider_visible=False, row=1, col=1)
             _add_macd_traces(fig, frame, dif, dea, hist, row=2, col=1)
@@ -609,6 +645,7 @@ def build_kline_figure(
                 _add_cross_markers(
                     fig, frame, bb_mid, dif, dea, heats, row=None, col=None
                 )
+            _add_price_overlays(fig, price_overlays, row=None, col=None)
             fig.update_yaxes(title_text="Price")
             fig.update_xaxes(rangeslider_visible=False)
             select_xrefs = ["x"]
@@ -726,6 +763,7 @@ def render_kline(
     bollinger: bool = True,
     macd: bool = True,
     heats: Sequence[Mapping[str, Any]] | None = None,
+    price_overlays: Sequence[Mapping[str, Any]] | None = None,
     include_plotlyjs: bool | str = "cdn",
 ) -> str:
     """Return embeddable HTML for a candlestick chart."""
@@ -737,6 +775,7 @@ def render_kline(
         bollinger=bollinger,
         macd=macd,
         heats=heats,
+        price_overlays=price_overlays,
     )
     xrefs = _select_xrefs_for_figure(figure)
     post_script = _PROFILE_AND_SELECT_SCRIPT.replace(

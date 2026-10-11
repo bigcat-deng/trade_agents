@@ -421,6 +421,25 @@
       border-color: #1d4ed8;
       color: #1d4ed8;
     }
+    .fund-lazy {
+      margin: 0.85rem 0 1rem;
+    }
+    .fund-lazy h3 {
+      margin: 0 0 0.35rem;
+      font-size: 1.02rem;
+      font-weight: 600;
+    }
+    .fund-lazy .chart-mount {
+      min-height: 4rem;
+    }
+    .fund-lazy .chart-loading {
+      margin: 0.5rem 0;
+      color: var(--muted);
+    }
+    .fund-lazy .chart-error {
+      color: #b91c1c;
+      margin: 0.35rem 0;
+    }
     .shape-glossary {
       margin: 0.55rem 0 0.15rem;
       padding: 0.55rem 0.7rem 0.65rem;
@@ -634,6 +653,51 @@
       <p class="hint">只带动行业热度图演变；横轴叶序固定。方格下沿黑/白细线=当日收盘收益超过近100日波动率2倍（黑正白负）；顶上红/绿字=最后交易日正超/负超行业；小交叉×=MACD（上穿橙、下穿蓝）；右侧实线=中证500同日收盘收益，虚线=成交量（按双方波动对齐到收益尺度）。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
     </div>
     {% endif %}
+    {% if industry_fund_chart_url %}
+    <section
+      class="fund-lazy"
+      data-fund-chart-url="{{ industry_fund_chart_url }}"
+      data-fund-order-codes="{{ industry_board_codes|join(',') }}"
+      aria-label="行业资金水面"
+    >
+      <h3>行业资金水面 · 成交额自身异常</h3>
+      <p class="meta">相对各行业近40日自身成交额的滚动异常；横轴与上方热度叶序对齐。进视口后加载。</p>
+      <p class="meta chart-note"></p>
+      <div class="error chart-error" hidden></div>
+      <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
+      {% if fund_wave_href %}
+      <p class="page-links"><a href="{{ fund_wave_href }}">完整资金水面 →</a></p>
+      {% endif %}
+    </section>
+    {% endif %}
+    {% if industry_smooth_range_chart_url %}
+    <section
+      class="fund-lazy"
+      data-fund-chart-url="{{ industry_smooth_range_chart_url }}"
+      data-chart-order='{{ {"codes": industry_board_codes, "names": industry_board_names} | tojson }}'
+      aria-label="行业平滑价位"
+    >
+      <h3>行业平滑价位 · 卡尔曼 + 100日区间</h3>
+      <p class="meta">典型价经卡尔曼滤波后，落在近100日自身区间的位置；横轴/时间与上方行业图对齐。进视口后加载。</p>
+      <p class="meta chart-note"></p>
+      <div class="error chart-error" hidden></div>
+      <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
+    </section>
+    {% endif %}
+    {% if industry_smooth_return_chart_url %}
+    <section
+      class="fund-lazy"
+      data-fund-chart-url="{{ industry_smooth_return_chart_url }}"
+      data-chart-order='{{ {"codes": industry_board_codes, "names": industry_board_names} | tojson }}'
+      aria-label="行业平滑收益"
+    >
+      <h3>行业平滑收益 · 卡尔曼日收益 + 100日区间</h3>
+      <p class="meta">卡尔曼典型价的简单日收益，再做近100日自身 min-max；横轴/时间与上方对齐。进视口后加载。</p>
+      <p class="meta chart-note"></p>
+      <div class="error chart-error" hidden></div>
+      <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
+    </section>
+    {% endif %}
     <section class="rim-read" aria-label="行业主线政权">
       <h3>主线政权 · 近 {{ industry_rim.display_days if industry_rim and industry_rim.display_days else 10 }} 日</h3>
       <p class="meta">{{ industry_rim.note if industry_rim else "" }}</p>
@@ -737,114 +801,13 @@
     <p class="meta">还没有行业板块热度可画。</p>
     {% endif %}
 
-    <h2>概念短热 Top200∪主题（{{ concept_board_count or "—" }}）</h2>
-    {% if concept_short_html %}
-    <p class="meta">{{ concept_axis_note }} 筛选段 {{ concept_select_from }} → {{ concept_select_to }} · 共 {{ concept_board_count }} 个概念。</p>
-    <div class="panel" id="concept-top-chart">{{ concept_short_html | safe }}</div>
-    {% if concept_slider_dates and concept_slider_dates|length > 1 %}
-    <div class="map-slider" id="concept-map-slider">
-      <strong id="concept-slider-date">{{ concept_slider_dates[concept_slider_index] }}</strong>
-      <input
-        id="concept-slider-input"
-        type="range"
-        min="0"
-        max="{{ concept_slider_dates|length - 1 }}"
-        value="{{ concept_slider_index }}"
-        step="1"
-        aria-label="概念热度图时间"
-      >
-      <div class="ends">
-        <span>{{ concept_slider_dates[0] }}</span>
-        <span>{{ concept_slider_dates[-1] }}</span>
-      </div>
-      <p class="hint">只带动概念热度图演变；横轴叶序与入选名单固定。方格下沿黑/白细线=当日收盘收益超过近100日波动率2倍（黑正白负）；顶上红/绿字=最后交易日正超/负超概念；小交叉×=MACD（上穿橙、下穿蓝）；右侧实线=中证500同日收盘收益，虚线=成交量（按双方波动对齐到收益尺度）。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
-    </div>
-    {% endif %}
-    <section class="rim-read" aria-label="概念主线政权">
-      <h3>主线政权 · 近 {{ concept_rim.display_days if concept_rim and concept_rim.display_days else 10 }} 日</h3>
-      <p class="meta">{{ concept_rim.note if concept_rim else "" }}</p>
-      {% if concept_rim and concept_rim.rows %}
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>日期</th>
-              <th>政权</th>
-              <th>主线成员</th>
-              <th>许可</th>
-              <th>候选</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in concept_rim.rows %}
-            <tr>
-              <td class="num">{{ row.signal_date[5:] }}</td>
-              <td>{{ row.regime }}</td>
-              <td class="wrap">{{ row.members }}</td>
-              <td class="{{ 'lic-watch' if row.cand_license == '可关注' else ('lic-pressure' if row.cand_license == '受压' else '') }}">{{ row.cand_license }}</td>
-              <td class="wrap">
-                {{ row.cand_members }}
-                {% if row.cand_relation and row.cand_relation != '—' %}
-                <span class="cand-rel">{{ row.cand_relation }}</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <p class="meta">近端没有可标的主线政权。</p>
-      {% endif %}
-    </section>
-    <div class="board-pick" id="concept-board-pick" aria-label="定位概念">
-      <button type="button" id="concept-board-pick-open">选择</button>
-      <input type="text" id="concept-board-pick-name" placeholder="板块名称" autocomplete="off" spellcheck="false">
-      <button type="button" id="concept-board-pick-confirm">确定</button>
-      <p class="pick-status" id="concept-board-pick-status"></p>
-    </div>
-    <div class="board-pick-modal" id="concept-board-pick-modal" aria-hidden="true">
-      <div class="board-pick-dialog" role="dialog" aria-modal="true" aria-labelledby="concept-board-pick-title">
-        <header>
-          <h3 id="concept-board-pick-title">选择概念</h3>
-          <button type="button" id="concept-board-pick-close" aria-label="关闭">×</button>
-        </header>
-        <input class="filter" type="search" id="concept-board-pick-filter" placeholder="筛选名称…" autocomplete="off">
-        <ul id="concept-board-pick-list"></ul>
-      </div>
-    </div>
-    <section class="board-kline-embed" id="concept-board-kline-embed" hidden>
-      <div class="kline-head">
-        <h3 id="concept-board-kline-title">K线</h3>
-        <a id="concept-board-kline-link" href="#" target="_blank" rel="noopener">打开完整K线页 →</a>
-      </div>
-      <p class="kline-meta" id="concept-board-kline-meta"></p>
-      <p class="kline-error" id="concept-board-kline-error" hidden></p>
-      <div class="kline-chart" id="concept-board-kline-chart"></div>
-    </section>
-    <div class="concept-theme-picker">
-      <label for="concept-theme-select">主题高亮</label>
-      <select id="concept-theme-select">
-        <option value="">默认（无阴影）</option>
-        {% for opt in concept_theme_options %}
-        <option value="{{ opt.id }}">{{ opt.label }}（{{ opt.hit_count }}/{{ opt.member_count }}）</option>
-        {% endfor %}
-      </select>
-      <span class="hint" id="concept-theme-hint"></span>
-    </div>
-    {% if concept_forecast_href %}
+    {% if concept_short_href %}
     <p class="page-links">
-      <a href="{{ concept_forecast_href }}">概念短热 · 5日推演 →</a>
+      <a href="{{ concept_short_href }}">概念短热 Top200∪主题 →</a>
     </p>
     {% endif %}
-    {% if wavelet_href %}
-    <p class="wavelet-link"><a href="{{ wavelet_href }}">二维小波分析 →</a></p>
-    {% endif %}
-    {% else %}
-    <p class="meta">还没有概念短热 Top 可画。</p>
-    {% endif %}
 
-    <p class="foot">行业/概念图可用「选择 / 确定」定位列并展开同窗 K 线；概念图也可用主题下拉阴影标出成员列。</p>
+    <p class="foot">行业图可用「选择 / 确定」定位列并展开同窗 K 线。</p>
     {% endif %}
   </main>
   <script>
@@ -1718,23 +1681,118 @@
         const csiHoverReady = bindCsiRowHovers();
         const zoomResetReady = bindHeatZoomResets();
         if (
-          ((pickerReady && boardsReady >= 1) || Date.now() - started > 8000) &&
+          (boardsReady >= 1 || Date.now() - started > 8000) &&
           (sliderReady || Date.now() - started > 8000) &&
           (industrySliderReady || Date.now() - started > 8000) &&
-          (conceptSliderReady || Date.now() - started > 8000) &&
           (csiHoverReady >= 1 || Date.now() - started > 8000) &&
           (zoomResetReady >= 1 || Date.now() - started > 8000)
         ) {
           clearInterval(timer);
-          bindConceptThemePicker();
           bindBoardPickers();
           bindMapSlider();
           bindIndustrySlider();
-          bindConceptSlider();
           bindCsiRowHovers();
           bindHeatZoomResets();
         }
       }, 120);
+    })();
+  </script>
+  <script>
+    (function () {
+      function mountHtmlWithScripts(container, html) {
+        container.innerHTML = html;
+        container.querySelectorAll("script").forEach((oldScript) => {
+          const script = document.createElement("script");
+          for (const attr of oldScript.attributes) script.setAttribute(attr.name, attr.value);
+          script.text = oldScript.textContent || "";
+          oldScript.replaceWith(script);
+        });
+      }
+
+      async function loadFundPanel(section) {
+        if (section.dataset.loaded === "1" || section.dataset.loading === "1") return;
+        const url = section.getAttribute("data-fund-chart-url") || "";
+        let codes = (section.getAttribute("data-fund-order-codes") || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        let names = [];
+        const orderRaw = section.getAttribute("data-chart-order");
+        if (orderRaw) {
+          try {
+            const order = JSON.parse(orderRaw);
+            if (Array.isArray(order.codes) && order.codes.length) {
+              codes = order.codes.map((c) => String(c));
+            }
+            if (Array.isArray(order.names)) {
+              names = order.names.map((n) => String(n));
+            }
+          } catch (_err) {
+            /* keep legacy codes */
+          }
+        }
+        const noteEl = section.querySelector(".chart-note");
+        const errorEl = section.querySelector(".chart-error");
+        const mount = section.querySelector(".chart-mount");
+        if (!url || !mount) return;
+        section.dataset.loading = "1";
+        mount.innerHTML = "<p class='chart-loading'>加载中…</p>";
+        try {
+          const opts = {
+            method: codes.length ? "POST" : "GET",
+            headers: { Accept: "application/json" },
+          };
+          if (codes.length) {
+            opts.headers["Content-Type"] = "application/json";
+            opts.body = JSON.stringify({ codes, names });
+          }
+          const resp = await fetch(url, opts);
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          const data = await resp.json();
+          if (noteEl) noteEl.textContent = data.note || "";
+          if (data.error) {
+            if (errorEl) {
+              errorEl.hidden = false;
+              errorEl.textContent = data.error;
+            }
+            mount.innerHTML = "<p class='meta'>资金水面暂不可用。</p>";
+            section.dataset.loaded = "1";
+            return;
+          }
+          if (errorEl) errorEl.hidden = true;
+          if (data.html) {
+            mountHtmlWithScripts(mount, data.html);
+          } else {
+            mount.innerHTML = "<p class='meta'>资金水面暂不可用。</p>";
+          }
+          section.dataset.loaded = "1";
+        } catch (err) {
+          if (errorEl) {
+            errorEl.hidden = false;
+            errorEl.textContent = "加载失败：" + (err && err.message ? err.message : err);
+          }
+          mount.innerHTML = "<p class='meta'>加载失败。</p>";
+          section.dataset.loading = "0";
+        }
+      }
+
+      const sections = Array.from(document.querySelectorAll(".fund-lazy[data-fund-chart-url]"));
+      if (!sections.length) return;
+      if (!("IntersectionObserver" in window)) {
+        sections.forEach(loadFundPanel);
+        return;
+      }
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            loadFundPanel(entry.target);
+            observer.unobserve(entry.target);
+          });
+        },
+        { rootMargin: "240px 0px", threshold: 0.01 }
+      );
+      sections.forEach((section) => observer.observe(section));
     })();
   </script>
 </body>

@@ -1687,3 +1687,66 @@ def fetch_concept_heat_named_window(
     """All concept heat_short/heat_long rows in [start, end], with names."""
     return fetch_board_type_heat_window("concept", start, end)
 
+
+def fetch_board_amount_named_window(
+    board_type: str,
+    start: date,
+    end: date,
+) -> list[tuple[date, str, str, object | None]]:
+    """Board daily amount rows in [start, end], with latest universe names."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH names AS (
+                    SELECT DISTINCT ON (board_code)
+                        board_code,
+                        board_name
+                    FROM board_universe_daily
+                    WHERE board_type = %s
+                    ORDER BY board_code, trade_date DESC
+                )
+                SELECT
+                    b.trade_date,
+                    b.board_code,
+                    COALESCE(n.board_name, b.board_code) AS board_name,
+                    b.amount
+                FROM board_daily_bar AS b
+                LEFT JOIN names AS n ON n.board_code = b.board_code
+                WHERE b.board_type = %s
+                  AND b.trade_date >= %s
+                  AND b.trade_date <= %s
+                ORDER BY b.trade_date, b.board_code
+                """,
+                (board_type, board_type, start, end),
+            )
+            return [
+                (row[0], row[1], row[2], row[3]) for row in cur.fetchall()
+            ]
+
+
+def fetch_board_bar_dates_ending(
+    board_type: str,
+    as_of: date,
+    n: int,
+) -> list[date]:
+    """Last n trading days with board_daily_bar rows on/before as_of."""
+    if n < 1:
+        return []
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT trade_date
+                FROM board_daily_bar
+                WHERE board_type = %s
+                  AND trade_date <= %s
+                ORDER BY trade_date DESC
+                LIMIT %s
+                """,
+                (board_type, as_of, n),
+            )
+            days = [row[0] for row in cur.fetchall()]
+    days.reverse()
+    return days
+

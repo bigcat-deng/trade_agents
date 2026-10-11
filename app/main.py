@@ -20,6 +20,7 @@ from app.charts.concept_wavelet import (
 )
 from app.charts.theme_heat import render_theme_charts, render_theme_group_chart
 from app.db import (
+    fetch_board_bar_dates_ending,
     fetch_board_close_heat,
     fetch_board_daily_bars_from_db,
     fetch_board_daily_bars_many,
@@ -86,6 +87,17 @@ from app.themes.heat_rim_regime import (
     build_regime_panel_payload,
 )
 from app.themes.heat_seriation import as_float
+from app.themes.board_smooth_range import (
+    SMOOTH_RANGE_METRICS,
+    build_industry_smooth_range_panel_payload,
+    kalman_typical_overlay,
+)
+from app.themes.fund_wave import (
+    FUND_WAVE_PANELS,
+    FUND_WAVE_WINDOW_DAYS,
+    build_fund_wave_page_payload,
+    build_fund_wave_panel_payload,
+)
 from app.themes.stock_basket_wave import build_stock_basket_page_payload
 from app.themes.wave_surface import (
     build_map_scrub_frames,
@@ -470,6 +482,135 @@ def concept_themes_wave_page(
     return templates.TemplateResponse(request, "theme_wave.html", payload)
 
 
+@app.get("/boards/concept/themes/wave/concept-short", response_class=HTMLResponse)
+def concept_short_wave_page(
+    request: Request,
+    days: int = Query(40, ge=20, le=180),
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    """Concept Top∪theme short-heat page (same as_of as theme-wave)."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = _concept_short_wave_page_payload(
+        days=days,
+        as_of=requested,
+        include_plotlyjs=False,
+    )
+    return templates.TemplateResponse(request, "concept_short_wave.html", payload)
+
+
+@app.get("/boards/fund/wave", response_class=HTMLResponse)
+def fund_wave_page(
+    request: Request,
+    days: int = Query(FUND_WAVE_WINDOW_DAYS, ge=20, le=180),
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    """Industry + concept amount self-anomaly wave (standalone page)."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = build_fund_wave_page_payload(
+        as_of=requested,
+        days=days,
+        include_plotlyjs=False,
+    )
+    return templates.TemplateResponse(request, "fund_wave.html", payload)
+
+
+class FundWaveOrderBody(BaseModel):
+    """Optional heat-leaf order so fund embeds align with theme-wave charts."""
+
+    codes: list[str] = Field(default_factory=list)
+    names: list[str] = Field(default_factory=list)
+
+
+@app.api_route(
+    "/boards/fund/wave/api/{panel}",
+    methods=["GET", "POST"],
+)
+async def fund_wave_panel_api(
+    request: Request,
+    panel: str = PathParam(..., pattern="^(industry|concept)$"),
+    days: int = Query(FUND_WAVE_WINDOW_DAYS, ge=20, le=180),
+    as_of: str | None = Query(None),
+) -> JSONResponse:
+    """Lazy-load panel HTML; POST body ``{codes:[...]}`` freezes X to heat order."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    if panel not in FUND_WAVE_PANELS:
+        raise HTTPException(status_code=404, detail="unknown panel")
+    ordered: list[str] | None = None
+    if request.method == "POST":
+        try:
+            body = FundWaveOrderBody.model_validate(await request.json())
+            ordered = [str(c).strip() for c in body.codes if str(c).strip()]
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400, detail="body must be JSON {codes:[...]}"
+            ) from exc
+        if not ordered:
+            ordered = None
+    payload = await asyncio.to_thread(
+        build_fund_wave_panel_payload,
+        panel=panel,
+        as_of=requested,
+        days=days,
+        ordered_codes=ordered,
+        include_plotlyjs=False,
+        height=520,
+    )
+    return JSONResponse(payload)
+
+
+@app.api_route(
+    "/boards/concept/themes/wave/industry-smooth-range/api",
+    methods=["GET", "POST"],
+)
+async def industry_smooth_range_api(
+    request: Request,
+    days: int = Query(40, ge=20, le=180),
+    as_of: str | None = Query(None),
+    metric: str = Query("level", pattern="^(level|return)$"),
+) -> JSONResponse:
+    """Lazy-load industry Kalman level/return 100d-range plane; POST codes align X."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    metric_key = str(metric or "level").strip().lower()
+    if metric_key not in SMOOTH_RANGE_METRICS:
+        raise HTTPException(status_code=400, detail="metric must be level or return")
+    ordered: list[str] | None = None
+    names: list[str] | None = None
+    if request.method == "POST":
+        try:
+            body = FundWaveOrderBody.model_validate(await request.json())
+            ordered = [str(c).strip() for c in body.codes if str(c).strip()]
+            names = [str(n) for n in body.names]
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400, detail="body must be JSON {codes:[...], names?:[...]}"
+            ) from exc
+        if not ordered:
+            ordered = None
+    payload = await asyncio.to_thread(
+        build_industry_smooth_range_panel_payload,
+        as_of=requested,
+        days=days,
+        ordered_codes=ordered,
+        names=names,
+        metric=metric_key,
+        include_plotlyjs=False,
+        height=520,
+    )
+    return JSONResponse(payload)
+
+
 @app.get("/boards/stocks/heat", response_class=HTMLResponse)
 def stock_basket_heat_page(
     request: Request,
@@ -750,6 +891,17 @@ def _themes_wave_empty(
         ),
         "industry_forecast_href": "",
         "concept_forecast_href": "",
+        "concept_short_href": (
+            f"/boards/concept/themes/wave/concept-short?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
+        "fund_wave_href": (
+            f"/boards/fund/wave?days={days}&as_of={requested.isoformat()}"
+        ),
+        "industry_fund_chart_url": "",
+        "industry_smooth_range_chart_url": "",
+        "industry_smooth_return_chart_url": "",
+        "concept_fund_chart_url": "",
         "spectrum_links": [],
         "ranked_links": [],
         "scenarios": [],
@@ -772,6 +924,7 @@ def _themes_wave_empty(
         "concept_board_names": [],
         "concept_board_codes": [],
         "concept_date_count": 0,
+        "concept_rim": {"rows": [], "note": ""},
     }
 
 
@@ -937,19 +1090,13 @@ def _themes_wave_page_payload(
     industry_date_count = 0
     industry_rim: dict = {"rows": [], "note": ""}
     industry_forecast_href = ""
-    concept_forecast_href = ""
     industry_slider_dates, industry_slider_index = build_map_slider_dates(
         "industry", selected
     )
     industry_scrub_frames: list[dict] = []
-    concept_slider_dates, concept_slider_index = build_map_slider_dates(
-        "concept", selected
-    )
     csi_end = selected
     if industry_slider_dates:
         csi_end = max(csi_end, industry_slider_dates[-1])
-    if concept_slider_dates:
-        csi_end = max(csi_end, concept_slider_dates[-1])
     csi_closes, csi_volumes = csi500_maps_ending(csi_end)
     industry_dates = fetch_heat_dates_ending("industry", selected, days)
     if industry_dates:
@@ -1099,6 +1246,194 @@ def _themes_wave_page_payload(
                 close_heat_by_code=ind_close_heat,
             )
 
+    as_of_key = payload.get("as_of") or requested.isoformat()
+    return {
+        "title": "主题热度水面",
+        "axis_note": payload["axis_note"],
+        "rank_axis_note": payload["rank_axis_note"],
+        "industry_axis_note": industry_axis_note,
+        "concept_axis_note": "",
+        "dates": payload["dates"],
+        "as_of": payload["as_of"],
+        "rank_as_of": rank_as_of,
+        "days": days,
+        "requested_as_of": requested.isoformat(),
+        "window_start": window_dates[0].isoformat(),
+        "window_end": window_dates[-1].isoformat(),
+        "industry_board_count": industry_board_count,
+        "concept_board_count": 0,
+        "concept_select_from": None,
+        "concept_select_to": None,
+        "concept_theme_options": [],
+        "industry_board_names": industry_board_names,
+        "industry_board_codes": industry_board_codes,
+        "industry_date_count": industry_date_count,
+        "industry_rim": industry_rim,
+        "industry_forecast_href": industry_forecast_href,
+        "concept_forecast_href": "",
+        "concept_short_href": (
+            f"/boards/concept/themes/wave/concept-short?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
+        "fund_wave_href": f"/boards/fund/wave?days={days}&as_of={as_of_key}",
+        "industry_fund_chart_url": (
+            f"/boards/fund/wave/api/industry?days={days}&as_of={as_of_key}"
+        ),
+        "industry_smooth_range_chart_url": (
+            f"/boards/concept/themes/wave/industry-smooth-range/api"
+            f"?days={days}&as_of={as_of_key}&metric=level"
+        ),
+        "industry_smooth_return_chart_url": (
+            f"/boards/concept/themes/wave/industry-smooth-range/api"
+            f"?days={days}&as_of={as_of_key}&metric=return"
+        ),
+        "concept_fund_chart_url": "",
+        "concept_board_names": [],
+        "concept_board_codes": [],
+        "concept_date_count": 0,
+        "concept_rim": {"rows": [], "note": ""},
+        "spectrum_chart_html": "",
+        "spectrum_map_html": spectrum_map_html,
+        "ranked_chart_html": "",
+        "ranked_map_html": ranked_map_html,
+        "industry_short_html": industry_short_html,
+        "concept_short_html": "",
+        "reading_href": (
+            f"/boards/concept/themes/wave/reading?days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
+        "wavelet_href": "",
+        "industry_wavelet_href": (
+            f"/boards/concept/themes/wave/industry-wavelet?days={WAVELET_WINDOW_DAYS}"
+            f"&as_of={requested.isoformat()}"
+        ),
+        "spectrum_links": list(zip(spectrum["theme_labels"], spectrum["theme_hrefs"])),
+        "ranked_links": list(zip(ranked["theme_labels"], ranked["theme_hrefs"])),
+        "scenarios": payload.get("scenarios") or [],
+        "scenario_note": payload.get("scenario_note") or "",
+        "map_slider_dates": [day.isoformat() for day in slider_dates],
+        "map_slider_index": slider_index,
+        "map_scrub_frames": map_scrub_frames,
+        "industry_slider_dates": [
+            day.isoformat() for day in industry_slider_dates
+        ],
+        "industry_slider_index": industry_slider_index,
+        "industry_scrub_frames": industry_scrub_frames,
+        "concept_slider_dates": [],
+        "concept_slider_index": 0,
+        "concept_scrub_frames": [],
+        "empty_message": None,
+    }
+
+
+def _concept_short_wave_page_payload(
+    *,
+    days: int,
+    as_of: date | None,
+    include_plotlyjs: bool,
+) -> dict:
+    """Standalone concept Top∪theme short-heat page (aligned as_of with theme-wave)."""
+    requested = as_of or date.today()
+    wave_back = (
+        f"/boards/concept/themes/wave?days={days}&as_of={requested.isoformat()}"
+    )
+    selected = _resolve_heat_as_of("concept", requested)
+    if selected is None:
+        return {
+            "title": "概念短热",
+            "days": days,
+            "as_of": None,
+            "requested_as_of": requested.isoformat(),
+            "window_start": None,
+            "window_end": None,
+            "wave_back_href": wave_back,
+            "concept_axis_note": "",
+            "concept_board_count": 0,
+            "concept_select_from": None,
+            "concept_select_to": None,
+            "concept_theme_options": [],
+            "concept_board_names": [],
+            "concept_board_codes": [],
+            "concept_date_count": 0,
+            "concept_short_html": "",
+            "concept_forecast_href": "",
+            "concept_fund_chart_url": "",
+            "fund_wave_href": (
+                f"/boards/fund/wave?days={days}&as_of={requested.isoformat()}"
+            ),
+            "concept_rim": {"rows": [], "note": ""},
+            "concept_slider_dates": [],
+            "concept_slider_index": 0,
+            "concept_scrub_frames": [],
+            "wavelet_href": (
+                f"/boards/concept/themes/wave/wavelet?days={WAVELET_WINDOW_DAYS}"
+                f"&roster_days={days}"
+                f"&as_of={requested.isoformat()}"
+            ),
+            "industry_board_names": [],
+            "industry_board_codes": [],
+            "industry_date_count": 0,
+            "industry_slider_dates": [],
+            "industry_slider_index": 0,
+            "industry_scrub_frames": [],
+            "map_slider_dates": [],
+            "map_slider_index": 0,
+            "map_scrub_frames": [],
+            "empty_message": "还没有概念热度。",
+        }
+    window_dates = fetch_heat_dates_ending("concept", selected, days)
+    if not window_dates:
+        return {
+            "title": "概念短热",
+            "days": days,
+            "as_of": selected.isoformat(),
+            "requested_as_of": requested.isoformat(),
+            "window_start": None,
+            "window_end": None,
+            "wave_back_href": wave_back,
+            "concept_axis_note": "",
+            "concept_board_count": 0,
+            "concept_select_from": None,
+            "concept_select_to": None,
+            "concept_theme_options": [],
+            "concept_board_names": [],
+            "concept_board_codes": [],
+            "concept_date_count": 0,
+            "concept_short_html": "",
+            "concept_forecast_href": "",
+            "concept_fund_chart_url": "",
+            "fund_wave_href": (
+                f"/boards/fund/wave?days={days}&as_of={selected.isoformat()}"
+            ),
+            "concept_rim": {"rows": [], "note": ""},
+            "concept_slider_dates": [],
+            "concept_slider_index": 0,
+            "concept_scrub_frames": [],
+            "wavelet_href": (
+                f"/boards/concept/themes/wave/wavelet?days={WAVELET_WINDOW_DAYS}"
+                f"&roster_days={days}"
+                f"&as_of={requested.isoformat()}"
+            ),
+            "industry_board_names": [],
+            "industry_board_codes": [],
+            "industry_date_count": 0,
+            "industry_slider_dates": [],
+            "industry_slider_index": 0,
+            "industry_scrub_frames": [],
+            "map_slider_dates": [],
+            "map_slider_index": 0,
+            "map_scrub_frames": [],
+            "empty_message": "窗口内没有热度日期",
+        }
+
+    concept_slider_dates, concept_slider_index = build_map_slider_dates(
+        "concept", selected
+    )
+    csi_end = selected
+    if concept_slider_dates:
+        csi_end = max(csi_end, concept_slider_dates[-1])
+    csi_closes, csi_volumes = csi500_maps_ending(csi_end)
+
     concept_short_html = ""
     concept_axis_note = ""
     concept_board_count = 0
@@ -1110,6 +1445,7 @@ def _themes_wave_page_payload(
     concept_date_count = 0
     concept_scrub_frames: list[dict] = []
     concept_rim: dict = {"rows": [], "note": ""}
+    concept_forecast_href = ""
     concept_named_rows = fetch_concept_heat_named_window(
         window_dates[0], window_dates[-1]
     )
@@ -1194,7 +1530,7 @@ def _themes_wave_page_payload(
             z=concept_top["z_short"],
             x_tickvals=concept_top["x_tickvals"],
             x_ticktext=concept_top["x_ticktext"],
-            include_plotlyjs=False,
+            include_plotlyjs=include_plotlyjs,
             height=620,
             title=(
                 f"概念短热 Top{concept_top['top_n']}∪主题"
@@ -1273,71 +1609,54 @@ def _themes_wave_page_payload(
             close_heat_by_code=con_close_heat,
         )
 
+    as_of_key = selected.isoformat()
     return {
-        "title": "主题热度水面",
-        "axis_note": payload["axis_note"],
-        "rank_axis_note": payload["rank_axis_note"],
-        "industry_axis_note": industry_axis_note,
-        "concept_axis_note": concept_axis_note,
-        "dates": payload["dates"],
-        "as_of": payload["as_of"],
-        "rank_as_of": rank_as_of,
+        "title": "概念短热",
         "days": days,
+        "as_of": as_of_key,
         "requested_as_of": requested.isoformat(),
         "window_start": window_dates[0].isoformat(),
         "window_end": window_dates[-1].isoformat(),
-        "industry_board_count": industry_board_count,
+        "wave_back_href": wave_back,
+        "concept_axis_note": concept_axis_note,
         "concept_board_count": concept_board_count,
         "concept_select_from": concept_select_from,
         "concept_select_to": concept_select_to,
         "concept_theme_options": concept_theme_options,
-        "industry_board_names": industry_board_names,
-        "industry_board_codes": industry_board_codes,
-        "industry_date_count": industry_date_count,
-        "industry_rim": industry_rim,
-        "industry_forecast_href": industry_forecast_href,
-        "concept_forecast_href": concept_forecast_href,
         "concept_board_names": concept_board_names,
         "concept_board_codes": concept_board_codes,
         "concept_date_count": concept_date_count,
-        "concept_rim": concept_rim,
-        "spectrum_chart_html": "",
-        "spectrum_map_html": spectrum_map_html,
-        "ranked_chart_html": "",
-        "ranked_map_html": ranked_map_html,
-        "industry_short_html": industry_short_html,
         "concept_short_html": concept_short_html,
-        "reading_href": (
-            f"/boards/concept/themes/wave/reading?days={days}"
-            f"&as_of={requested.isoformat()}"
+        "concept_forecast_href": concept_forecast_href,
+        "concept_fund_chart_url": (
+            f"/boards/fund/wave/api/concept?days={days}&as_of={as_of_key}"
+            if concept_board_codes
+            else ""
         ),
-        "wavelet_href": (
-            f"/boards/concept/themes/wave/wavelet?days={WAVELET_WINDOW_DAYS}"
-            f"&roster_days={days}"
-            f"&as_of={requested.isoformat()}"
-        ),
-        "industry_wavelet_href": (
-            f"/boards/concept/themes/wave/industry-wavelet?days={WAVELET_WINDOW_DAYS}"
-            f"&as_of={requested.isoformat()}"
-        ),
-        "spectrum_links": list(zip(spectrum["theme_labels"], spectrum["theme_hrefs"])),
-        "ranked_links": list(zip(ranked["theme_labels"], ranked["theme_hrefs"])),
-        "scenarios": payload.get("scenarios") or [],
-        "scenario_note": payload.get("scenario_note") or "",
-        "map_slider_dates": [day.isoformat() for day in slider_dates],
-        "map_slider_index": slider_index,
-        "map_scrub_frames": map_scrub_frames,
-        "industry_slider_dates": [
-            day.isoformat() for day in industry_slider_dates
-        ],
-        "industry_slider_index": industry_slider_index,
-        "industry_scrub_frames": industry_scrub_frames,
+        "fund_wave_href": f"/boards/fund/wave?days={days}&as_of={as_of_key}",
+        "concept_rim": concept_rim,
         "concept_slider_dates": [
             day.isoformat() for day in concept_slider_dates
         ],
         "concept_slider_index": concept_slider_index,
         "concept_scrub_frames": concept_scrub_frames,
-        "empty_message": None,
+        "wavelet_href": (
+            f"/boards/concept/themes/wave/wavelet?days={WAVELET_WINDOW_DAYS}"
+            f"&roster_days={days}"
+            f"&as_of={requested.isoformat()}"
+        ),
+        "industry_board_names": [],
+        "industry_board_codes": [],
+        "industry_date_count": 0,
+        "industry_slider_dates": [],
+        "industry_slider_index": 0,
+        "industry_scrub_frames": [],
+        "map_slider_dates": [],
+        "map_slider_index": 0,
+        "map_scrub_frames": [],
+        "empty_message": None
+        if concept_short_html
+        else "还没有概念短热 Top 可画。",
     }
 
 
@@ -1983,7 +2302,19 @@ def board_kline_embed_api(
         raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
 
     title = f"{board_name} {board_code}"
-    records = fetch_board_daily_bars_from_db(board_type, board_code, start, end)
+    # Extra history so Kalman has warm-up before the visible window.
+    hist_dates = fetch_board_bar_dates_ending(board_type, end, 160)
+    hist_start = hist_dates[0] if hist_dates else start
+    if hist_start > start:
+        hist_start = start
+    hist_records = fetch_board_daily_bars_from_db(
+        board_type, board_code, hist_start, end
+    )
+    records = [
+        row
+        for row in hist_records
+        if start <= row["trade_date"] <= end  # type: ignore[operator]
+    ]
     if not records:
         return {
             "board_code": board_code,
@@ -1999,11 +2330,20 @@ def board_kline_embed_api(
         }
 
     heats = fetch_board_heat_series(board_type, board_code, start, end)
+    overlays = []
+    kalman = kalman_typical_overlay(
+        hist_records,
+        display_start=start,
+        display_end=end,
+    )
+    if kalman is not None:
+        overlays.append(kalman)
     chart_html = render_kline(
         records,
         title=title,
         code=board_code,
         heats=heats,
+        price_overlays=overlays or None,
         include_plotlyjs=False,
     )
     return {
@@ -2014,7 +2354,10 @@ def board_kline_embed_api(
         "end_date": end.isoformat(),
         "kline_href": f"{page['kline_prefix']}/{board_code}/kline"
         f"?start_date={start.isoformat()}&end_date={end.isoformat()}",
-        "summary": f"{title} · {len(records)} 根K线 · {start} ~ {end}",
+        "summary": (
+            f"{title} · {len(records)} 根K线 · {start} ~ {end}"
+            + (" · 含卡尔曼典型价" if overlays else "")
+        ),
         "chart_html": chart_html,
         "error": None,
     }

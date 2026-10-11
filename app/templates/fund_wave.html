@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back, .page-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    .page-links {
+      margin: 0.75rem 0 0.35rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 0.75rem;
+    }
+    .page-links a {
+      display: inline-block;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .page-links a:hover {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      margin: 1.4rem 0 0.35rem;
+      font-size: 1.15rem;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.75rem;
+      line-height: 1.55;
+    }
+    form.query {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 1rem;
+      align-items: center;
+      margin: 0 0 1rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    form.query label { color: var(--muted); font-size: 0.9rem; }
+    form.query input {
+      font: inherit;
+      padding: 0.28rem 0.45rem;
+      border: 1px solid var(--line);
+    }
+    form.query button {
+      font: inherit;
+      padding: 0.35rem 0.9rem;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.35rem;
+      margin: 0 0 0.85rem;
+      overflow-x: auto;
+    }
+  </style>
+  <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
+</head>
+<body>
+  <main>
+    <a class="back" href="/">← 热度轮转</a>
+    <h1>{{ title }}</h1>
+    <p class="meta">
+      截止日期 {{ as_of or "—" }}
+      {% if window_start and window_end %} · 窗口 {{ window_start }} → {{ window_end }}{% endif %}
+      · 成交额自身滚动异常（非截面盘子大小）· 非主力净流入叙事
+    </p>
+    <form class="query" method="get" action="/boards/fund/wave">
+      <label>as of <input type="date" name="as_of" value="{{ as_of or requested_as_of }}"></label>
+      <label>窗口天数 <input type="number" name="days" min="20" max="180" value="{{ days }}"></label>
+      <button type="submit">绘制</button>
+    </form>
+    {% if heat_wave_href %}
+    <p class="page-links">
+      <a href="{{ heat_wave_href }}">主题热度水面 →</a>
+    </p>
+    {% endif %}
+    {% if empty_message %}
+    <p class="meta">{{ empty_message }}</p>
+    {% else %}
+
+    <h2>1. 行业资金水面</h2>
+    <p class="meta">{{ industry_note }}</p>
+    {% if industry_html %}
+    <div class="panel">{{ industry_html | safe }}</div>
+    {% else %}
+    <p class="meta">{{ industry_empty or "行业资金水面暂不可用。" }}</p>
+    {% endif %}
+
+    <h2>2. 概念资金水面</h2>
+    <p class="meta">{{ concept_note }}</p>
+    {% if concept_html %}
+    <div class="panel">{{ concept_html | safe }}</div>
+    {% else %}
+    <p class="meta">{{ concept_empty or "概念资金水面暂不可用。" }}</p>
+    {% endif %}
+    {% endif %}
+  </main>
+</body>
+</html>
