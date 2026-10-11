@@ -656,6 +656,7 @@
     {% if industry_fund_chart_url %}
     <section
       class="fund-lazy"
+      data-board-pick-group="industry"
       data-fund-chart-url="{{ industry_fund_chart_url }}"
       data-fund-order-codes="{{ industry_board_codes|join(',') }}"
       aria-label="行业资金水面"
@@ -673,6 +674,7 @@
     {% if industry_smooth_range_chart_url %}
     <section
       class="fund-lazy"
+      data-board-pick-group="industry"
       data-fund-chart-url="{{ industry_smooth_range_chart_url }}"
       data-chart-order='{{ {"codes": industry_board_codes, "names": industry_board_names} | tojson }}'
       aria-label="行业平滑价位"
@@ -687,6 +689,7 @@
     {% if industry_smooth_return_chart_url %}
     <section
       class="fund-lazy"
+      data-board-pick-group="industry"
       data-fund-chart-url="{{ industry_smooth_return_chart_url }}"
       data-chart-order='{{ {"codes": industry_board_codes, "names": industry_board_names} | tojson }}'
       aria-label="行业平滑收益"
@@ -813,8 +816,8 @@
   <script>
     (function () {
       const conceptThemeOptions = {{ concept_theme_options | tojson }};
-      const windowStart = {{ window_start | tojson }};
-      const windowEnd = {{ window_end | tojson }};
+      const windowStart = {{ kline_window_start | default(window_start) | tojson }};
+      const windowEnd = {{ kline_window_end | default(window_end) | tojson }};
       const industryBoardNames = {{ industry_board_names | default([]) | tojson }};
       const industryBoardCodes = {{ industry_board_codes | default([]) | tojson }};
       const industryDateCount = {{ industry_date_count | default(0) | tojson }};
@@ -1231,6 +1234,7 @@
           boardCodes,
           dateCount,
           getPlot,
+          pickGroup,
           onBeforeHighlight,
         } = cfg;
         const openBtn = document.getElementById(idPrefix + "-open");
@@ -1248,8 +1252,8 @@
         const klineError = document.getElementById(klineRoot + "-error");
         const klineChart = document.getElementById(klineRoot + "-chart");
         const klineLink = document.getElementById(klineRoot + "-link");
-        let baseAnnotations = null;
-        let baseShapes = null;
+        const PICK_MARK = "board-pick-mark";
+        let pendingHighlight = null;
         let klineRequestId = 0;
 
         if (!openBtn || !confirmBtn || !Array.isArray(boardNames) || !boardNames.length) {
@@ -1318,55 +1322,73 @@
           modal.setAttribute("aria-hidden", "true");
         }
 
-        function ensureBaseLayout(gd) {
-          if (baseAnnotations === null) {
-            baseAnnotations = JSON.parse(JSON.stringify(gd.layout.annotations || []));
-          }
-          if (baseShapes === null) {
-            baseShapes = JSON.parse(JSON.stringify(gd.layout.shapes || []));
-          }
+        function plotYCount(gd) {
+          const y = gd && gd.data && gd.data[0] && gd.data[0].y;
+          if (Array.isArray(y) && y.length) return y.length;
+          const z = gd && gd.data && gd.data[0] && gd.data[0].z;
+          if (Array.isArray(z) && z.length) return z.length;
+          return Math.max(1, Number(dateCount) || 1);
         }
 
-        function highlightBoard(idx, name) {
-          const gd = getPlot();
-          if (!gd || typeof Plotly === "undefined") {
-            setStatus("图尚未就绪，请稍后重试", "err");
-            return false;
-          }
-          if (typeof onBeforeHighlight === "function") {
-            onBeforeHighlight();
-            baseAnnotations = [];
-            baseShapes = [];
-          }
-          ensureBaseLayout(gd);
-          const nDates = Math.max(1, Number(dateCount) || 1);
-          const shapes = (baseShapes || []).slice();
-          const annotations = (baseAnnotations || []).slice();
-          shapes.push({
-            type: "rect",
-            xref: "x",
-            yref: "y",
-            x0: idx - 0.5,
-            x1: idx + 0.5,
-            y0: -0.5,
-            y1: nDates - 0.5,
-            fillcolor: "rgba(15, 23, 42, 0.30)",
-            line: { width: 0 },
-            layer: "above",
-          });
-          shapes.push({
-            type: "rect",
-            xref: "x",
-            yref: "y",
-            x0: idx - 0.5,
-            x1: idx + 0.5,
-            y0: -0.5,
-            y1: nDates - 0.5,
-            fillcolor: "rgba(0,0,0,0)",
-            line: { color: "#dc2626", width: 2.2 },
-            layer: "above",
-          });
+        function siblingPlots() {
+          if (!pickGroup) return [];
+          return Array.from(
+            document.querySelectorAll(
+              '.fund-lazy[data-board-pick-group="' +
+                pickGroup +
+                '"] .chart-mount .js-plotly-plot'
+            )
+          );
+        }
+
+        function withoutPickMarks(shapes) {
+          return (shapes || []).filter((s) => !s || s.name !== PICK_MARK);
+        }
+
+        function withoutPickAnnotations(annotations) {
+          return (annotations || []).filter((a) => !a || a.name !== PICK_MARK);
+        }
+
+        function columnPickShapes(idx, nDates) {
+          return [
+            {
+              name: PICK_MARK,
+              type: "rect",
+              xref: "x",
+              yref: "y",
+              x0: idx - 0.5,
+              x1: idx + 0.5,
+              y0: -0.5,
+              y1: nDates - 0.5,
+              fillcolor: "rgba(15, 23, 42, 0.30)",
+              line: { width: 0 },
+              layer: "above",
+            },
+            {
+              name: PICK_MARK,
+              type: "rect",
+              xref: "x",
+              yref: "y",
+              x0: idx - 0.5,
+              x1: idx + 0.5,
+              y0: -0.5,
+              y1: nDates - 0.5,
+              fillcolor: "rgba(0,0,0,0)",
+              line: { color: "#dc2626", width: 2.2 },
+              layer: "above",
+            },
+          ];
+        }
+
+        function applyHighlightToPlot(gd, idx) {
+          if (!gd || typeof Plotly === "undefined") return false;
+          const nDates = plotYCount(gd);
+          const shapes = withoutPickMarks(gd.layout.shapes).concat(
+            columnPickShapes(idx, nDates)
+          );
+          const annotations = withoutPickAnnotations(gd.layout.annotations);
           annotations.push({
+            name: PICK_MARK,
             xref: "x",
             yref: "y",
             x: idx,
@@ -1384,9 +1406,38 @@
             yshift: 8,
           });
           Plotly.relayout(gd, { shapes: shapes, annotations: annotations });
+          return true;
+        }
+
+        function highlightBoard(idx, name) {
+          pendingHighlight = { idx: idx, name: name };
+          if (typeof onBeforeHighlight === "function") onBeforeHighlight();
+          if (typeof Plotly === "undefined") {
+            setStatus("图尚未就绪，请稍后重试", "err");
+            return false;
+          }
+          const primary = getPlot();
+          const targets = [];
+          if (primary) targets.push(primary);
+          siblingPlots().forEach((gd) => {
+            if (gd && targets.indexOf(gd) < 0) targets.push(gd);
+          });
+          if (!targets.length) {
+            setStatus("图尚未就绪，请稍后重试", "err");
+            return false;
+          }
+          targets.forEach((gd) => applyHighlightToPlot(gd, idx));
           setStatus("下标 " + idx + " · " + name, "ok");
           return true;
         }
+
+        function reapplyPendingHighlight() {
+          if (!pendingHighlight) return;
+          highlightBoard(pendingHighlight.idx, pendingHighlight.name);
+        }
+
+        window.__heatBoardPickReapply = window.__heatBoardPickReapply || [];
+        window.__heatBoardPickReapply.push(reapplyPendingHighlight);
 
         async function loadBoardKline(idx, name) {
           const embed = klineEmbedEl;
@@ -1643,6 +1694,7 @@
             boardCodes: industryBoardCodes,
             dateCount: industryDateCount,
             getPlot: industryPlot,
+            pickGroup: "industry",
           })
         ) {
           ready += 1;
@@ -1656,6 +1708,7 @@
             boardCodes: conceptBoardCodes,
             dateCount: conceptDateCount,
             getPlot: conceptPlot,
+            pickGroup: "concept",
             onBeforeHighlight: () => {
               const select = document.getElementById("concept-theme-select");
               if (select && select.value) {
@@ -1766,6 +1819,16 @@
             mount.innerHTML = "<p class='meta'>资金水面暂不可用。</p>";
           }
           section.dataset.loaded = "1";
+          const reapply = window.__heatBoardPickReapply || [];
+          requestAnimationFrame(() => {
+            reapply.forEach((fn) => {
+              try {
+                fn();
+              } catch (_err) {
+                /* ignore */
+              }
+            });
+          });
         } catch (err) {
           if (errorEl) {
             errorEl.hidden = false;

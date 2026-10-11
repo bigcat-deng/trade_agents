@@ -106,6 +106,19 @@ from app.themes.wave_surface import (
 )
 
 MINI_KLINE_TRADING_DAYS = 60
+BOARD_PICK_KLINE_DAYS = 100
+
+
+def _board_pick_kline_window(
+    board_type: str, tip: date | None
+) -> tuple[str | None, str | None]:
+    """Inclusive start/end ISO dates for board-pick K-line embeds."""
+    if tip is None:
+        return None, None
+    dates = fetch_heat_dates_ending(board_type, tip, BOARD_PICK_KLINE_DAYS)
+    if not dates:
+        return None, None
+    return dates[0].isoformat(), dates[-1].isoformat()
 
 load_env()
 
@@ -918,6 +931,8 @@ def _themes_wave_empty(
         "empty_message": empty_message,
         "window_start": None,
         "window_end": None,
+        "kline_window_start": None,
+        "kline_window_end": None,
         "industry_board_names": [],
         "industry_board_codes": [],
         "industry_date_count": 0,
@@ -1247,6 +1262,9 @@ def _themes_wave_page_payload(
             )
 
     as_of_key = payload.get("as_of") or requested.isoformat()
+    kline_start, kline_end = _board_pick_kline_window(
+        "industry", window_dates[-1]
+    )
     return {
         "title": "主题热度水面",
         "axis_note": payload["axis_note"],
@@ -1260,6 +1278,8 @@ def _themes_wave_page_payload(
         "requested_as_of": requested.isoformat(),
         "window_start": window_dates[0].isoformat(),
         "window_end": window_dates[-1].isoformat(),
+        "kline_window_start": kline_start,
+        "kline_window_end": kline_end,
         "industry_board_count": industry_board_count,
         "concept_board_count": 0,
         "concept_select_from": None,
@@ -1346,6 +1366,8 @@ def _concept_short_wave_page_payload(
             "requested_as_of": requested.isoformat(),
             "window_start": None,
             "window_end": None,
+            "kline_window_start": None,
+            "kline_window_end": None,
             "wave_back_href": wave_back,
             "concept_axis_note": "",
             "concept_board_count": 0,
@@ -1390,6 +1412,8 @@ def _concept_short_wave_page_payload(
             "requested_as_of": requested.isoformat(),
             "window_start": None,
             "window_end": None,
+            "kline_window_start": None,
+            "kline_window_end": None,
             "wave_back_href": wave_back,
             "concept_axis_note": "",
             "concept_board_count": 0,
@@ -1610,6 +1634,7 @@ def _concept_short_wave_page_payload(
         )
 
     as_of_key = selected.isoformat()
+    kline_start, kline_end = _board_pick_kline_window("concept", selected)
     return {
         "title": "概念短热",
         "days": days,
@@ -1617,6 +1642,8 @@ def _concept_short_wave_page_payload(
         "requested_as_of": requested.isoformat(),
         "window_start": window_dates[0].isoformat(),
         "window_end": window_dates[-1].isoformat(),
+        "kline_window_start": kline_start,
+        "kline_window_end": kline_end,
         "wave_back_href": wave_back,
         "concept_axis_note": concept_axis_note,
         "concept_board_count": concept_board_count,
