@@ -440,6 +440,26 @@
       color: #b91c1c;
       margin: 0.35rem 0;
     }
+    .fund-lazy .chart-toolbar {
+      margin: 0.25rem 0 0.35rem;
+    }
+    .fund-lazy .chart-reload {
+      font: inherit;
+      font-size: 0.88rem;
+      padding: 0.28rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .fund-lazy .chart-reload:hover:not(:disabled) {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+    .fund-lazy .chart-reload:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
     .shape-glossary {
       margin: 0.55rem 0 0.15rem;
       padding: 0.55rem 0.7rem 0.65rem;
@@ -664,6 +684,9 @@
       <h3>行业资金水面 · 成交额自身异常</h3>
       <p class="meta">相对各行业近40日自身成交额的滚动异常；横轴与上方热度叶序对齐。进视口后加载。</p>
       <p class="meta chart-note"></p>
+      <p class="chart-toolbar">
+        <button type="button" class="chart-reload">重载本图</button>
+      </p>
       <div class="error chart-error" hidden></div>
       <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
       {% if fund_wave_href %}
@@ -682,6 +705,9 @@
       <h3>行业平滑价位 · 卡尔曼 + 100日区间</h3>
       <p class="meta">典型价经卡尔曼滤波后，落在近100日自身区间的位置；横轴/时间与上方行业图对齐。进视口后加载。</p>
       <p class="meta chart-note"></p>
+      <p class="chart-toolbar">
+        <button type="button" class="chart-reload">重载本图</button>
+      </p>
       <div class="error chart-error" hidden></div>
       <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
     </section>
@@ -697,6 +723,9 @@
       <h3>行业平滑收益 · 卡尔曼日收益 + 100日区间</h3>
       <p class="meta">卡尔曼典型价的简单日收益，再做近100日自身 min-max；横轴/时间与上方对齐。进视口后加载。</p>
       <p class="meta chart-note"></p>
+      <p class="chart-toolbar">
+        <button type="button" class="chart-reload">重载本图</button>
+      </p>
       <div class="error chart-error" hidden></div>
       <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
     </section>
@@ -1762,8 +1791,22 @@
         });
       }
 
-      async function loadFundPanel(section) {
-        if (section.dataset.loaded === "1" || section.dataset.loading === "1") return;
+      function setReloadBusy(section, busy) {
+        const btn = section.querySelector(".chart-reload");
+        if (!btn) return;
+        btn.disabled = !!busy;
+        btn.textContent = busy ? "加载中…" : "重载本图";
+      }
+
+      async function loadFundPanel(section, options) {
+        const force = !!(options && options.force);
+        if (!force && (section.dataset.loaded === "1" || section.dataset.loading === "1")) {
+          return;
+        }
+        if (force) {
+          section.dataset.loaded = "0";
+        }
+        if (section.dataset.loading === "1") return;
         const url = section.getAttribute("data-fund-chart-url") || "";
         let codes = (section.getAttribute("data-fund-order-codes") || "")
           .split(",")
@@ -1789,6 +1832,11 @@
         const mount = section.querySelector(".chart-mount");
         if (!url || !mount) return;
         section.dataset.loading = "1";
+        setReloadBusy(section, true);
+        if (errorEl) {
+          errorEl.hidden = true;
+          errorEl.textContent = "";
+        }
         mount.innerHTML = "<p class='chart-loading'>加载中…</p>";
         try {
           const opts = {
@@ -1808,41 +1856,53 @@
               errorEl.hidden = false;
               errorEl.textContent = data.error;
             }
-            mount.innerHTML = "<p class='meta'>资金水面暂不可用。</p>";
-            section.dataset.loaded = "1";
+            mount.innerHTML = "<p class='meta'>本图暂不可用。</p>";
+            section.dataset.loaded = "0";
             return;
           }
           if (errorEl) errorEl.hidden = true;
           if (data.html) {
             mountHtmlWithScripts(mount, data.html);
-          } else {
-            mount.innerHTML = "<p class='meta'>资金水面暂不可用。</p>";
-          }
-          section.dataset.loaded = "1";
-          const reapply = window.__heatBoardPickReapply || [];
-          requestAnimationFrame(() => {
-            reapply.forEach((fn) => {
-              try {
-                fn();
-              } catch (_err) {
-                /* ignore */
-              }
+            section.dataset.loaded = "1";
+            const reapply = window.__heatBoardPickReapply || [];
+            requestAnimationFrame(() => {
+              reapply.forEach((fn) => {
+                try {
+                  fn();
+                } catch (_err) {
+                  /* ignore */
+                }
+              });
             });
-          });
+          } else {
+            mount.innerHTML = "<p class='meta'>本图暂不可用。</p>";
+            section.dataset.loaded = "0";
+          }
         } catch (err) {
           if (errorEl) {
             errorEl.hidden = false;
             errorEl.textContent = "加载失败：" + (err && err.message ? err.message : err);
           }
           mount.innerHTML = "<p class='meta'>加载失败。</p>";
+          section.dataset.loaded = "0";
+        } finally {
           section.dataset.loading = "0";
+          setReloadBusy(section, false);
         }
       }
 
       const sections = Array.from(document.querySelectorAll(".fund-lazy[data-fund-chart-url]"));
       if (!sections.length) return;
+      sections.forEach((section) => {
+        const btn = section.querySelector(".chart-reload");
+        if (!btn || btn.dataset.bound === "1") return;
+        btn.dataset.bound = "1";
+        btn.addEventListener("click", () => {
+          loadFundPanel(section, { force: true });
+        });
+      });
       if (!("IntersectionObserver" in window)) {
-        sections.forEach(loadFundPanel);
+        sections.forEach((section) => loadFundPanel(section));
         return;
       }
       const observer = new IntersectionObserver(
