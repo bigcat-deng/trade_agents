@@ -219,6 +219,49 @@ def database_url() -> str:
     return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
 
 
+def fetch_a_share_breadth_counts(
+    dates: list[date],
+) -> dict[date, tuple[int, int, int, int]]:
+    """Up, down, flat, and traded counts for A-shares with a daily bar.
+
+    A-share here matches the rest of the app: Shanghai main and STAR, Shenzhen
+    main and ChiNext. ``tradestatus = 1`` drops halts. The tuple is
+    ``(up, down, flat, traded)`` where traded is up + down + flat.
+    """
+    if not dates:
+        return {}
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date,
+                       COUNT(*) FILTER (WHERE pct_chg > 0),
+                       COUNT(*) FILTER (WHERE pct_chg < 0),
+                       COUNT(*) FILTER (WHERE pct_chg = 0),
+                       COUNT(*)
+                FROM stock_daily_bar AS b
+                WHERE trade_date = ANY(%s)
+                  AND tradestatus = 1
+                  AND pct_chg IS NOT NULL
+                  AND preclose IS NOT NULL
+                  AND preclose <> 0
+                  AND (
+                        b.code LIKE 'sh.60%%'
+                     OR b.code LIKE 'sh.68%%'
+                     OR b.code LIKE 'sz.00%%'
+                     OR b.code LIKE 'sz.30%%'
+                  )
+                GROUP BY trade_date
+                """,
+                (dates,),
+            )
+            rows = cur.fetchall()
+    return {
+        row[0]: (int(row[1]), int(row[2]), int(row[3]), int(row[4]))
+        for row in rows
+    }
+
+
 def fetch_latest_trading_stocks(limit: int = 30) -> tuple[date | None, list[StockListItem]]:
     """Return (latest_sync_date, first `limit` trading A-share stocks by code)."""
     with psycopg.connect(database_url()) as conn:

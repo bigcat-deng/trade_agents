@@ -3,12 +3,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import baostock as bs
+import psycopg
 from fastapi import FastAPI, HTTPException, Path as PathParam, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.charts.board_rotation import render_board_rotation
+from app.charts.index_ladder import render_a_share_breadth, render_index_size_ladder
 from app.charts.kline import render_kline
 from app.charts.mini_kline import render_mini_kline
 from app.charts.theme_wave import (
@@ -20,6 +22,7 @@ from app.charts.concept_wavelet import (
 )
 from app.charts.theme_heat import render_theme_charts, render_theme_group_chart
 from app.db import (
+    fetch_a_share_breadth_counts,
     fetch_board_bar_dates_ending,
     fetch_board_close_heat,
     fetch_board_daily_bars_from_db,
@@ -46,6 +49,7 @@ from app.interpret.service import (
     interpret,
 )
 from app.market_data.board_heat import top_short_heat_keys
+from app.market_data.index_ladder import INDICES, align_breadth, load_size_ladder
 from app.market_data.csi500 import (
     csi500_maps_ending,
     fetch_csi500_closes,
@@ -259,6 +263,85 @@ def index_page(request: Request) -> HTMLResponse:
 @app.get("/index-all", response_class=HTMLResponse)
 def index_all_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index_all.html", {})
+
+
+@app.get("/indices/size-ladder", response_class=HTMLResponse)
+def index_size_ladder_page(
+    request: Request,
+    n: int = Query(100, ge=5, le=250),
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    """上证50 → 国证2000 cumulative return, spread, and range position."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    end = requested or date.today()
+    context: dict = {
+        "title": "市值阶梯",
+        "n": n,
+        "as_of": end.isoformat(),
+        "error": None,
+        "chart_html": "",
+        "snapshot": [],
+        "start": None,
+        "end": None,
+        "n_window": n,
+        "range_pp": None,
+        "spread_pp": None,
+        "breadth_html": "",
+        "breadth_error": None,
+        "breadth_note": None,
+    }
+    try:
+        payload = load_size_ladder(n, end)
+    except (RuntimeError, ValueError) as exc:
+        context["error"] = str(exc)
+        return templates.TemplateResponse(request, "index_size_ladder.html", context)
+    context.update(
+        {
+            "as_of": payload["end"],
+            "start": payload["start"],
+            "end": payload["end"],
+            "n_window": payload["n"],
+            "range_pp": f"{payload['range_pp'][-1]:.1f}",
+            "spread_pp": f"{payload['spread_50_2000_pp'][-1]:+.1f}",
+            "chart_html": render_index_size_ladder(payload, include_plotlyjs=False),
+            "snapshot": [
+                {"name": name, **payload["snapshot"][name]}
+                for name, _code, _color in INDICES
+            ],
+        }
+    )
+    context.update(_breadth_context(payload["dates"]))
+    return templates.TemplateResponse(request, "index_size_ladder.html", context)
+
+
+def _breadth_context(date_strings: list[str]) -> dict:
+    dates = [date.fromisoformat(value) for value in date_strings]
+    try:
+        counts = fetch_a_share_breadth_counts(dates)
+        breadth = align_breadth(dates, counts)
+    except psycopg.Error as exc:
+        return {
+            "breadth_html": "",
+            "breadth_error": str(exc),
+            "breadth_note": None,
+        }
+    last = breadth["last_complete"]
+    if last is None:
+        note = "这个窗口里没有完整的 A 股成交家数。"
+    else:
+        ratio = "—" if last["ratio"] is None else f"{last['ratio']:.1f}%"
+        note = (
+            f"最近完整交易日 {last['date']}：上涨 {last['up']}，"
+            f"下跌 {last['down']}，平盘 {last['flat']}，上涨占比 {ratio}。"
+        )
+    return {
+        "breadth_html": render_a_share_breadth(breadth, include_plotlyjs=False),
+        "breadth_error": None,
+        "breadth_note": note,
+    }
 
 
 @app.get("/sync", response_class=HTMLResponse)

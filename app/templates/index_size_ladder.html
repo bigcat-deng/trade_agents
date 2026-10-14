@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      margin: 1.4rem 0 0.35rem;
+      font-size: 1.15rem;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.75rem;
+      line-height: 1.55;
+    }
+    form.query {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 1rem;
+      align-items: center;
+      margin: 0 0 1rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    form.query label { color: var(--muted); font-size: 0.9rem; }
+    form.query input {
+      font: inherit;
+      padding: 0.28rem 0.45rem;
+      border: 1px solid var(--line);
+    }
+    form.query button {
+      font: inherit;
+      padding: 0.35rem 0.9rem;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.35rem;
+      margin: 0 0 0.85rem;
+      overflow-x: auto;
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    th, td {
+      padding: 0.45rem 0.7rem;
+      text-align: right;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 500; }
+    .error { color: #9f1239; }
+  </style>
+  <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js"></script>
+</head>
+<body>
+  <main>
+    <a class="back" href="/">← 热度轮转</a>
+    <h1>{{ title }}</h1>
+    <p class="meta">
+      上证50、沪深300、中证500、中证1000、国证2000。
+      累计收益和散度用收盘，相对窗口首日。
+      区间位置用 (高+低+收)/3，各自缩放到本窗口的最低和最高。
+      涨跌家数用本地日 K，只计当日成交的沪深 A 股。
+    </p>
+    <form class="query" method="get" action="/indices/size-ladder">
+      <label>as of <input type="date" name="as_of" value="{{ as_of }}"></label>
+      <label>窗口天数 n <input type="number" name="n" min="5" max="250" value="{{ n }}"></label>
+      <button type="submit">绘制</button>
+    </form>
+    {% if error %}
+    <p class="meta error">{{ error }}</p>
+    {% else %}
+    <p class="meta">
+      {{ start }} — {{ end }} · {{ n_window }} 个交易日 · baostock
+      · 期末截面极差 {{ range_pp }} 个百分点
+      · 上证50−国证2000 {{ spread_pp }} 个百分点
+    </p>
+    <div class="panel">{{ chart_html | safe }}</div>
+    <h2>A股涨跌家数</h2>
+    <p class="meta">
+      上涨在 0 轴上方，下跌在下方，平盘是细线。上涨占比 = 上涨 / (上涨 + 下跌)。
+      成交家数低于窗口中位数 80% 的日期留空，避免把没同步齐的日子画成下跌。
+      {% if breadth_note %}{{ breadth_note }}{% endif %}
+    </p>
+    {% if breadth_error %}
+    <p class="meta error">{{ breadth_error }}</p>
+    {% elif breadth_html %}
+    <div class="panel">{{ breadth_html | safe }}</div>
+    {% endif %}
+    <h2>窗口期末</h2>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>指数</th>
+          <th>累计收益</th>
+          <th>区间位置</th>
+          <th>窗口高点</th>
+          <th>窗口低点</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in snapshot %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td>{{ "%+.2f"|format(row.return_pct) }}%</td>
+          <td>{{ "%.3f"|format(row.position) }}</td>
+          <td>{{ row.high_date[5:] }}</td>
+          <td>{{ row.low_date[5:] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </main>
+</body>
+</html>
