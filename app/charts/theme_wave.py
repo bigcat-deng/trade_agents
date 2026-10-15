@@ -308,7 +308,7 @@ def render_theme_wave_contour(
     xaxis_title: str = "主题光谱（防守 → 科技）",
     entity_label: str = "主题",
     tickangle: float = 0,
-    bottom_margin: int | None = None,
+    bottom_margin: int | None = None,  # legacy name; reserved space for top x-tick labels
     return_exceedance: dict[str, object] | None = None,
     tip_labels: dict[str, object] | None = None,
     cross_marks: dict[str, object] | None = None,
@@ -335,12 +335,13 @@ def render_theme_wave_contour(
         for i in range(len(dates))
     ]
     tickfont_size = 8 if len(x_tickvals) > 40 else 10
-    margin_b = bottom_margin if bottom_margin is not None else (110 if tickangle else 40)
-    margin_t = (
-        88
-        if return_exceedance is not None or tip_labels is not None
-        else 36
+    # X tick labels live on the top axis; keep bottom tight.
+    tick_margin = (
+        bottom_margin if bottom_margin is not None else (110 if tickangle else 48)
     )
+    has_tip_overlay = return_exceedance is not None or tip_labels is not None
+    margin_t = 28 + tick_margin + (40 if has_tip_overlay else 0)
+    margin_b = 24
     has_csi500 = bool(csi500_returns) and any(v is not None for v in csi500_returns)
     contour_kw: dict = dict(
         x=x,
@@ -521,12 +522,14 @@ def render_theme_wave_contour(
         annotations=annotations,
         shapes=shapes,
         xaxis=dict(
-            title=dict(text=xaxis_title, font=dict(size=12)),
+            title=dict(text=xaxis_title, font=dict(size=12), standoff=6),
+            side="top",
             tickmode="array",
             tickvals=x_tickvals,
             ticktext=x_ticktext,
             tickfont=dict(size=tickfont_size),
             tickangle=tickangle,
+            automargin=False,
             gridcolor="#e7e5e4",
             zeroline=False,
         ),
@@ -622,19 +625,21 @@ def render_board_heat_heatmap(
     )
 
     fig.update_layout(
-        margin=dict(l=48, r=8, t=36, b=110),
+        margin=dict(l=48, r=8, t=28 + 110, b=24),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="#fffdf8",
         font=dict(family="IBM Plex Sans, Noto Sans SC, sans-serif", size=12, color="#1c1917"),
         title=dict(text=title, x=0, xanchor="left", font=dict(size=15)),
         xaxis=dict(
-            title=dict(text=xaxis_title, font=dict(size=12)),
+            title=dict(text=xaxis_title, font=dict(size=12), standoff=6),
+            side="top",
             tickmode="array",
             tickvals=x_tickvals,
             ticktext=x_ticktext,
             tickfont=dict(size=tickfont_size),
             tickangle=-55,
+            automargin=False,
             gridcolor="#e7e5e4",
             zeroline=False,
         ),
