@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.charts.board_rotation import render_board_rotation
+from app.charts.chan_board import chan_fetch_start, render_chan_board_html
 from app.charts.index_ladder import render_a_share_breadth, render_index_size_ladder
 from app.charts.kline import render_kline
 from app.charts.mini_kline import render_mini_kline
@@ -2361,16 +2362,39 @@ def _board_kline_page(
         error = str(exc)
 
     chart_html = None
+    chan_html = None
     summary = None
+    chan_summary = None
     title = f"{board_name} {board_code}"
     if error is None:
-        records = fetch_board_daily_bars_from_db(board_type, board_code, start, end)
-        if records:
+        records = fetch_board_daily_bars_from_db(
+            board_type,
+            board_code,
+            min(start, chan_fetch_start(end)),
+            end,
+        )
+        kline_records = [row for row in records if row["trade_date"] >= start]
+        if kline_records:
             heats = fetch_board_heat_series(board_type, board_code, start, end)
-            chart_html = render_kline(records, title=title, code=board_code, heats=heats)
-            summary = f"{title} · {len(records)} 根K线 · {start} ~ {end}"
+            chart_html = render_kline(
+                kline_records,
+                title=title,
+                code=board_code,
+                heats=heats,
+            )
+            summary = f"{title} · {len(kline_records)} 根K线 · {start} ~ {end}"
         else:
             summary = f"{title} · 所选区间无数据"
+        if records:
+            chan_html, chan_start, chan_end, chan_count = render_chan_board_html(
+                records,
+                title=title,
+                include_plotlyjs=False if chart_html else "cdn",
+            )
+            chan_summary = (
+                f"缠论 · {chan_count} 根K线 · {chan_start} ~ {chan_end}"
+                " · 结束日向前最多 200 个交易日"
+            )
 
     return templates.TemplateResponse(
         request,
@@ -2385,7 +2409,10 @@ def _board_kline_page(
             "end_date": end.isoformat(),
             "chart_html": chart_html,
             "summary": summary,
+            "chan_html": chan_html,
+            "chan_summary": chan_summary,
             "error": error,
+            "wide_chart": True,
         },
     )
 
