@@ -10,7 +10,13 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.charts.board_rotation import render_board_rotation
-from app.charts.chan_board import chan_fetch_start, render_chan_board_html
+from app.charts.chan_board import WINDOW as CHAN_BARS, chan_fetch_start, render_chan_board_html
+from app.market_data.providers.ths_line import (
+    INDEX_NAMES,
+    fetch_ths_daily_bars,
+    normalize_ths_code,
+)
+from scripts.chan_fractal_probe import WARMUP
 from app.charts.index_ladder import render_a_share_breadth, render_index_size_ladder
 from app.charts.kline import render_kline
 from app.charts.mini_kline import render_mini_kline
@@ -49,8 +55,9 @@ from app.interpret.service import (
     UnknownTemplate,
     interpret,
 )
+from app.levels.industry_rank import rank_industry_plans, short_heat_bands, state_label
 from app.market_data.board_heat import top_short_heat_keys
-from app.market_data.index_ladder import INDICES, align_breadth, load_size_ladder
+from app.market_data.index_ladder import INDICES, align_breadth, fetch_index_ohlcv, load_size_ladder
 from app.market_data.csi500 import (
     csi500_maps_ending,
     fetch_csi500_closes,
@@ -293,6 +300,8 @@ def index_size_ladder_page(
         "breadth_html": "",
         "breadth_error": None,
         "breadth_note": None,
+        "chan_charts": [],
+        "chan_error": None,
     }
     try:
         payload = load_size_ladder(n, end)
@@ -315,7 +324,32 @@ def index_size_ladder_page(
         }
     )
     context.update(_breadth_context(payload["dates"]))
+    context.update(_index_chan_context(date.fromisoformat(payload["end"])))
     return templates.TemplateResponse(request, "index_size_ladder.html", context)
+
+
+def _index_chan_context(end: date) -> dict:
+    """Chan charts for the ladder indices, ending on the page end date."""
+    try:
+        series = fetch_index_ohlcv(chan_fetch_start(end), end)
+    except (RuntimeError, ValueError) as exc:
+        return {"chan_charts": [], "chan_error": str(exc)}
+    charts = []
+    for name, code, _color in INDICES:
+        html, start, visible_end, count, _plan = render_chan_board_html(
+            series[name],
+            title=f"{name} {code}",
+            include_plotlyjs=False,
+        )
+        charts.append(
+            {
+                "name": name,
+                "code": code,
+                "summary": f"缠论 · {count} 根K线 · {start} ~ {visible_end}",
+                "html": html,
+            }
+        )
+    return {"chan_charts": charts, "chan_error": None}
 
 
 def _breadth_context(date_strings: list[str]) -> dict:
@@ -1276,6 +1310,8 @@ def _themes_wave_page_payload(
                 tickangle=-55,
                 return_exceedance=industry.get("return_exceedance"),
                 cross_marks=industry.get("cross_marks"),
+                fractal_marks=industry.get("fractal_marks"),
+                marker_halo=True,
                 csi500_returns=industry.get("csi500_returns"),
                 csi500_volumes=industry.get("csi500_volumes"),
                 csi500_volumes_scaled=industry.get("csi500_volumes_scaled"),
@@ -1317,6 +1353,11 @@ def _themes_wave_page_payload(
                 if ind_vol_dates
                 else (ind_hist[0] if ind_hist else selected)
             )
+            chan_hist = fetch_heat_dates_ending(
+                "industry", industry_slider_dates[0], CHAN_BARS + WARMUP
+            )
+            if chan_hist:
+                ind_bar_start = min(ind_bar_start, chan_hist[0])
             ind_bars = fetch_board_daily_bars_many(
                 "industry",
                 industry_board_codes,
@@ -2365,6 +2406,7 @@ def _board_kline_page(
     chan_html = None
     summary = None
     chan_summary = None
+    chan_plan = None
     title = f"{board_name} {board_code}"
     if error is None:
         records = fetch_board_daily_bars_from_db(
@@ -2386,10 +2428,11 @@ def _board_kline_page(
         else:
             summary = f"{title} · 所选区间无数据"
         if records:
-            chan_html, chan_start, chan_end, chan_count = render_chan_board_html(
+            chan_html, chan_start, chan_end, chan_count, chan_plan = render_chan_board_html(
                 records,
                 title=title,
                 include_plotlyjs=False if chart_html else "cdn",
+                plan_lines=True,
             )
             chan_summary = (
                 f"缠论 · {chan_count} 根K线 · {chan_start} ~ {chan_end}"
@@ -2411,6 +2454,7 @@ def _board_kline_page(
             "summary": summary,
             "chan_html": chan_html,
             "chan_summary": chan_summary,
+            "chan_plan": chan_plan,
             "error": error,
             "wide_chart": True,
         },
@@ -2498,6 +2542,145 @@ def board_kline_embed_api(
         "chart_html": chart_html,
         "error": None,
     }
+
+
+@app.get("/boards/industry/target-stop", response_class=HTMLResponse)
+def industry_target_stop_page(request: Request) -> HTMLResponse:
+    """Industry boards ranked by reward:risk of the latest bar."""
+    as_of = date.today()
+    ranked = rank_industry_plans(as_of)
+    bands = _industry_short_heat_bands(as_of)
+    return templates.TemplateResponse(
+        request,
+        "industry_target_stop.html",
+        {
+            "as_of": as_of.isoformat(),
+            "rows": [_plan_row_view(row, bands.get(row.code, "")) for row in ranked],
+        },
+    )
+
+
+def _industry_short_heat_bands(as_of: date) -> dict[str, str]:
+    """Short-heat thirds on the latest industry heat day on or before ``as_of``."""
+    days = fetch_heat_dates_ending("industry", as_of, 1)
+    if not days:
+        return {}
+    _heat_day, _prev, rows = fetch_board_rotation("industry", days[-1])
+    return short_heat_bands([(row.board_code, row.heat_short) for row in rows])
+
+
+def _plan_row_view(row, heat_band: str = "") -> dict:
+    return {
+        "code": row.code,
+        "name": row.name,
+        "trade_date": None if row.trade_date is None else row.trade_date.isoformat(),
+        "close_text": _plan_price(row.close),
+        "target_text": _plan_price(row.target),
+        "buy_text": _plan_price(row.buy),
+        "stop_text": _plan_price(row.stop),
+        "value": row.value,
+        "ratio_text": row.note if row.ratio is None else f"{row.ratio:.2f} : 1",
+        "heat_band": heat_band,
+        "state": state_label(row.state, row.step),
+        "position": row.position or "—",
+    }
+
+
+def _plan_price(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.2f}"
+
+
+@app.get("/analyze", response_class=HTMLResponse)
+def analyze_page(
+    request: Request,
+    code: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> HTMLResponse:
+    """Tonghuashun daily K and Chan chart for one stock, ETF, or index code."""
+    raw = (code or "").strip()
+    payload = {
+        "code": raw,
+        "title": "标的分析",
+        "start_date": start_date or "",
+        "end_date": end_date or "",
+        "show_dates": False,
+        "chart_html": None,
+        "chan_html": None,
+        "summary": None,
+        "chan_summary": None,
+        "chan_plan": None,
+        "error": None,
+    }
+    if not raw:
+        return templates.TemplateResponse(request, "analyze.html", payload)
+    try:
+        normalized = normalize_ths_code(raw)
+    except ValueError as exc:
+        payload["error"] = str(exc)
+        return templates.TemplateResponse(request, "analyze.html", payload)
+
+    payload["code"] = normalized
+    today = date.today()
+    explicit_window = start_date is not None or end_date is not None
+    try:
+        end = _parse_day(end_date, today)
+        start = _parse_day(start_date, end) if explicit_window else None
+        if start is not None and start > end:
+            raise RuntimeError("开始日期不能晚于结束日期")
+        fetch_start = chan_fetch_start(end)
+        if start is not None:
+            fetch_start = min(fetch_start, start)
+        records = fetch_ths_daily_bars(normalized, fetch_start, end)
+        visible = (
+            [row for row in records if row["trade_date"] >= start]
+            if start is not None
+            else records[-100:]
+        )
+        if not visible:
+            raise RuntimeError("所选区间无数据")
+        window_start = visible[0]["trade_date"]
+        window_end = visible[-1]["trade_date"]
+        label = INDEX_NAMES.get(normalized)
+        title = f"{label} {normalized}" if label else normalized
+        chart_html = render_kline(visible, title=title, code=normalized)
+        chan_html, chan_start, chan_end, chan_count, chan_plan = render_chan_board_html(
+            [row for row in records if row["trade_date"] <= window_end],
+            title=title,
+            include_plotlyjs=False,
+            plan_lines=True,
+        )
+    except ValueError:
+        payload["error"] = "日期格式应为 YYYY-MM-DD"
+        payload["show_dates"] = True
+        return templates.TemplateResponse(request, "analyze.html", payload)
+    except RuntimeError as exc:
+        payload["error"] = str(exc)
+        payload["show_dates"] = True
+        if explicit_window:
+            payload["start_date"] = start_date or ""
+            payload["end_date"] = end_date or ""
+        return templates.TemplateResponse(request, "analyze.html", payload)
+
+    payload.update(
+        {
+            "title": title,
+            "start_date": window_start.isoformat(),
+            "end_date": window_end.isoformat(),
+            "show_dates": True,
+            "chart_html": chart_html,
+            "summary": f"{title} · {len(visible)} 根K线 · {window_start} ~ {window_end}",
+            "chan_html": chan_html,
+            "chan_plan": chan_plan,
+            "chan_summary": (
+                f"缠论 · {chan_count} 根K线 · {chan_start} ~ {chan_end}"
+                " · 结束日向前最多 200 个交易日"
+            ),
+        }
+    )
+    return templates.TemplateResponse(request, "analyze.html", payload)
 
 
 @app.get("/boards/industry/{board_code}/kline", response_class=HTMLResponse)

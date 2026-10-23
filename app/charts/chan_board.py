@@ -35,6 +35,11 @@ WINDOW = 200
 
 _PIVOT_COLORS = ("#2563eb", "#d97706", "#059669", "#7c3aed")
 _FONT = "PingFang SC, Noto Sans SC, sans-serif"
+_PLAN_LINES = (
+    ("target", "目标", "rgba(185, 28, 28, 0.5)"),
+    ("buy", "买点", "rgba(37, 99, 235, 0.5)"),
+    ("stop", "止损", "rgba(21, 128, 61, 0.5)"),
+)
 
 
 def chan_fetch_start(end: date, *, n: int = WINDOW) -> date:
@@ -48,10 +53,14 @@ def render_chan_board_html(
     title: str,
     n: int = WINDOW,
     include_plotlyjs: bool | str = "cdn",
-) -> tuple[str, date, date, int]:
-    """Return Plotly HTML, visible start, visible end, and visible length."""
+    plan_lines: bool = False,
+) -> tuple[str, date, date, int, dict | None]:
+    """Return Plotly HTML, visible start, visible end, length, and plan prices.
+
+    Plan prices are present only when the target, buy, and stop lines are drawn.
+    """
     window = prepare_chan_window(list(rows), n=n)
-    figure = build_chan_figure(window, title=title)
+    figure, plan = build_chan_figure(window, title=title, plan_lines=plan_lines)
     html = figure.to_html(
         full_html=False,
         include_plotlyjs=include_plotlyjs,
@@ -59,16 +68,16 @@ def render_chan_board_html(
     )
     start = window.dates[0]
     end = window.dates[-1]
-    return html, start, end, len(window.dates)
+    return html, start, end, len(window.dates), plan
 
 
-def build_chan_figure(window, *, title: str) -> go.Figure:
-    dates = window.dates
+def drawn_key_levels(window) -> list[KeyLevel]:
+    """Important lines drawn on the Chan chart for this window."""
     levels = alternate_volume_levels(volume_group_levels(*window.profile))
     avgs = (window.highs + window.lows + window.closes) / 3.0
-    sigma, mean, threshold = avg_return_threshold(avgs)
+    _sigma, _mean, threshold = avg_return_threshold(avgs)
     band = float(window.profile[0][1] - window.profile[0][0])
-    keys = key_levels(
+    return key_levels(
         absorb_close_levels(
             cluster_important_levels(
                 important_level_points(window.fractals, levels, window.pivots),
@@ -79,41 +88,70 @@ def build_chan_figure(window, *, title: str) -> go.Figure:
         levels,
         threshold,
     )
+
+
+def build_chan_figure(window, *, title: str, plan_lines: bool = False):
+    dates = window.dates
+    keys = drawn_key_levels(window)
+    plan = _chart_plan(window, keys) if plan_lines else None
+    levels = alternate_volume_levels(volume_group_levels(*window.profile))
+    avgs = (window.highs + window.lows + window.closes) / 3.0
+    sigma, mean, threshold = avg_return_threshold(avgs)
     span = float(window.highs.max() - window.lows.min())
     pad = span * 0.018 if span else 0.0
 
     figure = make_subplots(
-        rows=1,
+        rows=2,
         cols=2,
+        shared_xaxes=True,
         shared_yaxes=True,
         column_widths=[0.81, 0.19],
+        row_heights=[0.76, 0.24],
         horizontal_spacing=0.02,
+        vertical_spacing=0.03,
+        specs=[[{}, {}], [{}, None]],
     )
     _add_pivots(figure, window)
     _add_candles(figure, window)
     _add_smooth(figure, window)
     _add_strokes(figure, window)
     _add_key_levels(figure, window, keys)
+    if plan is not None and plan.target is not None:
+        _add_plan_lines(figure, window, plan)
     _add_fractals(figure, window, pad)
     _add_volume_profile(figure, window, levels)
+    _add_daily_volume(figure, window)
     _add_threshold(figure, threshold, sigma, mean, float(window.lows.min()))
 
     low = float(window.lows.min())
     high = float(window.highs.max())
+    plan_prices = _plan_prices(plan)
+    bound_low = min([low, *plan_prices]) if plan_prices else low
+    bound_high = max([high, *plan_prices]) if plan_prices else high
     y_pad = (high - low) * 0.04 if high > low else 1.0
-    y_top = max(high + y_pad, low + threshold)
-    figure.update_yaxes(title_text="价格", range=[low - y_pad, y_top], row=1, col=1)
+    y_top = max(bound_high + y_pad, low + threshold)
+    figure.update_yaxes(
+        title_text="价格", range=[bound_low - y_pad, y_top], row=1, col=1
+    )
     figure.update_yaxes(showticklabels=False, row=1, col=2)
+    figure.update_yaxes(title_text="成交量", exponentformat="e", row=2, col=1)
     figure.update_xaxes(
         rangeslider_visible=False,
-        tickformat="%Y-%m-%d",
         range=[dates[0], dates[-1]],
+        showticklabels=False,
         showspikes=True,
         spikemode="across",
         spikesnap="cursor",
         spikethickness=1,
         spikecolor="#a8a29e",
         row=1,
+        col=1,
+    )
+    figure.update_xaxes(
+        rangeslider_visible=False,
+        tickformat="%Y-%m-%d",
+        range=[dates[0], dates[-1]],
+        row=2,
         col=1,
     )
     figure.update_xaxes(
@@ -132,19 +170,30 @@ def build_chan_figure(window, *, title: str) -> go.Figure:
             ),
             x=0,
             xanchor="left",
+            xref="container",
+            y=1,
+            yanchor="top",
             font=dict(size=15),
+            pad=dict(t=8, b=0),
         ),
         font=dict(family=_FONT, size=12),
         hovermode="closest",
         hoverdistance=24,
         hoverlabel=dict(bgcolor="white", font=dict(family=_FONT, size=12)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=11)),
-        margin=dict(t=96, l=64, r=24, b=48),
-        height=680,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=1.12,
+            x=0,
+            xanchor="left",
+            font=dict(size=11),
+        ),
+        margin=dict(t=118, l=64, r=24, b=48),
+        height=860,
         paper_bgcolor="white",
         plot_bgcolor="white",
         bargap=0.08,
-        xaxis3=dict(
+        xaxis4=dict(
             overlaying="x",
             range=[0, 1],
             showgrid=False,
@@ -166,7 +215,7 @@ def build_chan_figure(window, *, title: str) -> go.Figure:
         xanchor="left",
         font=dict(size=13, family=_FONT),
     )
-    return figure
+    return figure, _plan_caption(plan)
 
 
 def _day(window, index: int):
@@ -385,6 +434,86 @@ def _add_key_levels(figure: go.Figure, window, levels: list[KeyLevel]) -> None:
         )
 
 
+def _chart_plan(window, levels: list[KeyLevel]):
+    """Target, buy, and stop for the last visible bar. None when lines are short."""
+    from app.levels.target_stop import target_stop_plan
+
+    try:
+        return target_stop_plan(
+            [level.price for level in levels],
+            high=float(window.highs[-1]),
+            low=float(window.lows[-1]),
+            close=float(window.closes[-1]),
+        )
+    except ValueError:
+        return None
+
+
+def _plan_caption(plan) -> dict | None:
+    """Plan prices plus the return and loss of buying at the current close.
+
+    Target and stop stay as drawn. Yield is ``(target − close) / close`` and
+    loss is ``(close − stop) / close``.
+    """
+    if plan is None or plan.target is None or plan.buy is None or plan.stop is None:
+        return None
+    close = float(plan.close)
+    return {
+        "target": f"{plan.target:.2f}",
+        "buy": f"{plan.buy:.2f}",
+        "stop": f"{plan.stop:.2f}",
+        "yield_rate": _percent((plan.target - close) / close) if close else "—",
+        "loss_rate": _percent((close - plan.stop) / close) if close else "—",
+    }
+
+
+def _percent(ratio: float) -> str:
+    return f"{ratio * 100:.2f}%"
+
+
+def _plan_prices(plan) -> list[float]:
+    if plan is None or plan.target is None:
+        return []
+    return [price for price in (plan.target, plan.buy, plan.stop) if price is not None]
+
+
+def _add_plan_lines(figure: go.Figure, window, plan) -> None:
+    x0, x1 = window.dates[0], window.dates[-1]
+    for attr, label, color in _PLAN_LINES:
+        price = getattr(plan, attr)
+        if price is None:
+            continue
+        figure.add_trace(
+            go.Scatter(
+                x=[x0, x1],
+                y=[price, price],
+                name=label,
+                mode="lines",
+                line=dict(color=color, width=8, dash="dash"),
+                hovertemplate=f"{label} %{{y:.2f}}<extra></extra>",
+            ),
+            row=1,
+            col=1,
+        )
+
+
+def _add_daily_volume(figure: go.Figure, window) -> None:
+    up = window.closes >= window.opens
+    colors = ["#b91c1c" if flag else "#15803d" for flag in up]
+    figure.add_trace(
+        go.Bar(
+            x=window.dates,
+            y=window.volumes,
+            name="成交量",
+            marker=dict(color=colors, line=dict(width=0)),
+            hovertemplate="%{x|%Y-%m-%d}<br>成交量 %{y:,.0f}<extra></extra>",
+            showlegend=False,
+        ),
+        row=2,
+        col=1,
+    )
+
+
 def _add_volume_profile(figure: go.Figure, window, levels: list[VolumeLevel]) -> None:
     edges, totals = window.profile
     centers = (edges[:-1] + edges[1:]) / 2.0
@@ -437,7 +566,7 @@ def _add_threshold(
         go.Scatter(
             x=[0.012, 0.012],
             y=[y0, y1],
-            xaxis="x3",
+            xaxis="x4",
             yaxis="y",
             name=f"th {threshold:.0f}",
             mode="lines",
@@ -449,7 +578,7 @@ def _add_threshold(
         go.Scatter(
             x=[0.006, 0.020, None, 0.006, 0.020],
             y=[y0, y0, None, y1, y1],
-            xaxis="x3",
+            xaxis="x4",
             yaxis="y",
             mode="lines",
             line=dict(color="#0f172a", width=1.4),
@@ -460,7 +589,7 @@ def _add_threshold(
     figure.add_annotation(
         x=0.028,
         y=(y0 + y1) / 2.0,
-        xref="x3",
+        xref="x4",
         yref="y",
         text=f"th {threshold:.0f}",
         showarrow=False,

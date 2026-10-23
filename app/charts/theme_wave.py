@@ -5,6 +5,7 @@ from __future__ import annotations
 import plotly.graph_objects as go
 
 from app.themes.board_cross_marks import CROSS_STYLE
+from app.themes.board_fractal_marks import FRACTAL_STYLE
 
 # Hover on CSI 500 traces draws a paper-wide row line (shared y with the heat).
 # Also force dual-subplot double-click to reset heat x + CSI x2 + shared y.
@@ -295,6 +296,56 @@ def render_theme_wave_surface(
     )
 
 
+def _append_mark_pair(
+    traces: list,
+    *,
+    xs: list,
+    ys: list,
+    texts: list,
+    style: dict,
+    halo: bool,
+    line_width: float,
+    hover: bool,
+) -> None:
+    """Draw one mark layer. A larger white copy sits under the colored mark."""
+    if halo:
+        traces.append(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="markers",
+                marker=dict(
+                    symbol=style["symbol"],
+                    size=style["size"] + 2,
+                    color="#ffffff",
+                    line=dict(width=0, color="#ffffff"),
+                ),
+                hoverinfo="skip",
+                hovertemplate=None,
+                showlegend=False,
+                name=f"{style['name']}白底",
+            )
+        )
+    traces.append(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="markers",
+            marker=dict(
+                symbol=style["symbol"],
+                size=style["size"],
+                color=style["color"],
+                line=dict(width=line_width, color=style["color"]),
+            ),
+            text=texts,
+            hoverinfo="skip" if not hover else None,
+            hovertemplate="%{text}<extra></extra>" if hover else None,
+            showlegend=False,
+            name=style["name"],
+        )
+    )
+
+
 def render_theme_wave_contour(
     *,
     dates: list[str],
@@ -312,6 +363,8 @@ def render_theme_wave_contour(
     return_exceedance: dict[str, object] | None = None,
     tip_labels: dict[str, object] | None = None,
     cross_marks: dict[str, object] | None = None,
+    fractal_marks: dict[str, object] | None = None,
+    marker_halo: bool = False,
     csi500_returns: list[float | None] | None = None,
     csi500_volumes: list[float | None] | None = None,
     csi500_volumes_scaled: list[float | None] | None = None,
@@ -380,26 +433,27 @@ def render_theme_wave_contour(
     traces: list = [go.Contour(**contour_kw)]
     if cross_marks is not None:
         for key, style in CROSS_STYLE.items():
-            xs = list(cross_marks.get(f"{key}_x") or [])
-            ys = list(cross_marks.get(f"{key}_y") or [])
-            texts = list(cross_marks.get(f"{key}_text") or [])
-            traces.append(
-                go.Scatter(
-                    x=xs,
-                    y=ys,
-                    mode="markers",
-                    marker=dict(
-                        symbol=style["symbol"],
-                        size=style["size"],
-                        color=style["color"],
-                        line=dict(width=1.4, color=style["color"]),
-                    ),
-                    text=texts,
-                    hoverinfo="skip",
-                    hovertemplate=None,
-                    showlegend=False,
-                    name=style["name"],
-                )
+            _append_mark_pair(
+                traces,
+                xs=list(cross_marks.get(f"{key}_x") or []),
+                ys=list(cross_marks.get(f"{key}_y") or []),
+                texts=list(cross_marks.get(f"{key}_text") or []),
+                style=style,
+                halo=marker_halo,
+                line_width=1.4,
+                hover=False,
+            )
+    if fractal_marks is not None:
+        for key, style in FRACTAL_STYLE.items():
+            _append_mark_pair(
+                traces,
+                xs=list(fractal_marks.get(f"{key}_x") or []),
+                ys=list(fractal_marks.get(f"{key}_y") or []),
+                texts=list(fractal_marks.get(f"{key}_text") or []),
+                style=style,
+                halo=marker_halo,
+                line_width=0,
+                hover=False,
             )
     if has_csi500:
         csi_x = [v if v is not None else None for v in (csi500_returns or [])]

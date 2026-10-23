@@ -15,6 +15,10 @@ from app.themes.board_cross_marks import (
     build_cross_mark_overlay,
     empty_cross_mark_overlay,
 )
+from app.themes.board_fractal_marks import (
+    build_fractal_mark_overlay,
+    empty_fractal_mark_overlay,
+)
 from app.themes.heat_seriation import (
     DEFAULT_PLANE_DENSIFY,
     as_float,
@@ -24,6 +28,8 @@ from app.themes.heat_seriation import (
     order_by_trajectory_seriation,
 )
 from app.themes.heat_surface_flags import attach_surface_flags
+from app.charts.chan_board import WINDOW as CHAN_BARS
+from scripts.chan_fractal_probe import WARMUP
 from app.themes.industry_return_flags import (
     RETURN_VOL_LOOKBACK,
     RETURN_VOL_MULT,
@@ -39,6 +45,7 @@ INDUSTRY_AXIS_NOTE = (
     f"{RETURN_VOL_MULT:.0f}倍（黑=正超，白=负超）；"
     "最后交易日顶上红/绿字=当日正超/负超的行业名；"
     "小交叉×=MACD（上穿橙、下穿蓝）；"
+    "红圆点=顶分型，黑圆点=底分型（与板块K线同一套分型，只标落在本图日期内的）；"
     "右侧细折线=中证500（sh.000905）同日收盘收益，虚线=成交量（已按双方波动对齐到收益尺度）。"
 )
 
@@ -87,6 +94,7 @@ def build_industry_board_heat_payload(
         "densify": densify,
         "return_exceedance": _empty_return_overlay(),
         "cross_marks": empty_cross_mark_overlay(),
+        "fractal_marks": empty_fractal_mark_overlay(),
         "csi500_returns": [],
         "csi500_volumes": [],
         "csi500_volumes_scaled": [],
@@ -132,11 +140,15 @@ def build_industry_board_heat_payload(
     vol_calendar = fetch_heat_dates_ending(
         "industry", as_of, RETURN_VOL_LOOKBACK + 1
     )
-    bars_by_code: dict[str, list[dict[str, object]]] = {}
-    if vol_calendar:
-        bars_by_code = fetch_board_daily_bars_many(
-            "industry", ordered_codes, vol_calendar[0], as_of
-        )
+    warm_dates = fetch_heat_dates_ending("industry", window_dates[0], WARMUP + 1)
+    chan_dates = fetch_heat_dates_ending("industry", as_of, CHAN_BARS + WARMUP)
+    bar_start = window_dates[0]
+    for calendar in (vol_calendar, warm_dates, chan_dates):
+        if calendar:
+            bar_start = min(bar_start, calendar[0])
+    bars_by_code = fetch_board_daily_bars_many(
+        "industry", ordered_codes, bar_start, as_of
+    )
     return_exceedance = build_return_exceedance_overlay(
         ordered_codes=ordered_codes,
         window_dates=window_dates,
@@ -155,6 +167,12 @@ def build_industry_board_heat_payload(
         ordered_codes=ordered_codes,
         window_dates=window_dates,
         close_heat_by_code=close_heat,
+        names=names,
+    )
+    fractal_marks = build_fractal_mark_overlay(
+        ordered_codes=ordered_codes,
+        window_dates=window_dates,
+        bars_by_code=bars_by_code,
         names=names,
     )
     if csi500_closes is not None:
@@ -181,6 +199,7 @@ def build_industry_board_heat_payload(
             "densify": densify,
             "return_exceedance": return_exceedance,
             "cross_marks": cross_marks,
+            "fractal_marks": fractal_marks,
             "csi500_returns": _csi["returns"],
             "csi500_volumes": _csi["volumes"],
             "csi500_volumes_scaled": _csi["volumes_scaled"],
@@ -243,6 +262,7 @@ def build_industry_scrub_frames(
         if vol_end_i is None or not window:
             overlay = _empty_return_overlay()
             cross_marks = empty_cross_mark_overlay()
+            fractal_marks = empty_fractal_mark_overlay()
         else:
             vol_start_i = max(0, vol_end_i - RETURN_VOL_LOOKBACK)
             vol_calendar = vol_dates[vol_start_i : vol_end_i + 1]
@@ -259,6 +279,12 @@ def build_industry_scrub_frames(
                 close_heat_by_code=close_heat,
                 names=names,
             )
+            fractal_marks = build_fractal_mark_overlay(
+                ordered_codes=ordered_codes,
+                window_dates=window,
+                bars_by_code=bars,
+                names=names,
+            )
         csi = csi500_overlay_series(
             window,
             closes=csi500_closes or {},
@@ -271,6 +297,7 @@ def build_industry_scrub_frames(
                 "z_short": dense_z,
                 "return_exceedance": overlay,
                 "cross_marks": cross_marks,
+                "fractal_marks": fractal_marks,
                 "csi500_returns": csi["returns"],
                 "csi500_volumes": csi["volumes"],
                 "csi500_volumes_scaled": csi["volumes_scaled"],

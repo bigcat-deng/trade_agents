@@ -197,6 +197,47 @@ def align_breadth(
     }
 
 
+def fetch_index_ohlcv(
+    start: date, end: date
+) -> dict[str, list[dict]]:
+    """OHLCV rows for each ladder index, oldest first. Caller must not overlap logins."""
+    login = None
+    for attempt in range(1, 4):
+        login = bs.login()
+        if login.error_code == "0":
+            break
+        time.sleep(2 * attempt)
+    if login is None or login.error_code != "0":
+        message = login.error_msg if login is not None else "no response"
+        raise RuntimeError(f"baostock login failed: {message}")
+    try:
+        out: dict[str, list[dict]] = {}
+        for name, code, _color in INDICES:
+            rows = baostock_kline.fetch_daily_bars(code, start, end)
+            series: list[dict] = []
+            for bar in rows:
+                if bar.trade_date > end:
+                    continue
+                if None in (bar.open, bar.high, bar.low, bar.close):
+                    continue
+                series.append(
+                    {
+                        "trade_date": bar.trade_date,
+                        "open": float(bar.open),
+                        "high": float(bar.high),
+                        "low": float(bar.low),
+                        "close": float(bar.close),
+                        "volume": 0 if bar.volume is None else float(bar.volume),
+                    }
+                )
+            if not series:
+                raise RuntimeError(f"baostock returned no bars for {name} {code}")
+            out[name] = series
+        return out
+    finally:
+        bs.logout()
+
+
 def fetch_index_bars(
     start: date, end: date
 ) -> dict[str, dict[date, tuple[float, float, float]]]:

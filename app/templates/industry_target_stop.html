@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>行业目标止损</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back { color: var(--muted); text-decoration: none; font-size: 0.92rem; }
+    h1 { margin: 0.6rem 0 0.35rem; font-size: 1.75rem; letter-spacing: -0.02em; }
+    .meta { color: var(--muted); margin: 0 0 1rem; line-height: 1.55; }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    th, td {
+      padding: 0.45rem 0.7rem;
+      text-align: right;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th { color: var(--muted); font-weight: 500; }
+    a.board { color: inherit; }
+    .high { color: #9f1239; }
+    .low { color: #57534e; }
+    tr.hot td { background: #fde8e8; }
+    tr.cold td { background: #e5f6ea; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="/">← 热度轮转</a>
+    <h1>行业目标止损</h1>
+    <p class="meta">
+      截止 {{ as_of }}，每个行业向前最多 200 根 K 线。
+      重要线与板块 K 线图上的线相同。先按 bullish、sideways、bearish 分组，组内按收益∶损失从高到低排列。
+      收盘低于买点为性价比高，高于买点为性价比低。
+      短时热度前三分之一整行淡红，尾部三分之一整行淡绿。
+      状态写成当前状态/最后一跳。当前状态相对最近中枢：整根 K 线离开超过 th/2 为 bearish 或 bullish，否则为 sideways。最后一跳看最后两个中枢：后一个整段高于前一个为上移，整段低于前一个为下移；只有一个中枢或刚好贴住为 —。
+      位置只标 sideways：收盘在最近中枢外为外上或外下；在带内按高度三等分，从低到高为内下、内中、内上，三分界归入上一档。
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>行业</th>
+            <th>代码</th>
+            <th>日期</th>
+            <th>收盘</th>
+            <th>目标</th>
+            <th>买点</th>
+            <th>止损</th>
+            <th>性价比</th>
+            <th>收益∶损失</th>
+            <th>状态</th>
+            <th>位置</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr class="{{ row.heat_band }}">
+            <td><a class="board" href="/boards/industry/{{ row.code }}/kline">{{ row.name }}</a></td>
+            <td>{{ row.code }}</td>
+            <td>{{ row.trade_date or "—" }}</td>
+            <td>{{ row.close_text }}</td>
+            <td>{{ row.target_text }}</td>
+            <td>{{ row.buy_text }}</td>
+            <td>{{ row.stop_text }}</td>
+            <td class="{{ 'high' if row.value == '高' else 'low' }}">{{ row.value or "—" }}</td>
+            <td>{{ row.ratio_text }}</td>
+            <td>{{ row.state }}</td>
+            <td>{{ row.position }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

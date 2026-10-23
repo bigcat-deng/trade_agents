@@ -23,7 +23,7 @@
       min-height: 100vh;
     }
     main {
-      max-width: 1100px;
+      max-width: 1480px;
       margin: 0 auto;
       padding: 1.5rem 1.25rem 2.5rem;
     }
@@ -154,6 +154,16 @@
       </tbody>
     </table>
     </div>
+    <h2>缠论</h2>
+    <p class="meta">结束日向前最多 200 个交易日。K 线下方是当日成交量。</p>
+    {% if chan_error %}
+    <p class="meta error">{{ chan_error }}</p>
+    {% endif %}
+    {% for chart in chan_charts %}
+    <h2>{{ chart.name }}</h2>
+    <p class="meta">{{ chart.summary }}</p>
+    <div class="panel">{{ chart.html | safe }}</div>
+    {% endfor %}
     {% endif %}
   </main>
 </body>

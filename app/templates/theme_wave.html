@@ -160,9 +160,13 @@
       min-width: 2.6em;
       font-weight: 650;
     }
+    .scenario-board .tag.cold { color: #64748b; }
     .scenario-board .tag.bud { color: #047857; }
+    .scenario-board .tag.rise { color: #0f766e; }
     .scenario-board .tag.mid { color: #b45309; }
+    .scenario-board .tag.high { color: #c2410c; }
     .scenario-board .tag.hot { color: #b91c1c; }
+    .scenario-board .tag.fade { color: #1d4ed8; }
     .scenario-board .tag.none { color: var(--muted); font-weight: 500; }
     .scenario-board .slope.up { color: #b91c1c; }
     .scenario-board .slope.down { color: #047857; }
@@ -629,18 +633,26 @@
             <tr>
               <td><a href="{{ row.href }}">{{ row.label }}</a></td>
               <td>
-                {% if row.scenario == "萌芽" %}
+                {% if row.scenario == "冷寂" %}
+                <span class="tag cold">冷寂</span>
+                {% elif row.scenario == "萌芽" %}
                 <span class="tag bud">萌芽</span>
+                {% elif row.scenario == "升温" %}
+                <span class="tag rise">升温</span>
                 {% elif row.scenario == "中位" %}
                 <span class="tag mid">中位</span>
+                {% elif row.scenario == "高位" %}
+                <span class="tag high">高位</span>
                 {% elif row.scenario == "久热" %}
                 <span class="tag hot">久热</span>
+                {% elif row.scenario == "退潮" %}
+                <span class="tag fade">退潮</span>
                 {% else %}
                 <span class="tag none">—</span>
                 {% endif %}
               </td>
               <td class="slope {{ row.slope_key }}">{{ row.slope_label }}{% if row.near_slope is not none %} <span class="num">({{ '%.3f'|format(row.near_slope) }})</span>{% endif %}</td>
-              <td class="num">{% if row.hotness is not none %}{{ '%.2f'|format(row.hotness) }}{% else %}—{% endif %}</td>
+              <td class="num">{% if row.hotness is not none %}{{ '%.3f'|format(row.hotness) }}{% else %}—{% endif %}</td>
               <td class="hint">{{ row.hint }}</td>
             </tr>
             {% endfor %}
@@ -1127,25 +1139,34 @@
         Plotly.relayout(gd, { annotations: industryExceedanceAnnotations(marks) });
       }
 
-      function restyleCrossMarks(gd, marks) {
-        const keys = [
-          ["MACD上穿", "macd_up"],
-          ["MACD下穿", "macd_down"],
-        ];
+      function restyleMarkPair(gd, marks, keys) {
         const m = marks || {};
         keys.forEach(([name, key]) => {
-          const idx = gd.data.findIndex((t) => t.name === name);
-          if (idx < 0) return;
-          Plotly.restyle(
-            gd,
-            {
+          [name, `${name}白底`].forEach((traceName) => {
+            const idx = gd.data.findIndex((t) => t.name === traceName);
+            if (idx < 0) return;
+            const update = {
               x: [m[`${key}_x`] || []],
               y: [m[`${key}_y`] || []],
-              text: [m[`${key}_text`] || []],
-            },
-            [idx]
-          );
+            };
+            if (traceName === name) update.text = [m[`${key}_text`] || []];
+            Plotly.restyle(gd, update, [idx]);
+          });
         });
+      }
+
+      function restyleFractalMarks(gd, marks) {
+        restyleMarkPair(gd, marks, [
+          ["顶分型", "top"],
+          ["底分型", "bottom"],
+        ]);
+      }
+
+      function restyleCrossMarks(gd, marks) {
+        restyleMarkPair(gd, marks, [
+          ["MACD上穿", "macd_up"],
+          ["MACD下穿", "macd_down"],
+        ]);
       }
 
       function applyIndustryFrame(index) {
@@ -1179,6 +1200,7 @@
         );
         restyleExceedanceOverlay(gd, frame.return_exceedance || {});
         restyleCrossMarks(gd, frame.cross_marks || {});
+        restyleFractalMarks(gd, frame.fractal_marks || {});
         restyleCsi500Overlay(gd, frame, dates, y);
       }
 
@@ -1380,19 +1402,6 @@
 
         function columnPickShapes(idx, nDates) {
           return [
-            {
-              name: PICK_MARK,
-              type: "rect",
-              xref: "x",
-              yref: "y",
-              x0: idx - 0.5,
-              x1: idx + 0.5,
-              y0: -0.5,
-              y1: nDates - 0.5,
-              fillcolor: "rgba(15, 23, 42, 0.30)",
-              line: { width: 0 },
-              layer: "above",
-            },
             {
               name: PICK_MARK,
               type: "rect",

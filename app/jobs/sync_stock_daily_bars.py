@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 
 import baostock as bs
@@ -22,11 +23,46 @@ from app.market_data.providers import (
     baostock_kline,
 )
 
-PROVIDERS = (
-    ("baostock", baostock_kline.fetch_daily_bars),
-    ("akshare_em", akshare_em_kline.fetch_daily_bars),
-    ("akshare_tx", akshare_tx_kline.fetch_daily_bars),
-)
+# After a failed baostock fetch, logout and login again, then retry the same
+# stock. Waits are 1, 2, then 3 minutes. An empty result is not a failure.
+BAOSTOCK_RECONNECT_WAITS_SEC = (60, 120, 180)
+
+
+def _reconnect_baostock() -> None:
+    try:
+        bs.logout()
+    except Exception:
+        pass
+    login = bs.login()
+    if login.error_code != "0":
+        raise RuntimeError(f"baostock login failed: {login.error_msg}")
+
+
+def fetch_baostock_bars(code: str, start: date, end: date) -> list[DailyBar]:
+    try:
+        return baostock_kline.fetch_daily_bars(code, start, end)
+    except Exception as exc:
+        last_error: Exception = exc
+    for wait_sec in BAOSTOCK_RECONNECT_WAITS_SEC:
+        print(
+            f"baostock reconnect in {wait_sec // 60} min for {code}: {last_error}",
+            flush=True,
+        )
+        time.sleep(wait_sec)
+        try:
+            _reconnect_baostock()
+            return baostock_kline.fetch_daily_bars(code, start, end)
+        except Exception as exc:  # noqa: BLE001 - reconnect attempt boundary
+            last_error = exc
+    raise last_error
+
+
+def _providers() -> tuple[tuple[str, Callable[[str, date, date], list[DailyBar]]], ...]:
+    return (
+        ("baostock", fetch_baostock_bars),
+        ("akshare_em", akshare_em_kline.fetch_daily_bars),
+        ("akshare_tx", akshare_tx_kline.fetch_daily_bars),
+    )
 
 
 def parse_day(value: str) -> date:
@@ -88,7 +124,7 @@ def resolve_window(
 
 def fetch_with_fallback(code: str, start: date, end: date) -> tuple[str, list[DailyBar]]:
     errors: list[str] = []
-    for name, fetch in PROVIDERS:
+    for name, fetch in _providers():
         try:
             bars = fetch(code, start, end)
             if bars:

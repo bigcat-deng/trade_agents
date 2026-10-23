@@ -7,6 +7,8 @@ Rule:
   avg = (high + low + close) / 3
   smooth = trailing MA5 of avg
   A smooth local extremum uses a 7-point window (center ± 3).
+  The newest center, two bars before the last bar, is judged with only those
+  two bars on its right. Once a third bar exists, that center uses ± 3 again.
   A local high marks a top: the true top is the max raw high in that window.
   A local low marks a bottom: the true bottom is the min raw low in that window.
   Adjacent fractals must alternate. Same-type neighbors whose bar gap is
@@ -133,9 +135,9 @@ def main() -> None:
     repaired, events = alternate_fractals(fractals, highs, lows)
     repaired, endpoint = append_endpoint(repaired, highs, lows)
     strokes = strokes_from_fractals(repaired)
-    pivots = find_pivots(strokes)
-
     plot_start = len(rows) - args.n
+    _sigma, _mean, threshold = avg_return_threshold(avg[plot_start:])
+    pivots = find_pivots(strokes, min_height=threshold / 2.0)
     visible = [item for item in repaired if item.index >= plot_start]
     dropped = [
         event.dropped
@@ -273,29 +275,47 @@ def find_fractals(
     highs: np.ndarray,
     lows: np.ndarray,
 ) -> list[Fractal]:
-    """Map each strict smooth extremum to the same-type raw extreme nearby."""
+    """Map each strict smooth extremum to the same-type raw extreme nearby.
+
+    Closed windows use three bars on the right. The newest center has only
+    two, and is judged on those two until the third bar arrives.
+    """
     found: list[Fractal] = []
     last = len(smooth) - RADIUS
     for center in range(RADIUS, last):
-        window = smooth[center - RADIUS : center + RADIUS + 1]
-        if np.isnan(window).any():
-            continue
-        left = window[:RADIUS]
-        right = window[RADIUS + 1 :]
-        value = window[RADIUS]
-        if value > left.max() and value >= right.max():
-            offset = int(np.argmax(highs[center - RADIUS : center + RADIUS + 1]))
-            index = center - RADIUS + offset
-            found.append(
-                Fractal("top", index, center, float(highs[index]))
-            )
-        elif value < left.min() and value <= right.min():
-            offset = int(np.argmin(lows[center - RADIUS : center + RADIUS + 1]))
-            index = center - RADIUS + offset
-            found.append(
-                Fractal("bottom", index, center, float(lows[index]))
-            )
+        _consider_fractal(found, smooth, highs, lows, center, RADIUS)
+    edge = len(smooth) - 1 - (RADIUS - 1)
+    if edge >= last:
+        _consider_fractal(found, smooth, highs, lows, edge, RADIUS - 1)
     return _dedupe(found)
+
+
+def _consider_fractal(
+    found: list[Fractal],
+    smooth: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    center: int,
+    right: int,
+) -> None:
+    start = center - RADIUS
+    stop = center + right + 1
+    if start < 0 or stop > len(smooth) or right < 1:
+        return
+    window = smooth[start:stop]
+    if window.size != RADIUS + right + 1 or np.isnan(window).any():
+        return
+    left = window[:RADIUS]
+    right_vals = window[RADIUS + 1 :]
+    value = float(window[RADIUS])
+    if value > float(left.max()) and value >= float(right_vals.max()):
+        offset = int(np.argmax(highs[start:stop]))
+        index = start + offset
+        found.append(Fractal("top", index, center, float(highs[index])))
+    elif value < float(left.min()) and value <= float(right_vals.min()):
+        offset = int(np.argmin(lows[start:stop]))
+        index = start + offset
+        found.append(Fractal("bottom", index, center, float(lows[index])))
 
 
 def alternate_fractals(
@@ -576,12 +596,14 @@ def strokes_from_fractals(fractals: list[Fractal]) -> list[Stroke]:
     return strokes
 
 
-def find_pivots(strokes: list[Stroke]) -> list[Pivot]:
+def find_pivots(strokes: list[Stroke], *, min_height: float = 0.0) -> list[Pivot]:
     """Stroke pivots: overlap of three consecutive strokes, then extension.
 
-    ZG and ZD stay fixed at the first three strokes. A later stroke extends
-    the pivot while its price range still meets [ZD, ZG]. The next pivot must
-    sit entirely above or entirely below the previous one.
+    ZG and ZD stay fixed at the first three strokes. An overlap shorter than
+    ``min_height`` is discarded and the search starts one stroke later. A
+    later stroke extends the pivot while its price range still meets
+    [ZD, ZG]. The next pivot must sit entirely above or entirely below the
+    previous one. If no triple qualifies, there is no pivot.
     """
     pivots: list[Pivot] = []
     index = 0
@@ -592,6 +614,9 @@ def find_pivots(strokes: list[Stroke]) -> list[Pivot]:
             index += 1
             continue
         zd, zg = zone
+        if zg - zd < min_height:
+            index += 1
+            continue
         if pivots and _ranges_overlap(zd, zg, pivots[-1]):
             index += 1
             continue
@@ -1065,6 +1090,7 @@ class ChanWindow:
     dropped: list[Fractal]
     strokes: list[Stroke]
     pivots: list[Pivot]
+    volumes: np.ndarray
     profile: tuple[np.ndarray, np.ndarray]
     origin: int
 
@@ -1090,8 +1116,9 @@ def prepare_chan_window(rows: list[dict], *, n: int = 200) -> ChanWindow:
     repaired, events = alternate_fractals(fractals, highs, lows)
     repaired, _endpoint = append_endpoint(repaired, highs, lows)
     strokes = strokes_from_fractals(repaired)
-    pivots = find_pivots(strokes)
     plot_start = len(rows) - plotted
+    _sigma, _mean, threshold = avg_return_threshold(avg[plot_start:])
+    pivots = find_pivots(strokes, min_height=threshold / 2.0)
     visible_slice = slice(plot_start, None)
     return ChanWindow(
         timeline=timeline,
@@ -1109,6 +1136,7 @@ def prepare_chan_window(rows: list[dict], *, n: int = 200) -> ChanWindow:
         ],
         strokes=[item for item in strokes if item.end.index >= plot_start],
         pivots=pivots,
+        volumes=volumes[visible_slice],
         profile=volume_profile(
             highs[visible_slice],
             lows[visible_slice],
