@@ -1054,6 +1054,27 @@ def fetch_stock_code_names(codes: list[str]) -> dict[str, str]:
     return {str(row[0]): str(row[1] or row[0]) for row in rows}
 
 
+def fetch_latest_etf_universe() -> list[tuple[str, str]]:
+    """Latest trading names that look like ETFs (by name, not A-share filter)."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH latest AS (
+                    SELECT MAX(trade_date) AS trade_date
+                    FROM stock_universe_daily
+                )
+                SELECT s.code, s.code_name
+                FROM stock_universe_daily AS s
+                JOIN latest ON s.trade_date = latest.trade_date
+                WHERE s.trade_status = 1
+                  AND s.code_name ILIKE '%%ETF%%'
+                ORDER BY s.code
+                """
+            )
+            return [(str(row[0]), str(row[1] or "")) for row in cur.fetchall()]
+
+
 def fetch_stock_bars_for_codes(
     codes: list[str],
     start: date,

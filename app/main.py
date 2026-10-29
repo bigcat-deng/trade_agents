@@ -5,7 +5,7 @@ from pathlib import Path
 import baostock as bs
 import psycopg
 from fastapi import FastAPI, HTTPException, Path as PathParam, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
@@ -43,6 +43,7 @@ from app.db import (
     fetch_heat_dates_ending,
     fetch_industry_heat_window,
     fetch_rotation_dates,
+    fetch_latest_etf_universe,
     fetch_stock_code_names,
     fetch_trading_dates_ending,
     fetch_latest_trading_stocks,
@@ -55,7 +56,10 @@ from app.interpret.service import (
     UnknownTemplate,
     interpret,
 )
+from app.levels.board_members import rank_board_members
 from app.levels.industry_rank import rank_industry_plans, short_heat_bands, state_label
+from app.market_data.related_etfs import build_related_etf_rows, related_etf_view
+from app.themes.member_wave import build_member_short_heat_payload
 from app.market_data.board_heat import top_short_heat_keys
 from app.market_data.index_ladder import INDICES, align_breadth, fetch_index_ohlcv, load_size_ladder
 from app.market_data.csi500 import (
@@ -101,6 +105,7 @@ from app.themes.heat_rim_regime import (
 from app.themes.heat_seriation import as_float
 from app.themes.board_smooth_range import (
     SMOOTH_RANGE_METRICS,
+    build_concept_smooth_range_panel_payload,
     build_industry_smooth_range_panel_payload,
     kalman_typical_overlay,
 )
@@ -698,17 +703,14 @@ async def fund_wave_panel_api(
     return JSONResponse(payload)
 
 
-@app.api_route(
-    "/boards/concept/themes/wave/industry-smooth-range/api",
-    methods=["GET", "POST"],
-)
-async def industry_smooth_range_api(
+async def _smooth_range_api(
+    *,
     request: Request,
-    days: int = Query(40, ge=20, le=180),
-    as_of: str | None = Query(None),
-    metric: str = Query("level", pattern="^(level|return)$"),
+    board_type: str,
+    days: int,
+    as_of: str | None,
+    metric: str,
 ) -> JSONResponse:
-    """Lazy-load industry Kalman level/return 100d-range plane; POST codes align X."""
     try:
         requested = _parse_optional_day(as_of)
     except ValueError as exc:
@@ -729,8 +731,13 @@ async def industry_smooth_range_api(
             ) from exc
         if not ordered:
             ordered = None
+    builder = (
+        build_concept_smooth_range_panel_payload
+        if board_type == "concept"
+        else build_industry_smooth_range_panel_payload
+    )
     payload = await asyncio.to_thread(
-        build_industry_smooth_range_panel_payload,
+        builder,
         as_of=requested,
         days=days,
         ordered_codes=ordered,
@@ -740,6 +747,46 @@ async def industry_smooth_range_api(
         height=520,
     )
     return JSONResponse(payload)
+
+
+@app.api_route(
+    "/boards/concept/themes/wave/industry-smooth-range/api",
+    methods=["GET", "POST"],
+)
+async def industry_smooth_range_api(
+    request: Request,
+    days: int = Query(40, ge=20, le=180),
+    as_of: str | None = Query(None),
+    metric: str = Query("level", pattern="^(level|return)$"),
+) -> JSONResponse:
+    """Lazy-load industry Kalman level/return 100d-range plane; POST codes align X."""
+    return await _smooth_range_api(
+        request=request,
+        board_type="industry",
+        days=days,
+        as_of=as_of,
+        metric=metric,
+    )
+
+
+@app.api_route(
+    "/boards/concept/themes/wave/concept-smooth-range/api",
+    methods=["GET", "POST"],
+)
+async def concept_smooth_range_api(
+    request: Request,
+    days: int = Query(40, ge=20, le=180),
+    as_of: str | None = Query(None),
+    metric: str = Query("level", pattern="^(level|return)$"),
+) -> JSONResponse:
+    """Lazy-load concept Kalman level/return 100d-range plane; POST codes align X."""
+    return await _smooth_range_api(
+        request=request,
+        board_type="concept",
+        days=days,
+        as_of=as_of,
+        metric=metric,
+    )
 
 
 @app.get("/boards/stocks/heat", response_class=HTMLResponse)
@@ -1505,6 +1552,8 @@ def _concept_short_wave_page_payload(
             "concept_short_html": "",
             "concept_forecast_href": "",
             "concept_fund_chart_url": "",
+            "concept_smooth_range_chart_url": "",
+            "concept_smooth_return_chart_url": "",
             "fund_wave_href": (
                 f"/boards/fund/wave?days={days}&as_of={requested.isoformat()}"
             ),
@@ -1551,6 +1600,8 @@ def _concept_short_wave_page_payload(
             "concept_short_html": "",
             "concept_forecast_href": "",
             "concept_fund_chart_url": "",
+            "concept_smooth_range_chart_url": "",
+            "concept_smooth_return_chart_url": "",
             "fund_wave_href": (
                 f"/boards/fund/wave?days={days}&as_of={selected.isoformat()}"
             ),
@@ -1782,6 +1833,18 @@ def _concept_short_wave_page_payload(
         "concept_forecast_href": concept_forecast_href,
         "concept_fund_chart_url": (
             f"/boards/fund/wave/api/concept?days={days}&as_of={as_of_key}"
+            if concept_board_codes
+            else ""
+        ),
+        "concept_smooth_range_chart_url": (
+            f"/boards/concept/themes/wave/concept-smooth-range/api"
+            f"?days={days}&as_of={as_of_key}&metric=level"
+            if concept_board_codes
+            else ""
+        ),
+        "concept_smooth_return_chart_url": (
+            f"/boards/concept/themes/wave/concept-smooth-range/api"
+            f"?days={days}&as_of={as_of_key}&metric=return"
             if concept_board_codes
             else ""
         ),
@@ -2439,6 +2502,17 @@ def _board_kline_page(
                 " · 结束日向前最多 200 个交易日"
             )
 
+    # Match bare /analyze?code=… (latest tip), not the board chart window.
+    related_etfs = [
+        related_etf_view(row, _analyze_href(row.ths_code))
+        for row in build_related_etf_rows(
+            board_name,
+            fetch_latest_etf_universe(),
+            as_of=date.today(),
+            limit=12,
+        )
+    ]
+
     return templates.TemplateResponse(
         request,
         "board_kline.html",
@@ -2457,6 +2531,11 @@ def _board_kline_page(
             "chan_plan": chan_plan,
             "error": error,
             "wide_chart": True,
+            "members_href": (
+                f"{page['kline_prefix']}/{board_code}/members"
+                f"?end_date={end.isoformat()}"
+            ),
+            "related_etfs": related_etfs,
         },
     )
 
@@ -2683,6 +2762,141 @@ def analyze_page(
     return templates.TemplateResponse(request, "analyze.html", payload)
 
 
+@app.get("/boards/industry/{board_code}/members", response_class=HTMLResponse)
+def industry_members_page(
+    request: Request,
+    board_code: str,
+    end_date: str | None = None,
+) -> HTMLResponse:
+    return _board_members_page(request, "industry", board_code, end_date)
+
+
+@app.get("/boards/concept/{board_code}/members", response_class=HTMLResponse)
+def concept_members_page(
+    request: Request,
+    board_code: str,
+    end_date: str | None = None,
+) -> HTMLResponse:
+    return _board_members_page(request, "concept", board_code, end_date)
+
+
+def _board_members_page(
+    request: Request,
+    board_type: str,
+    board_code: str,
+    end_date: str | None,
+) -> HTMLResponse:
+    page = _ROTATION_PAGES[board_type]
+    board_name = fetch_board_name(board_type, board_code)
+    if board_name is None:
+        raise HTTPException(status_code=404, detail=page["missing_board"])
+    today = date.today()
+    try:
+        as_of = _parse_day(end_date, today) if end_date else today
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="日期格式应为 YYYY-MM-DD") from exc
+    ranked = rank_board_members(board_type, board_code, as_of)
+    heat = build_member_short_heat_payload(
+        board_type=board_type,
+        board_code=board_code,
+        as_of=as_of,
+    )
+    heat_html = ""
+    heat_empty = heat.get("empty_message") or ""
+    heat_axis_note = heat.get("axis_note") or ""
+    heat_board_count = heat.get("board_count") or 0
+    if not heat_empty:
+        heat_html = render_theme_wave_contour(
+            dates=heat["dates"],
+            x=heat["x"],
+            z=heat["z_short"],
+            x_tickvals=heat["x_tickvals"],
+            x_ticktext=heat["x_ticktext"],
+            include_plotlyjs="cdn",
+            height=620,
+            title=f"{board_name} · 成分股短热 · 轨迹聚类叶序",
+            xaxis_title="成分股（共动近 → 相邻）",
+            entity_label="个股",
+            tickangle=-55,
+            return_exceedance=heat.get("return_exceedance"),
+            cross_marks=heat.get("cross_marks"),
+            fractal_marks=heat.get("fractal_marks"),
+            marker_halo=True,
+            csi500_returns=heat.get("csi500_returns"),
+            csi500_volumes=heat.get("csi500_volumes"),
+            csi500_volumes_scaled=heat.get("csi500_volumes_scaled"),
+            show_colorbar=False,
+        )
+        heat_empty = ""
+    return templates.TemplateResponse(
+        request,
+        "board_members.html",
+        {
+            "board_code": board_code,
+            "board_name": board_name,
+            "kind_label": page["kind_label"],
+            "as_of": as_of.isoformat(),
+            "back_href": (
+                f"{page['kline_prefix']}/{board_code}/kline"
+                f"?end_date={as_of.isoformat()}"
+            ),
+            "rows": [_member_row_view(row) for row in ranked],
+            "heat_html": heat_html,
+            "heat_empty": heat_empty,
+            "heat_axis_note": heat_axis_note,
+            "heat_board_count": heat_board_count,
+        },
+    )
+
+
+def _member_row_view(row) -> dict:
+    if row.ratio is not None:
+        ratio_text = f"{row.ratio:.2f} : 1"
+    elif row.note:
+        ratio_text = row.note
+    else:
+        ratio_text = "—"
+    return {
+        "code": row.code,
+        "name": row.name,
+        "analyze_href": _analyze_href(row.code),
+        "close_text": _plan_price(row.close),
+        "yield_text": _percent_text(row.yield_rate),
+        "heat_text": _heat_text(row.heat),
+        "ratio_text": ratio_text,
+    }
+
+
+def _analyze_href(code: str, *, start: date | None = None, end: date | None = None) -> str:
+    """Point at /analyze with the Tonghuashun six-character code."""
+    from urllib.parse import urlencode
+
+    from app.market_data.codes import to_akshare_em
+
+    try:
+        ths = to_akshare_em(code)
+    except ValueError:
+        ths = str(code).split(".")[-1]
+    query: dict[str, str] = {"code": ths}
+    if start is not None:
+        query["start_date"] = start.isoformat()
+    if end is not None:
+        query["end_date"] = end.isoformat()
+    return f"/analyze?{urlencode(query)}"
+
+
+def _percent_text(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value * 100:.2f}%"
+
+
+def _heat_text(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.2f}"
+
+
 @app.get("/boards/industry/{board_code}/kline", response_class=HTMLResponse)
 def board_kline_page(
     request: Request,
@@ -2708,59 +2922,26 @@ def _stock_display_name(code: str) -> str:
     return names.get(code) or code
 
 
-@app.get("/stocks/{code}/kline", response_class=HTMLResponse)
+@app.get("/stocks/{code}/kline")
 def stock_kline_page(
-    request: Request,
     code: str,
     start_date: str | None = None,
     end_date: str | None = None,
-) -> HTMLResponse:
-    stock_name = _stock_display_name(code)
+) -> RedirectResponse:
+    """Old stock K-line URL; send the browser to the analyze page."""
     today = date.today()
-    start = today
-    end = today
-    error = None
+    start = None
+    end = None
     try:
-        if start_date is None and end_date is None:
-            days = fetch_trading_dates_ending("industry", today, 100)
-            if days:
-                start = days[0]
-        else:
-            start = _parse_day(start_date, today)
+        if start_date is not None or end_date is not None:
             end = _parse_day(end_date, today)
-            if start > end:
-                raise RuntimeError("开始日期不能晚于结束日期")
+            start = _parse_day(start_date, end)
     except ValueError:
-        error = "日期格式应为 YYYY-MM-DD"
-    except RuntimeError as exc:
-        error = str(exc)
-
-    chart_html = None
-    summary = None
-    title = f"{stock_name} {code}"
-    if error is None:
-        records = fetch_daily_bars_from_db(code, start, end)
-        if records:
-            chart_html = render_kline(records, title=title, code=code)
-            summary = f"{title} · {len(records)} 根K线 · {start} ~ {end}"
-        else:
-            summary = f"{title} · 所选区间无数据"
-
-    return templates.TemplateResponse(
-        request,
-        "board_kline.html",
-        {
-            "board_code": code,
-            "board_name": stock_name,
-            "kind_label": "个股",
-            "back_href": "/boards/stocks/heat",
-            "form_action": f"/stocks/{code}/kline",
-            "start_date": start.isoformat(),
-            "end_date": end.isoformat(),
-            "chart_html": chart_html,
-            "summary": summary,
-            "error": error,
-        },
+        start = None
+        end = None
+    return RedirectResponse(
+        url=_analyze_href(code, start=start, end=end),
+        status_code=302,
     )
 
 
@@ -2787,10 +2968,7 @@ def stock_kline_embed_api(
             "kind_label": "个股",
             "start_date": start.isoformat(),
             "end_date": end.isoformat(),
-            "kline_href": (
-                f"/stocks/{code}/kline"
-                f"?start_date={start.isoformat()}&end_date={end.isoformat()}"
-            ),
+            "kline_href": _analyze_href(code, start=start, end=end),
             "summary": f"{title} · 所选区间无数据",
             "chart_html": None,
             "error": None,
@@ -2807,10 +2985,7 @@ def stock_kline_embed_api(
         "kind_label": "个股",
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
-        "kline_href": (
-            f"/stocks/{code}/kline"
-            f"?start_date={start.isoformat()}&end_date={end.isoformat()}"
-        ),
+        "kline_href": _analyze_href(code, start=start, end=end),
         "summary": f"{title} · {len(records)} 根K线 · {start} ~ {end}",
         "chart_html": chart_html,
         "error": None,

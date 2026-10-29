@@ -609,6 +609,42 @@
       {% endif %}
     </section>
     {% endif %}
+    {% if concept_smooth_range_chart_url %}
+    <section
+      class="fund-lazy"
+      data-board-pick-group="concept"
+      data-fund-chart-url="{{ concept_smooth_range_chart_url }}"
+      data-chart-order='{{ {"codes": concept_board_codes, "names": concept_board_names} | tojson }}'
+      aria-label="概念平滑价位"
+    >
+      <h3>概念平滑价位 · 卡尔曼 + 100日区间</h3>
+      <p class="meta">典型价经卡尔曼滤波后，落在近100日自身区间的位置；横轴/时间与上方概念短热对齐。进视口后加载。</p>
+      <p class="meta chart-note"></p>
+      <p class="chart-toolbar">
+        <button type="button" class="chart-reload">重载本图</button>
+      </p>
+      <div class="error chart-error" hidden></div>
+      <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
+    </section>
+    {% endif %}
+    {% if concept_smooth_return_chart_url %}
+    <section
+      class="fund-lazy"
+      data-board-pick-group="concept"
+      data-fund-chart-url="{{ concept_smooth_return_chart_url }}"
+      data-chart-order='{{ {"codes": concept_board_codes, "names": concept_board_names} | tojson }}'
+      aria-label="概念平滑收益"
+    >
+      <h3>概念平滑收益 · 卡尔曼日收益 + 100日区间</h3>
+      <p class="meta">卡尔曼典型价的简单日收益，再做近100日自身 min-max；横轴/时间与上方对齐。进视口后加载。</p>
+      <p class="meta chart-note"></p>
+      <p class="chart-toolbar">
+        <button type="button" class="chart-reload">重载本图</button>
+      </p>
+      <div class="error chart-error" hidden></div>
+      <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
+    </section>
+    {% endif %}
     <section class="rim-read" aria-label="概念主线政权">
       <h3>主线政权 · 近 {{ concept_rim.display_days if concept_rim and concept_rim.display_days else 10 }} 日</h3>
       <p class="meta">{{ concept_rim.note if concept_rim else "" }}</p>

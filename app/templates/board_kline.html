@@ -92,6 +92,58 @@
     .chan-block {
       margin-top: 1.5rem;
     }
+    .member-link {
+      display: inline-block;
+      margin-top: 1.25rem;
+      padding: 0.55rem 1.1rem;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      border: 1px solid var(--accent);
+      font-size: 0.95rem;
+    }
+    .member-link:hover { filter: brightness(0.95); }
+    .related-etfs {
+      margin-top: 1.5rem;
+    }
+    .related-etfs h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .related-etfs .hint {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin: 0 0 0.75rem;
+      line-height: 1.5;
+    }
+    .related-etfs table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .related-etfs .table-wrap { overflow-x: auto; }
+    .related-etfs th, .related-etfs td {
+      padding: 0.45rem 0.7rem;
+      text-align: right;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    .related-etfs th:first-child, .related-etfs td:first-child,
+    .related-etfs th:nth-child(2), .related-etfs td:nth-child(2),
+    .related-etfs th:last-child, .related-etfs td:last-child {
+      text-align: left;
+    }
+    .related-etfs th { color: var(--muted); font-weight: 500; }
+    .related-etfs td.match { color: var(--muted); font-size: 0.88rem; }
+    .related-etfs a.etf {
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px dotted var(--line);
+    }
+    .related-etfs a.etf:hover { color: var(--accent); border-color: var(--accent); }
+    .related-etfs .empty { color: var(--muted); margin: 0.25rem 0 0; }
     .plan-values {
       display: flex;
       flex-wrap: wrap;
@@ -102,6 +154,7 @@
     .plan-values .target { color: #b91c1c; }
     .plan-values .buy { color: #2563eb; }
     .plan-values .stop { color: #15803d; }
+    .plan-values .close,
     .plan-values .yield,
     .plan-values .loss { color: var(--ink); }
     .error {
@@ -151,12 +204,64 @@
           <span class="target">目标 {{ chan_plan.target }}</span>
           <span class="buy">买点 {{ chan_plan.buy }}</span>
           <span class="stop">止损 {{ chan_plan.stop }}</span>
+          <span class="close">收盘 {{ chan_plan.close }}</span>
           <span class="yield">收益率 {{ chan_plan.yield_rate }}</span>
           <span class="loss">损失率 {{ chan_plan.loss_rate }}</span>
         </p>
         {% endif %}
       </section>
     {% endif %}
+    {% if members_href %}
+    <a class="member-link" href="{{ members_href }}">成分股列表</a>
+    {% endif %}
+
+    <section class="related-etfs">
+      <h2>相关 ETF</h2>
+      <p class="hint">
+        按名称/别名匹配后，只保留同花顺能取到日K的标的；数值对齐裸开分析页（最新交易日）。
+        表按当前收益率从高到低排。规模≈基金份额×收盘（亿元，约估）；
+        当前收益率为相对昨收；收益∶损失为缠论目标收益对止损损失，写成 x : 1。
+        非官方映射。
+      </p>
+      {% if related_etfs %}
+      <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>代码</th>
+            <th>规模</th>
+            <th>开</th>
+            <th>高</th>
+            <th>低</th>
+            <th>收</th>
+            <th>当前收益率</th>
+            <th>收益∶损失</th>
+            <th>命中词</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in related_etfs %}
+          <tr>
+            <td><a class="etf" href="{{ row.analyze_href }}">{{ row.name }}</a></td>
+            <td>{{ row.code }}</td>
+            <td>{{ row.scale_text }}</td>
+            <td>{{ row.open_text }}</td>
+            <td>{{ row.high_text }}</td>
+            <td>{{ row.low_text }}</td>
+            <td>{{ row.close_text }}</td>
+            <td>{{ row.yield_text }}</td>
+            <td>{{ row.chan_ratio_text }}</td>
+            <td class="match">{{ row.matched }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="empty">暂无同花顺可图表的相关 ETF。</p>
+      {% endif %}
+    </section>
   </main>
 </body>
 </html>

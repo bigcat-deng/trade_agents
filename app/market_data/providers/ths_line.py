@@ -52,27 +52,46 @@ def line_symbol(code: str) -> str:
     return f"hs_{normalize_ths_code(code)}"
 
 
-def fetch_ths_daily_bars(code: str, start: date, end: date) -> list[dict]:
-    """Unadjusted daily bars from ``start`` through ``end``, ordered by date."""
+def fetch_ths_daily_bars(
+    code: str,
+    start: date,
+    end: date,
+    *,
+    attempts: int = 3,
+) -> list[dict]:
+    """Unadjusted daily bars from ``start`` through ``end``, ordered by date.
+
+    Tonghuashun occasionally returns an empty body on a cold cookie; retry a
+    few times before treating the code as missing.
+    """
+    global _COOKIE
     if start > end:
         raise ValueError("开始日期不能晚于结束日期")
-    symbol = line_symbol(code)
-    cookie = _ths_cookie()
-    rows: list[dict] = []
-    for year in range(start.year, end.year + 1):
-        rows.extend(_fetch_year(symbol, year, cookie))
-    kept = [row for row in rows if start <= row["trade_date"] <= end]
-    kept.sort(key=lambda row: row["trade_date"])
-    deduped: list[dict] = []
-    seen: set[date] = set()
-    for row in kept:
-        if row["trade_date"] in seen:
-            continue
-        seen.add(row["trade_date"])
-        deduped.append(row)
-    if not deduped:
-        raise RuntimeError("同花顺没有这个代码的日K")
-    return deduped
+    last_error: RuntimeError | None = None
+    for attempt in range(max(1, attempts)):
+        symbol = line_symbol(code)
+        cookie = _ths_cookie()
+        rows: list[dict] = []
+        for year in range(start.year, end.year + 1):
+            rows.extend(_fetch_year(symbol, year, cookie))
+        kept = [row for row in rows if start <= row["trade_date"] <= end]
+        kept.sort(key=lambda row: row["trade_date"])
+        deduped: list[dict] = []
+        seen: set[date] = set()
+        for row in kept:
+            if row["trade_date"] in seen:
+                continue
+            seen.add(row["trade_date"])
+            deduped.append(row)
+        if deduped:
+            return deduped
+        last_error = RuntimeError("同花顺没有这个代码的日K")
+        if attempt + 1 < max(1, attempts):
+            time.sleep(0.2 * (attempt + 1))
+            # Force a fresh cookie on the next try.
+            with _COOKIE_LOCK:
+                _COOKIE = None
+    raise last_error or RuntimeError("同花顺没有这个代码的日K")
 
 
 def _ths_cookie() -> str:

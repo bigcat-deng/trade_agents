@@ -79,6 +79,7 @@ class TargetStopPlanTests(unittest.TestCase):
                 "target": "130.00",
                 "buy": "110.00",
                 "stop": "100.00",
+                "close": "120.00",
                 "yield_rate": "8.33%",
                 "loss_rate": "16.67%",
             },

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ board_name }} 成分股</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back { color: var(--muted); text-decoration: none; font-size: 0.92rem; }
+    h1 { margin: 0.6rem 0 0.35rem; font-size: 1.75rem; letter-spacing: -0.02em; }
+    .meta { color: var(--muted); margin: 0 0 1rem; line-height: 1.55; }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    th, td {
+      padding: 0.45rem 0.7rem;
+      text-align: right;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th { color: var(--muted); font-weight: 500; }
+    a.stock { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--line); }
+    a.stock:hover { color: #1d4ed8; border-color: #1d4ed8; }
+    .empty { color: var(--muted); margin: 1rem 0; }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.5rem 0.65rem 0.75rem;
+      margin: 0 0 1.25rem;
+      overflow-x: auto;
+    }
+    main.wide { max-width: 1480px; }
+  </style>
+</head>
+<body>
+  <main class="{% if heat_html %}wide{% endif %}">
+    <a class="back" href="{{ back_href }}">← {{ board_name }} K线</a>
+    <h1>{{ board_name }} · 成分股</h1>
+    <p class="meta">
+      {{ board_code }} · {{ kind_label }} · 截止 {{ as_of }} · 共 {{ rows|length }} 只。
+      热度只在本板块成分股集合内计算短热（数值越小越热），表按热度从热到冷排列。
+      收益率与收益∶损失来自各股缠论关键线的目标与止损；收盘为截止日 close。
+    </p>
+    {% if heat_html %}
+    <p class="meta">{{ heat_axis_note }} 共 {{ heat_board_count }} 只成分股。</p>
+    <div class="panel" id="member-heat-chart">{{ heat_html | safe }}</div>
+    {% elif heat_empty %}
+    <p class="empty">{{ heat_empty }}</p>
+    {% endif %}
+    {% if not rows %}
+    <p class="empty">没有成分股数据。</p>
+    {% else %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>代码</th>
+            <th>收盘</th>
+            <th>收益率</th>
+            <th>热度</th>
+            <th>收益∶损失</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td><a class="stock" href="{{ row.analyze_href }}">{{ row.name }}</a></td>
+            <td>{{ row.code }}</td>
+            <td>{{ row.close_text }}</td>
+            <td>{{ row.yield_text }}</td>
+            <td>{{ row.heat_text }}</td>
+            <td>{{ row.ratio_text }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </main>
+</body>
+</html>

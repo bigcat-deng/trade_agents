@@ -86,6 +86,7 @@
     .plan-values .target { color: #b91c1c; }
     .plan-values .buy { color: #2563eb; }
     .plan-values .stop { color: #15803d; }
+    .plan-values .close,
     .plan-values .yield,
     .plan-values .loss { color: var(--ink); }
     .error { color: #b91c1c; margin: 0.75rem 0; }
@@ -140,6 +141,7 @@
           <span class="target">目标 {{ chan_plan.target }}</span>
           <span class="buy">买点 {{ chan_plan.buy }}</span>
           <span class="stop">止损 {{ chan_plan.stop }}</span>
+          <span class="close">收盘 {{ chan_plan.close }}</span>
           <span class="yield">收益率 {{ chan_plan.yield_rate }}</span>
           <span class="loss">损失率 {{ chan_plan.loss_rate }}</span>
         </p>

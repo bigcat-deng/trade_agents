@@ -1,4 +1,4 @@
-"""Industry smooth-range plane: typical price → Kalman → 100d min-max."""
+"""Board smooth-range plane: typical price → Kalman → 100d min-max."""
 
 from __future__ import annotations
 
@@ -26,22 +26,44 @@ KALMAN_Q = 1e-5
 KALMAN_R = 1e-3
 
 SMOOTH_RANGE_METRICS = frozenset({"level", "return"})
+SMOOTH_RANGE_BOARD_TYPES = frozenset({"industry", "concept"})
 
-SMOOTH_RANGE_AXIS_NOTE = (
-    "横轴：与上方行业短热同一叶序；"
-    "颜色为典型价 avg=(C+H+L)/3 经卡尔曼滤波后，"
-    f"在近{SMOOTH_RANGE_NORM_DAYS}个交易日自身区间的 min-max 位置"
-    "（越高=平滑价越靠近自身近窗上沿）；进深为时间；"
-    "末日前方红字=截止日区间位置最高的行业名。"
-)
 
-SMOOTH_RETURN_AXIS_NOTE = (
-    "横轴：与上方行业短热/平滑价位同一叶序；"
-    "颜色为卡尔曼典型价的简单日收益"
-    f"（r=k_t/k_{{t-1}}-1）在近{SMOOTH_RANGE_NORM_DAYS}个交易日自身区间的 min-max 位置"
-    "（越高=收益相对自身近窗越高）；进深为时间；"
-    "末日前方红字=截止日收益区间位置最高的行业名。"
-)
+def _entity_label(board_type: str) -> str:
+    return "概念" if board_type == "concept" else "行业"
+
+
+def _heat_label(board_type: str) -> str:
+    return "概念短热" if board_type == "concept" else "行业短热"
+
+
+def smooth_range_axis_note(board_type: str = "industry") -> str:
+    entity = _entity_label(board_type)
+    heat = _heat_label(board_type)
+    return (
+        f"横轴：与上方{heat}同一叶序；"
+        "颜色为典型价 avg=(C+H+L)/3 经卡尔曼滤波后，"
+        f"在近{SMOOTH_RANGE_NORM_DAYS}个交易日自身区间的 min-max 位置"
+        f"（越高=平滑价越靠近自身近窗上沿）；进深为时间；"
+        f"末日前方红字=截止日区间位置最高的{entity}名。"
+    )
+
+
+def smooth_return_axis_note(board_type: str = "industry") -> str:
+    entity = _entity_label(board_type)
+    heat = _heat_label(board_type)
+    return (
+        f"横轴：与上方{heat}/平滑价位同一叶序；"
+        "颜色为卡尔曼典型价的简单日收益"
+        f"（r=k_t/k_{{t-1}}-1）在近{SMOOTH_RANGE_NORM_DAYS}个交易日自身区间的 min-max 位置"
+        f"（越高=收益相对自身近窗越高）；进深为时间；"
+        f"末日前方红字=截止日收益区间位置最高的{entity}名。"
+    )
+
+
+# Backward-compatible aliases (industry wording).
+SMOOTH_RANGE_AXIS_NOTE = smooth_range_axis_note("industry")
+SMOOTH_RETURN_AXIS_NOTE = smooth_return_axis_note("industry")
 
 
 def kalman_typical_overlay(
@@ -198,13 +220,20 @@ def build_industry_smooth_range_plane(
     kalman_q: float = KALMAN_Q,
     kalman_r: float = KALMAN_R,
     metric: str = "level",
+    board_type: str = "industry",
 ) -> dict[str, Any]:
     """Grid of Kalman level or Kalman simple-return, each 100d self min-max."""
     metric_key = str(metric or "level").strip().lower()
     if metric_key not in SMOOTH_RANGE_METRICS:
         metric_key = "level"
+    kind = str(board_type or "industry").strip().lower()
+    if kind not in SMOOTH_RANGE_BOARD_TYPES:
+        kind = "industry"
+    entity = _entity_label(kind)
     axis_note = (
-        SMOOTH_RETURN_AXIS_NOTE if metric_key == "return" else SMOOTH_RANGE_AXIS_NOTE
+        smooth_return_axis_note(kind)
+        if metric_key == "return"
+        else smooth_range_axis_note(kind)
     )
     empty = {
         "dates": [],
@@ -219,11 +248,12 @@ def build_industry_smooth_range_plane(
         "board_count": 0,
         "densify": densify,
         "metric": metric_key,
+        "board_type": kind,
         "tip_labels": {"x": [], "y": [], "text": [], "color": "#dc2626"},
         "empty_message": (
-            "没有可绘制的行业平滑收益窗口"
+            f"没有可绘制的{entity}平滑收益窗口"
             if metric_key == "return"
-            else "没有可绘制的行业平滑价位窗口"
+            else f"没有可绘制的{entity}平滑价位窗口"
         ),
     }
     if not window_dates or not ordered_codes or not history_dates:
@@ -284,13 +314,15 @@ def build_industry_smooth_range_plane(
         "board_count": len(ordered_codes),
         "densify": densify,
         "metric": metric_key,
+        "board_type": kind,
         "tip_labels": tip_labels,
         "empty_message": None,
     }
 
 
-def build_industry_smooth_range_panel_payload(
+def build_board_smooth_range_panel_payload(
     *,
+    board_type: str = "industry",
     as_of: date | None,
     days: int = 40,
     ordered_codes: list[str] | None = None,
@@ -299,14 +331,20 @@ def build_industry_smooth_range_panel_payload(
     include_plotlyjs: bool = False,
     height: int = 520,
 ) -> dict[str, Any]:
-    """JSON panel for theme-wave lazy embed (level or return metric)."""
+    """JSON panel for theme-wave / concept-short lazy embed (level or return)."""
     from app.charts.theme_wave import render_theme_wave_contour
 
+    kind = str(board_type or "industry").strip().lower()
+    if kind not in SMOOTH_RANGE_BOARD_TYPES:
+        kind = "industry"
+    entity = _entity_label(kind)
     metric_key = str(metric or "level").strip().lower()
     if metric_key not in SMOOTH_RANGE_METRICS:
         metric_key = "level"
     default_note = (
-        SMOOTH_RETURN_AXIS_NOTE if metric_key == "return" else SMOOTH_RANGE_AXIS_NOTE
+        smooth_return_axis_note(kind)
+        if metric_key == "return"
+        else smooth_range_axis_note(kind)
     )
     requested = as_of or date.today()
     frozen = [str(c) for c in (ordered_codes or []) if c]
@@ -322,34 +360,35 @@ def build_industry_smooth_range_panel_payload(
         "heat_aligned": bool(frozen),
         "board_codes": frozen,
         "metric": metric_key,
+        "board_type": kind,
     }
-    tip_days = fetch_heat_dates_ending("industry", requested, 1)
+    tip_days = fetch_heat_dates_ending(kind, requested, 1)
     if not tip_days:
-        tip_days = fetch_board_bar_dates_ending("industry", requested, 1)
+        tip_days = fetch_board_bar_dates_ending(kind, requested, 1)
     if not tip_days:
-        out["error"] = "没有可用的行业截止日。"
+        out["error"] = f"没有可用的{entity}截止日。"
         return out
     tip = tip_days[-1]
-    window = fetch_heat_dates_ending("industry", tip, days)
+    window = fetch_heat_dates_ending(kind, tip, days)
     if len(window) < 5:
-        window = fetch_board_bar_dates_ending("industry", tip, days)
+        window = fetch_board_bar_dates_ending(kind, tip, days)
     if len(window) < 5:
-        out["error"] = "行业历史不足，无法绘制平滑图。"
+        out["error"] = f"{entity}历史不足，无法绘制平滑图。"
         return out
     if not frozen:
-        out["error"] = "需要热度叶序 codes 才能与上方行业图对齐。"
+        out["error"] = f"需要热度叶序 codes 才能与上方{entity}图对齐。"
         return out
 
     need = len(window) + SMOOTH_RANGE_NORM_DAYS + 20
-    history = fetch_heat_dates_ending("industry", tip, need)
+    history = fetch_heat_dates_ending(kind, tip, need)
     if len(history) < SMOOTH_RANGE_MIN_PERIODS + 5:
-        history = fetch_board_bar_dates_ending("industry", tip, need)
+        history = fetch_board_bar_dates_ending(kind, tip, need)
     if not history:
         history = list(window)
     # Ensure window days present.
     history = sorted(set(history) | set(window))
 
-    bars = fetch_board_daily_bars_many("industry", frozen, history[0], tip)
+    bars = fetch_board_daily_bars_many(kind, frozen, history[0], tip)
     name_list = list(names or [])
     name_map = {
         code: (name_list[i] if i < len(name_list) and name_list[i] else code)
@@ -362,6 +401,7 @@ def build_industry_smooth_range_panel_payload(
         names=name_map,
         bars_by_code=bars,
         metric=metric_key,
+        board_type=kind,
     )
     if plane.get("empty_message"):
         out["error"] = str(plane["empty_message"])
@@ -372,9 +412,9 @@ def build_industry_smooth_range_panel_payload(
     out["note"] = str(plane.get("axis_note") or default_note)
     out["board_codes"] = list(plane.get("board_codes") or frozen)
     if metric_key == "return":
-        title = "行业平滑收益 · 卡尔曼日收益 + 100日区间"
+        title = f"{entity}平滑收益 · 卡尔曼日收益 + 100日区间"
     else:
-        title = "行业平滑价位 · 卡尔曼 + 100日区间"
+        title = f"{entity}平滑价位 · 卡尔曼 + 100日区间"
     out["html"] = render_theme_wave_contour(
         dates=plane["dates"],
         x=plane["x"],
@@ -384,10 +424,56 @@ def build_industry_smooth_range_panel_payload(
         include_plotlyjs=include_plotlyjs,
         height=height,
         title=title,
-        xaxis_title="行业（与热度叶序对齐）",
-        entity_label="行业",
+        xaxis_title=f"{entity}（与热度叶序对齐）",
+        entity_label=entity,
         tickangle=-45,
         tip_labels=plane.get("tip_labels"),
         show_colorbar=False,
     )
     return out
+
+
+def build_industry_smooth_range_panel_payload(
+    *,
+    as_of: date | None,
+    days: int = 40,
+    ordered_codes: list[str] | None = None,
+    names: list[str] | None = None,
+    metric: str = "level",
+    include_plotlyjs: bool = False,
+    height: int = 520,
+) -> dict[str, Any]:
+    """JSON panel for theme-wave industry lazy embed (level or return metric)."""
+    return build_board_smooth_range_panel_payload(
+        board_type="industry",
+        as_of=as_of,
+        days=days,
+        ordered_codes=ordered_codes,
+        names=names,
+        metric=metric,
+        include_plotlyjs=include_plotlyjs,
+        height=height,
+    )
+
+
+def build_concept_smooth_range_panel_payload(
+    *,
+    as_of: date | None,
+    days: int = 40,
+    ordered_codes: list[str] | None = None,
+    names: list[str] | None = None,
+    metric: str = "level",
+    include_plotlyjs: bool = False,
+    height: int = 520,
+) -> dict[str, Any]:
+    """JSON panel for concept-short lazy embed (level or return metric)."""
+    return build_board_smooth_range_panel_payload(
+        board_type="concept",
+        as_of=as_of,
+        days=days,
+        ordered_codes=ordered_codes,
+        names=names,
+        metric=metric,
+        include_plotlyjs=include_plotlyjs,
+        height=height,
+    )

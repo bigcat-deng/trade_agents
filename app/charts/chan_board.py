@@ -10,7 +10,7 @@ under the pointer. The offline probe still writes the same figure as a PNG.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Mapping, Sequence
 
 import plotly.graph_objects as go
@@ -107,7 +107,7 @@ def build_chan_figure(window, *, title: str, plan_lines: bool = False):
         shared_yaxes=True,
         column_widths=[0.81, 0.19],
         row_heights=[0.76, 0.24],
-        horizontal_spacing=0.02,
+        horizontal_spacing=0.03,
         vertical_spacing=0.03,
         specs=[[{}, {}], [{}, None]],
     )
@@ -135,9 +135,10 @@ def build_chan_figure(window, *, title: str, plan_lines: bool = False):
     )
     figure.update_yaxes(showticklabels=False, row=1, col=2)
     figure.update_yaxes(title_text="成交量", exponentformat="e", row=2, col=1)
+    x_range = _xaxis_range(dates)
     figure.update_xaxes(
         rangeslider_visible=False,
-        range=[dates[0], dates[-1]],
+        range=x_range,
         showticklabels=False,
         showspikes=True,
         spikemode="across",
@@ -150,7 +151,7 @@ def build_chan_figure(window, *, title: str, plan_lines: bool = False):
     figure.update_xaxes(
         rangeslider_visible=False,
         tickformat="%Y-%m-%d",
-        range=[dates[0], dates[-1]],
+        range=x_range,
         row=2,
         col=1,
     )
@@ -216,6 +217,20 @@ def build_chan_figure(window, *, title: str, plan_lines: bool = False):
         font=dict(size=13, family=_FONT),
     )
     return figure, _plan_caption(plan)
+
+
+def _xaxis_range(dates: Sequence[date]) -> list[datetime]:
+    """Leave half a bar on each side so the first and last candles stay whole."""
+    if not dates:
+        return []
+    if len(dates) == 1:
+        pad = timedelta(days=2)
+    else:
+        step = (dates[-1] - dates[0]).days / (len(dates) - 1)
+        pad = timedelta(days=max(step * 1.5, 1.5))
+    start = datetime.combine(dates[0], time.min) - pad
+    end = datetime.combine(dates[-1], time.min) + pad
+    return [start, end]
 
 
 def _day(window, index: int):
@@ -462,6 +477,7 @@ def _plan_caption(plan) -> dict | None:
         "target": f"{plan.target:.2f}",
         "buy": f"{plan.buy:.2f}",
         "stop": f"{plan.stop:.2f}",
+        "close": f"{close:.2f}",
         "yield_rate": _percent((plan.target - close) / close) if close else "—",
         "loss_rate": _percent((close - plan.stop) / close) if close else "—",
     }

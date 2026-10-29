@@ -11,6 +11,7 @@ from app.themes.board_smooth_range import (
     kalman_typical_overlay,
     rolling_minmax_norm,
     simple_returns,
+    smooth_range_axis_note,
     typical_price,
 )
 
@@ -96,6 +97,19 @@ class BoardSmoothRangeTests(unittest.TestCase):
         self.assertIsNone(plane.get("empty_message"))
         self.assertEqual(plane.get("metric"), "return")
         self.assertIn("简单日收益", plane["axis_note"])
+
+    def test_concept_axis_note_wording(self) -> None:
+        note = smooth_range_axis_note("concept")
+        self.assertIn("概念短热", note)
+        self.assertIn("概念名", note)
+        plane = build_industry_smooth_range_plane(
+            window_dates=[],
+            history_dates=[],
+            ordered_codes=[],
+            bars_by_code={},
+            board_type="concept",
+        )
+        self.assertIn("概念平滑价位", plane["empty_message"] or "")
 
     def test_kalman_overlay_respects_display_window(self) -> None:
         start = date(2026, 8, 1)
