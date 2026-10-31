@@ -19,6 +19,8 @@ JOB_IDS = (
     "board_daily_bars",
     "board_heat",
     "board_constituents",
+    "news_daily",
+    "news_flash",
 )
 
 # Jobs that take an explicit --day snapshot date.
@@ -31,6 +33,8 @@ JOB_LABELS: dict[str, str] = {
     "board_daily_bars": "板块日 K",
     "board_heat": "板块热度",
     "board_constituents": "板块成分",
+    "news_daily": "新闻快照",
+    "news_flash": "新闻快讯",
 }
 
 
@@ -124,6 +128,10 @@ def _build_command(
         if resume:
             cmd.append("--resume")
         return cmd
+    if job_id == "news_daily":
+        return [py, "-m", "app.jobs.sync_news_daily"]
+    if job_id == "news_flash":
+        return [py, "-m", "app.jobs.sync_news_flash"]
     raise ValueError(f"unknown job_id: {job_id}")
 
 

@@ -246,13 +246,22 @@ Use `--limit 5` for a trial, `--resume` if a run was interrupted.
 
 ### 5. Cron (weekday example)
 
-Evening market update (board K → heat → stock K), weekdays 21:00 Asia/Shanghai:
+Evening market update (board K → heat → stock K → news snapshot), weekdays 21:00 Asia/Shanghai:
 
 ```cron
 0 21 * * 1-5 /home/YOU/trade_agents/scripts/evening_market_sync.sh
 ```
 
 The script logs to `logs/evening_market_sync.log` and skips if a previous run is still locked.
+
+News flashes (CLS 重点 and Tonghuashun) are a separate append job. Run it on weekdays from 08:00 through 23:00, every 10 minutes. Do not put it inside the evening snapshot.
+
+```cron
+*/10 8-22 * * 1-5 /home/YOU/trade_agents/scripts/news_flash_sync.sh
+0 23 * * 1-5 /home/YOU/trade_agents/scripts/news_flash_sync.sh
+```
+
+The script logs to `logs/news_flash_sync.log`. A run only inserts rows that are not already stored.
 
 Optional earlier jobs (universe / constituents), adjust path and times:
 

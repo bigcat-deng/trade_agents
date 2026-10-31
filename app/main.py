@@ -67,6 +67,7 @@ from app.market_data.csi500 import (
     fetch_csi500_closes,
 )
 from app.market_data.providers import baostock_kline
+from app.news_board import fetch_news_board
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
 from app.themes import build_theme_view, get_theme, list_themes
@@ -387,6 +388,22 @@ def _breadth_context(date_strings: list[str]) -> dict:
 @app.get("/sync", response_class=HTMLResponse)
 def sync_dashboard_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "sync_dashboard.html", {})
+
+
+@app.get("/news", response_class=HTMLResponse)
+def news_board_page(
+    request: Request,
+    day: str | None = Query(default=None),
+) -> HTMLResponse:
+    try:
+        selected = _parse_optional_day(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return templates.TemplateResponse(
+        request,
+        "news_board.html",
+        {"board": fetch_news_board(selected)},
+    )
 
 
 @app.get("/api/sync/status")

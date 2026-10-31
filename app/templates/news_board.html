@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新闻入库</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+      --ok: #166534;
+      --warn: #9a3412;
+      --idle: #57534e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    .nav { margin-bottom: 1rem; font-size: 0.92rem; }
+    .nav a { color: var(--muted); text-decoration: none; }
+    .nav a:hover { color: var(--ink); }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      margin: 1.75rem 0 0.7rem;
+      font-size: 1.15rem;
+    }
+    .meta { color: var(--muted); margin: 0 0 1.25rem; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.7rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.8rem 0.9rem;
+    }
+    .card h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+    .badge {
+      display: inline-block;
+      padding: 0.05rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge.ok { background: #dcfce7; color: var(--ok); }
+    .badge.error, .badge.pending { background: #ffedd5; color: var(--warn); }
+    .badge.idle { background: #f5f5f4; color: var(--idle); }
+    .card p { margin: 0.2rem 0; color: var(--muted); font-size: 0.84rem; }
+    .card .err { color: var(--warn); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.7rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      font-weight: 600;
+      color: var(--muted);
+      background: #fafaf9;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr.selected td { background: #f5f5f4; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    a { color: inherit; }
+    a.day { text-decoration: none; font-weight: 600; }
+    a.day:hover { text-decoration: underline; }
+    code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.84em; }
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem;
+    }
+    .note {
+      margin: 0.6rem 0 0;
+      padding: 0.7rem 0.85rem;
+      background: #ffedd5;
+      color: var(--warn);
+      font-size: 0.9rem;
+    }
+    details {
+      background: var(--card);
+      border: 1px solid var(--line);
+      margin-bottom: 0.45rem;
+    }
+    summary {
+      cursor: pointer;
+      padding: 0.6rem 0.8rem;
+      font-weight: 600;
+    }
+    details .body { padding: 0 0.8rem 0.7rem; }
+    details p { margin: 0.35rem 0 0.7rem; line-height: 1.5; }
+    .scroll { overflow-x: auto; max-width: 100%; }
+    .empty {
+      padding: 0.9rem 1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .flash {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.75rem 0.9rem;
+      margin-bottom: 0.45rem;
+    }
+    .flash h3 {
+      margin: 0.15rem 0 0.3rem;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .flash h3 a { text-decoration: none; }
+    .flash h3 a:hover { text-decoration: underline; }
+    .flash p { margin: 0; line-height: 1.5; }
+    .flash .when { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.15rem; }
+    @media (max-width: 800px) {
+      .split { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="nav"><a href="/">← 总索引</a> · <a href="/sync">同步看板</a></div>
+    <h1>新闻入库</h1>
+    <p class="meta">
+      {% if board.selected %}当前查看 {{ board.selected }}{% else %}还没有入库日期{% endif %}
+    </p>
+
+    <section class="cards">
+      {% for card in board.cards %}
+        <article class="card">
+          <h3>{{ card.title }} <span class="badge {{ card.status }}">{{ card.status_label }}</span></h3>
+          {% if card.idle %}
+            <p>快讯轮询还没开始</p>
+          {% else %}
+            <p>快照日 {{ card.snapshot_date or "—" }}{% if card.snapshot_rows is not none %} · 表内 {{ card.snapshot_rows }} 行{% endif %}</p>
+            <p>区间 {{ card.range_start or "—" }} ~ {{ card.range_end or "—" }}</p>
+            <p>最后写入 {{ card.updated_at or "—" }}</p>
+            {% if card.mismatch %}<p class="err">{{ card.mismatch }}</p>{% endif %}
+            {% if card.error %}<p class="err">{{ card.error }}</p>{% endif %}
+          {% endif %}
+        </article>
+      {% endfor %}
+    </section>
+
+    <h2>最新快讯</h2>
+    {% if board.latest_flashes %}
+      {% for item in board.latest_flashes %}
+        <article class="flash">
+          <p class="when">{{ item.source_label }} · {{ item.published_at or "—" }}</p>
+          <h3>
+            {% if item.url %}
+              <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+            {% else %}
+              {{ item.title }}
+            {% endif %}
+          </h3>
+          {% if item.content %}<p>{{ item.content }}</p>{% endif %}
+        </article>
+      {% endfor %}
+    {% else %}
+      <p class="empty">还没有快讯。</p>
+    {% endif %}
+
+    <h2>按日</h2>
+    {% if board.days %}
+      <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            {% for title in board.feeds %}
+              <th class="num">{{ title }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in board.days %}
+            <tr class="{{ 'selected' if row.selected else '' }}">
+              <td><a class="day" href="/news?day={{ row.day }}">{{ row.day }}</a></td>
+              {% for count in row.counts %}
+                <td class="num">{{ count if count is not none else "—" }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="empty">还没有按日落下的数据。</p>
+    {% endif %}
+
+    {% if board.selected %}
+      {% for note in board.notes %}
+        <p class="note">{{ note }}</p>
+      {% endfor %}
+
+      <h2>千股千评</h2>
+      {% if board.detail.comment.count %}
+        <p class="meta">
+          {{ board.detail.comment.count }} 行。
+          关注指数 {{ board.detail.comment.focus_min }} / {{ board.detail.comment.focus_mid }} / {{ board.detail.comment.focus_max }}
+          （最小 / 中位 / 最大）。
+          综合得分 {{ board.detail.comment.score_min }} / {{ board.detail.comment.score_mid }} / {{ board.detail.comment.score_max }}。
+        </p>
+        <div class="split">
+          <table>
+            <thead>
+              <tr><th>关注最高</th><th>代码</th><th class="num">关注</th><th class="num">得分</th><th class="num">排名</th></tr>
+            </thead>
+            <tbody>
+              {% for row in board.detail.comment.focus_top %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td><code>{{ row.code }}</code></td>
+                  <td class="num">{{ row.focus }}</td>
+                  <td class="num">{{ row.score or "—" }}</td>
+                  <td class="num">{{ row.rank_no if row.rank_no is not none else "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <table>
+            <thead>
+              <tr><th>排名上升</th><th>代码</th><th class="num">变化</th><th class="num">目前</th><th class="num">关注</th></tr>
+            </thead>
+            <tbody>
+              {% for row in board.detail.comment.rise_top %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td><code>{{ row.code }}</code></td>
+                  <td class="num">{{ row.rank_change }}</td>
+                  <td class="num">{{ row.rank_no if row.rank_no is not none else "—" }}</td>
+                  <td class="num">{{ row.focus or "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="empty">这一天没有千股千评。</p>
+      {% endif %}
+
+      <h2>人气榜</h2>
+      {% if board.detail.rank %}
+        <div class="scroll">
+        <table>
+          <thead>
+            <tr><th class="num">名次</th><th>代码</th><th>名称</th><th class="num">涨跌幅</th></tr>
+          </thead>
+          <tbody>
+            {% for row in board.detail.rank %}
+              <tr>
+                <td class="num">{{ row.rank_no if row.rank_no is not none else "—" }}</td>
+                <td><code>{{ row.code }}</code></td>
+                <td>{{ row.name }}</td>
+                <td class="num">{{ row.pct_chg or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p class="empty">这一天没有人气榜。</p>
+      {% endif %}
+
+      <h2>飙升榜</h2>
+      {% if board.detail.surge %}
+        <div class="scroll">
+        <table>
+          <thead>
+            <tr><th class="num">名次</th><th>代码</th><th>名称</th><th class="num">涨跌幅</th><th class="num">排名变化</th></tr>
+          </thead>
+          <tbody>
+            {% for row in board.detail.surge %}
+              <tr>
+                <td class="num">{{ row.rank_no if row.rank_no is not none else "—" }}</td>
+                <td><code>{{ row.code }}</code></td>
+                <td>{{ row.name }}</td>
+                <td class="num">{{ row.pct_chg or "—" }}</td>
+                <td class="num">{{ row.rank_change or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p class="empty">这一天没有飙升榜。</p>
+      {% endif %}
+
+      <h2>微博</h2>
+      {% if board.detail.weibo %}
+        <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>名称</th><th>代码</th><th class="num">人气</th></tr>
+          </thead>
+          <tbody>
+            {% for row in board.detail.weibo %}
+              <tr>
+                <td>{{ row.name }}</td>
+                <td>{% if row.code %}<code>{{ row.code }}</code>{% else %}—{% endif %}</td>
+                <td class="num">{{ row.rate or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p class="empty">这一天没有微博舆情。</p>
+      {% endif %}
+
+      <h2>公告</h2>
+      {% for group in board.detail.notices %}
+        <details>
+          <summary>{{ group.type }} {{ group.count }}</summary>
+          {% if group["items"] %}
+            <div class="body">
+              <table>
+                <thead>
+                  <tr><th>代码</th><th>名称</th><th>标题</th></tr>
+                </thead>
+                <tbody>
+                  {% for item in group["items"] %}
+                    <tr>
+                      <td><code>{{ item.code }}</code></td>
+                      <td>{{ item.name }}</td>
+                      <td>
+                        {% if item.url %}
+                          <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+                        {% else %}
+                          {{ item.title }}
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </details>
+      {% endfor %}
+
+      <h2>联播</h2>
+      {% if board.detail.cctv %}
+        {% for item in board.detail.cctv %}
+          <details>
+            <summary>{{ item.title }}</summary>
+            <div class="body"><p>{{ item.content }}</p></div>
+          </details>
+        {% endfor %}
+      {% else %}
+        <p class="empty">这一天没有联播正文。</p>
+      {% endif %}
+    {% endif %}
+  </main>
+</body>
+</html>

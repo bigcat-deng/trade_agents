@@ -14,6 +14,8 @@ def to_baostock(code: str) -> str:
         digits = digits.zfill(6)
     if len(digits) != 6:
         raise ValueError(f"unsupported stock code: {code!r}")
+    if digits.startswith("92"):
+        return f"bj.{digits}"
     if digits.startswith(("5", "6", "9")):
         return f"sh.{digits}"
     if digits.startswith(("0", "1", "2", "3")):

@@ -41,6 +41,8 @@ def fetch_sync_dashboard_status() -> list[dict[str, Any]]:
                 _board_daily_bars(cur),
                 _board_heat(cur),
                 _board_constituents(cur),
+                _news_daily(cur),
+                _news_flash(cur),
             ]
 
 
@@ -359,4 +361,139 @@ def _board_constituents(cur: psycopg.Cursor) -> dict[str, Any]:
         "supports_day": True,
         "suggested_day": _suggested_day(uni_day or snap or data_end),
         "complete": universe > 0 and covered >= universe,
+    }
+
+
+_NEWS_FEED_LABELS = (
+    ("stock_comment", "千股千评"),
+    ("em_rank", "人气榜"),
+    ("em_surge", "飙升榜"),
+    ("weibo", "微博"),
+    ("stock_notice", "公告"),
+    ("cctv", "联播"),
+)
+
+
+def _news_daily(cur: psycopg.Cursor) -> dict[str, Any]:
+    feeds = [feed for feed, _label in _NEWS_FEED_LABELS]
+    cur.execute(
+        """
+        SELECT feed, snapshot_date, last_status, last_rows, last_error, updated_at
+        FROM news_sync_state
+        WHERE feed = ANY(%s)
+        """,
+        (feeds,),
+    )
+    by_feed = {row[0]: row for row in cur.fetchall()}
+    parts: list[str] = []
+    ok_n = 0
+    last_sync = None
+    comment_day = None
+    for feed, label in _NEWS_FEED_LABELS:
+        row = by_feed.get(feed)
+        status = row[2] if row else "pending"
+        rows = int(row[3] or 0) if row else 0
+        error = row[4] if row else None
+        updated = row[5] if row else None
+        if status == "ok":
+            ok_n += 1
+        if updated is not None and (last_sync is None or updated > last_sync):
+            last_sync = updated
+        if feed == "stock_comment" and row is not None:
+            comment_day = row[1]
+        text = f"{label} {status} {rows}"
+        if error and status != "ok":
+            text += f"（{error}）"
+        parts.append(text)
+
+    cur.execute(
+        """
+        SELECT MIN(trade_date), MAX(trade_date), MAX(ingested_at)
+        FROM stock_comment_daily
+        """
+    )
+    data_start, data_end, last_ingest = cur.fetchone()
+    target = len(_NEWS_FEED_LABELS)
+    return {
+        "job_id": "news_daily",
+        "title": "新闻快照",
+        "table": "stock_comment_daily",
+        "snapshot_date": _iso(comment_day or data_end),
+        "covered": ok_n,
+        "target": target,
+        "detail": "；".join(parts),
+        "data_start": _iso(data_start),
+        "data_end": _iso(data_end),
+        "last_synced_at": _iso(last_sync or last_ingest),
+        "supports_trading_days": False,
+        "supports_resume": False,
+        "supports_day": False,
+        "suggested_day": None,
+        "action_label": "同步快照",
+        "complete": ok_n == target,
+    }
+
+
+def _news_flash(cur: psycopg.Cursor) -> dict[str, Any]:
+    cur.execute(
+        """
+        SELECT feed, last_status, last_rows, last_error, updated_at, cursor_at
+        FROM news_sync_state
+        WHERE feed = ANY(%s)
+        """,
+        (["cls", "ths"],),
+    )
+    by_feed = {row[0]: row for row in cur.fetchall()}
+    cur.execute(
+        """
+        SELECT source, COUNT(*), MIN(published_at), MAX(published_at)
+        FROM news_flash
+        GROUP BY source
+        """
+    )
+    stored = {row[0]: row for row in cur.fetchall()}
+    labels = (("cls", "财联社"), ("ths", "同花顺"))
+    parts: list[str] = []
+    ok_n = 0
+    last_sync = None
+    range_start = None
+    range_end = None
+    for feed, label in labels:
+        row = by_feed.get(feed)
+        status = row[1] if row else "pending"
+        inserted = int(row[2] or 0) if row else 0
+        error = row[3] if row else None
+        updated = row[4] if row else None
+        have = stored.get(feed)
+        total = int(have[1]) if have else 0
+        if status == "ok":
+            ok_n += 1
+        if updated is not None and (last_sync is None or updated > last_sync):
+            last_sync = updated
+        if have is not None:
+            if range_start is None or have[2] < range_start:
+                range_start = have[2]
+            if range_end is None or have[3] > range_end:
+                range_end = have[3]
+        text = f"{label} {status} 新增 {inserted}（库内 {total}）"
+        if error and status != "ok":
+            text += f"（{error}）"
+        parts.append(text)
+    return {
+        "job_id": "news_flash",
+        "title": "新闻快讯",
+        "table": "news_flash",
+        "snapshot_date": None,
+        "covered": ok_n,
+        "target": len(labels),
+        "detail": "；".join(parts),
+        "data_start": _iso(range_start),
+        "data_end": _iso(range_end),
+        "last_synced_at": _iso(last_sync),
+        "supports_trading_days": False,
+        "supports_resume": False,
+        "supports_day": False,
+        "suggested_day": None,
+        "action_label": "同步快讯",
+        "complete": ok_n == len(labels),
     }

@@ -47,6 +47,13 @@ The script records applied files in `schema_migrations` and skips them on later 
 - `board_constituent_daily`: board/concept ↔ stock membership snapshots (THS boards; baostock stock codes)
 - `board_constituent_sync_state`: per-board constituent sync status for resume
 - `board_heat_daily`: industry/concept heat (rank of daily return, MA5 / MA20 of rank)
+- `news_flash`: CLS / Tonghuashun flashes (`source` `cls` or `ths`); deduped by source, publish time, and title
+- `news_cctv_item`: Xinwen Lianbo items by broadcast date
+- `stock_comment_daily`: Eastmoney per-stock score snapshot (baostock codes). `trade_date` is the API session date
+- `stock_hot_rank_daily`: Eastmoney popularity (`list_name` `rank`) and surge (`surge`) snapshots
+- `stock_weibo_daily`: Jin10 Weibo attention snapshot. `code` stays null until the name resolves
+- `stock_notice_daily`: Eastmoney announcements, keyed by `notice_id`
+- `news_sync_state`: one row per news feed (`cls`, `ths`, `cctv`, `stock_comment`, `em_rank`, `em_surge`, `weibo`, `stock_notice`)
 
 ## Layout
 
