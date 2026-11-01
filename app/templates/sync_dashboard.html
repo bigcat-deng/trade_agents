@@ -159,6 +159,8 @@
     const runnerText = document.getElementById("runner-text");
     const messageEl = document.getElementById("message");
     const logEl = document.getElementById("log");
+    // Only surface runner/log for a job observed on this page load.
+    let sawBusy = false;
 
     function fmt(v) {
       return v == null || v === "" ? "—" : v;
@@ -167,23 +169,28 @@
     function render(data) {
       const runner = data.runner || {};
       const busy = !!runner.busy;
+      if (busy) sawBusy = true;
       runnerEl.classList.toggle("busy", busy);
       if (busy) {
         runnerText.textContent = `${runner.label || runner.job_id} 运行中（自 ${fmt(runner.started_at)}）`;
-      } else if (runner.finished_at) {
+      } else if (sawBusy && runner.finished_at) {
         const ok = runner.exit_code === 0;
         runnerText.textContent =
-          `空闲 · 上次 ${runner.label || runner.job_id || ""} ` +
+          `完成 · ${runner.label || runner.job_id || ""} ` +
           `${ok ? "成功" : "失败"}（${fmt(runner.finished_at)}` +
           (ok ? "" : ` exit=${runner.exit_code}`) + `）`;
       } else {
         runnerText.textContent = "空闲";
       }
 
-      if (runner.log_tail) {
+      const showLog = (busy || sawBusy) && !!runner.log_tail;
+      if (showLog) {
         logEl.hidden = false;
         logEl.textContent = runner.log_tail;
         logEl.scrollTop = logEl.scrollHeight;
+      } else {
+        logEl.hidden = true;
+        logEl.textContent = "";
       }
 
       const saved = {};

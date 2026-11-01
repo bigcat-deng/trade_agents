@@ -452,9 +452,86 @@ _STOCK_CODE = re.compile(r"^\d{6}$")
 _FIELD_TABLE = {"二级": "hy2_table_1", "三级": "hy3_table_1"}
 
 
+def _normalize_industry_name(name: str) -> str:
+    """Strip level marks so universe names can match F10 path labels."""
+    return name.strip().rstrip("ⅡⅢ").strip()
+
+
 def _industry_leaf(label: str) -> str:
     leaf = label.split("--")[-1].strip()
-    return leaf.rstrip("ⅡⅢ").strip()
+    return _normalize_industry_name(leaf)
+
+
+def _industry_segments(label: str) -> list[str]:
+    return [
+        _normalize_industry_name(part)
+        for part in label.split("--")
+        if part.strip()
+    ]
+
+
+def _leaf_name_matches(board_name: str, leaf: str) -> bool:
+    """Exact or stem match between universe name and an F10 leaf.
+
+    Tonghuashun sometimes stores ``塑料制品`` while F10 still says ``塑料``.
+    Only allow the universe name to extend the leaf — never the reverse, or
+    parent names like ``房地产`` would steal the ``房地产开发`` table.
+    """
+    name = _normalize_industry_name(board_name)
+    leaf = _normalize_industry_name(leaf)
+    if not name or not leaf:
+        return False
+    if name == leaf:
+        return True
+    return len(name) > len(leaf) and name.startswith(leaf)
+
+
+def _parent_name_matches(board_name: str, segment: str) -> bool:
+    name = _normalize_industry_name(board_name)
+    segment = _normalize_industry_name(segment)
+    if not name or not segment:
+        return False
+    if name == segment:
+        return True
+    return segment in name or name in segment
+
+
+def _pick_field_level(
+    levels: list[tuple[str, str]],
+    board_name: str,
+) -> str:
+    """Choose 二级/三级 for the board name, or raise when only a parent matches.
+
+    Parent-only hits (e.g. universe ``银行`` on path ``银行 -- 股份制银行``) must
+    not use the sub-industry table; callers should fall back to quote pages.
+    """
+    name = _normalize_industry_name(board_name)
+    if not name:
+        raise RuntimeError("board name is empty")
+    if not levels:
+        raise RuntimeError(f"field page has no industry levels for {board_name}")
+
+    leaf_hits: list[str] = []
+    parent_only = False
+    for level, label in levels:
+        segments = _industry_segments(label)
+        if not segments:
+            continue
+        leaf = segments[-1]
+        if _leaf_name_matches(name, leaf):
+            leaf_hits.append(level)
+            continue
+        if any(_parent_name_matches(name, segment) for segment in segments[:-1]):
+            parent_only = True
+
+    if leaf_hits:
+        return "三级" if "三级" in leaf_hits else leaf_hits[0]
+    if parent_only:
+        raise RuntimeError(
+            f"field page only has sub-industries under {board_name}; "
+            "need the quote member list"
+        )
+    raise RuntimeError(f"field page has no industry named {board_name}")
 
 
 def constituents_from_field_page(
@@ -473,18 +550,13 @@ def constituents_from_field_page(
         raise RuntimeError(f"field page is not industry {board_code}")
     soup = BeautifulSoup(html, features="lxml")
     levels = _FIELD_LEVEL.findall(soup.get_text(" ", strip=True))
-    if board_name:
-        matched = [
-            level
-            for level, label in levels
-            if _industry_leaf(label) == board_name
-        ]
-        if not matched:
-            raise RuntimeError(f"field page has no industry named {board_name}")
-        level = "三级" if "三级" in matched else matched[0]
+    if board_name.strip():
+        level = _pick_field_level(levels, board_name)
     else:
-        level = "二级"
-    table_id = _FIELD_TABLE[level]
+        level = "二级" if any(item[0] == "二级" for item in levels) else "三级"
+    table_id = _FIELD_TABLE.get(level)
+    if table_id is None:
+        raise RuntimeError(f"unsupported field level {level} for {board_code}")
     table = soup.find(id=table_id)
     if table is None:
         raise RuntimeError(f"field page has no {table_id} for {board_code}")
@@ -648,8 +720,6 @@ def fetch_board_constituents(
             f"industry {code} stayed behind the login wall; " + "; ".join(attempts)
         ) from exc
     attempts.append(quote_note)
-    if "partial" in quote_note:
-        raise RuntimeError(
-            f"industry {code} stayed behind the login wall; " + "; ".join(attempts)
-        )
+    # Large boards stop at page 5 on the quote site. Keep the public pages
+    # when the F10 field table could not be matched by name.
     return BoardConstituentsFetchInfo(quote_rows, source=SOURCE, attempts=attempts)

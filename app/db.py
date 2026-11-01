@@ -888,18 +888,32 @@ def fetch_constituent_seeds(
     *,
     per_board: int = 3,
 ) -> dict[str, list[str]]:
-    """A few stored member codes per board, used to open that board's F10 page."""
+    """A few stored member codes per board, used to open that board's F10 page.
+
+    Prefer the latest snapshot on or before ``trade_date``. Exact-day rows are
+    often missing for boards still failing the current sync; older members are
+    enough to open the comparison table.
+    """
     with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT board_code, stock_code
-                FROM board_constituent_daily
-                WHERE trade_date = %s
-                  AND board_type = %s
-                ORDER BY board_code, stock_code
+                WITH latest AS (
+                    SELECT board_code, MAX(trade_date) AS trade_date
+                    FROM board_constituent_daily
+                    WHERE board_type = %s
+                      AND trade_date <= %s
+                    GROUP BY board_code
+                )
+                SELECT c.board_code, c.stock_code
+                FROM board_constituent_daily AS c
+                JOIN latest
+                  ON c.board_code = latest.board_code
+                 AND c.trade_date = latest.trade_date
+                WHERE c.board_type = %s
+                ORDER BY c.board_code, c.stock_code
                 """,
-                (trade_date, board_type),
+                (board_type, trade_date, board_type),
             )
             grouped: dict[str, list[str]] = {}
             for board_code, stock_code in cur.fetchall():
