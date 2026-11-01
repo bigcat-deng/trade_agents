@@ -37,6 +37,7 @@ def fetch_sync_dashboard_status() -> list[dict[str, Any]]:
             return [
                 _stock_universe(cur),
                 _stock_daily_bars(cur),
+                _stock_heat(cur),
                 _board_universe(cur),
                 _board_daily_bars(cur),
                 _board_heat(cur),
@@ -138,6 +139,47 @@ def _stock_daily_bars(cur: psycopg.Cursor) -> dict[str, Any]:
         "supports_day": False,
         "suggested_day": None,
         "complete": target > 0 and covered_n >= target,
+    }
+
+
+def _stock_heat(cur: psycopg.Cursor) -> dict[str, Any]:
+    cur.execute(
+        """
+        SELECT
+            (SELECT MAX(trade_date) FROM stock_daily_bar),
+            (SELECT MAX(trade_date) FROM stock_heat_daily),
+            (SELECT MIN(trade_date) FROM stock_heat_daily),
+            (SELECT COUNT(DISTINCT code) FROM stock_heat_daily
+             WHERE trade_date = (SELECT MAX(trade_date) FROM stock_heat_daily)),
+            (SELECT MAX(ingested_at) FROM stock_heat_daily)
+        """
+    )
+    bars_end, heat_end, heat_start, codes_n, last_ingest = cur.fetchone()
+
+    def _day(value: date | None) -> str:
+        return value.isoformat() if value is not None else "—"
+
+    aligned = bars_end is not None and heat_end == bars_end
+    return {
+        "job_id": "stock_heat",
+        "title": "个股短热",
+        "table": "stock_heat_daily",
+        "snapshot_date": None,
+        "covered": 1 if aligned else 0,
+        "target": 1,
+        "detail": (
+            f"短热至 {_day(heat_end)}，日 K 至 {_day(bars_end)}；"
+            f"最新日代码数 {int(codes_n or 0)}"
+        ),
+        "data_start": _iso(heat_start),
+        "data_end": _iso(heat_end),
+        "last_synced_at": _iso(last_ingest),
+        "supports_trading_days": True,
+        "supports_resume": False,
+        "supports_day": False,
+        "suggested_day": None,
+        "action_label": "计算短热",
+        "complete": aligned,
     }
 
 

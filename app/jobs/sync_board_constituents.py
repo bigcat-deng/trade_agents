@@ -10,6 +10,7 @@ from datetime import date, datetime
 from app.db import (
     BoardListItem,
     fetch_completed_constituent_sync_keys,
+    fetch_constituent_seeds,
     fetch_latest_board_codes,
     fetch_latest_board_universe_date,
     replace_board_constituents,
@@ -33,6 +34,8 @@ def fetch_with_retry(
     board_code: str,
     *,
     retries: int,
+    board_name: str = "",
+    seed_codes: list[str] | None = None,
 ):
     errors: list[str] = []
     for attempt in range(1, retries + 1):
@@ -41,6 +44,8 @@ def fetch_with_retry(
                 trade_date,
                 board_type,  # type: ignore[arg-type]
                 board_code,
+                board_name=board_name,
+                seed_codes=seed_codes,
             )
         except Exception as exc:  # noqa: BLE001
             errors.append(f"attempt {attempt}: {exc}")
@@ -153,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"resume skipped {before - len(boards)} boards", flush=True)
 
         print(f"boards to sync = {len(boards)} retries={args.retries}", flush=True)
+        seeds = (
+            fetch_constituent_seeds(trade_date, "industry")
+            if any(item.board_type == "industry" for item in boards)
+            else {}
+        )
         ok = 0
         failed = 0
         total_rows = 0
@@ -169,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
                     item.board_type,
                     item.board_code,
                     retries=args.retries,
+                    board_name=item.board_name,
+                    seed_codes=seeds.get(item.board_code),
                 )
                 if args.verbose_probe:
                     for line in info.attempts:

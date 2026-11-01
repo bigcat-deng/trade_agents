@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Weekday evening pipeline: board bars (5d) → board heat → stock bars (5d) → news snapshot.
+# Weekday evening pipeline: board bars (5d) → board heat → stock bars (5d) → stock heat (5d) → news.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,6 +29,8 @@ fi
   "${PY}" -m app.jobs.compute_board_heat --board-type all
   echo "--- stock daily bars (5 trading days) ---"
   "${PY}" -m app.jobs.sync_stock_daily_bars --trading-days 5 --resume
+  echo "--- stock heat (5 trading days) ---"
+  "${PY}" -m app.jobs.compute_stock_heat --trading-days 5
   echo "--- news daily snapshot ---"
   "${PY}" -m app.jobs.sync_news_daily
   echo "======== $(date '+%F %T') done ========"

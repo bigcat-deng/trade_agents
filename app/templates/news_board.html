@@ -90,6 +90,8 @@
     a { color: inherit; }
     a.day { text-decoration: none; font-weight: 600; }
     a.day:hover { text-decoration: underline; }
+    a.stock { text-decoration: none; }
+    a.stock:hover { text-decoration: underline; }
     code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.84em; }
     .split {
       display: grid;
@@ -235,8 +237,8 @@
             <tbody>
               {% for row in board.detail.comment.focus_top %}
                 <tr>
-                  <td>{{ row.name }}</td>
-                  <td><code>{{ row.code }}</code></td>
+                  <td>{% if row.href %}<a class="stock" href="{{ row.href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+                  <td>{% if row.href %}<a class="stock" href="{{ row.href }}"><code>{{ row.code }}</code></a>{% else %}<code>{{ row.code }}</code>{% endif %}</td>
                   <td class="num">{{ row.focus }}</td>
                   <td class="num">{{ row.score or "—" }}</td>
                   <td class="num">{{ row.rank_no if row.rank_no is not none else "—" }}</td>
@@ -251,8 +253,8 @@
             <tbody>
               {% for row in board.detail.comment.rise_top %}
                 <tr>
-                  <td>{{ row.name }}</td>
-                  <td><code>{{ row.code }}</code></td>
+                  <td>{% if row.href %}<a class="stock" href="{{ row.href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+                  <td>{% if row.href %}<a class="stock" href="{{ row.href }}"><code>{{ row.code }}</code></a>{% else %}<code>{{ row.code }}</code>{% endif %}</td>
                   <td class="num">{{ row.rank_change }}</td>
                   <td class="num">{{ row.rank_no if row.rank_no is not none else "—" }}</td>
                   <td class="num">{{ row.focus or "—" }}</td>
@@ -276,8 +278,8 @@
             {% for row in board.detail.rank %}
               <tr>
                 <td class="num">{{ row.rank_no if row.rank_no is not none else "—" }}</td>
-                <td><code>{{ row.code }}</code></td>
-                <td>{{ row.name }}</td>
+                <td>{% if row.href %}<a class="stock" href="{{ row.href }}"><code>{{ row.code }}</code></a>{% else %}<code>{{ row.code }}</code>{% endif %}</td>
+                <td>{% if row.href %}<a class="stock" href="{{ row.href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
                 <td class="num">{{ row.pct_chg or "—" }}</td>
               </tr>
             {% endfor %}
@@ -299,8 +301,8 @@
             {% for row in board.detail.surge %}
               <tr>
                 <td class="num">{{ row.rank_no if row.rank_no is not none else "—" }}</td>
-                <td><code>{{ row.code }}</code></td>
-                <td>{{ row.name }}</td>
+                <td>{% if row.href %}<a class="stock" href="{{ row.href }}"><code>{{ row.code }}</code></a>{% else %}<code>{{ row.code }}</code>{% endif %}</td>
+                <td>{% if row.href %}<a class="stock" href="{{ row.href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
                 <td class="num">{{ row.pct_chg or "—" }}</td>
                 <td class="num">{{ row.rank_change or "—" }}</td>
               </tr>
@@ -322,8 +324,8 @@
           <tbody>
             {% for row in board.detail.weibo %}
               <tr>
-                <td>{{ row.name }}</td>
-                <td>{% if row.code %}<code>{{ row.code }}</code>{% else %}—{% endif %}</td>
+                <td>{% if row.href %}<a class="stock" href="{{ row.href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+                <td>{% if row.href %}<a class="stock" href="{{ row.href }}"><code>{{ row.code }}</code></a>{% elif row.code %}<code>{{ row.code }}</code>{% else %}—{% endif %}</td>
                 <td class="num">{{ row.rate or "—" }}</td>
               </tr>
             {% endfor %}
@@ -347,8 +349,8 @@
                 <tbody>
                   {% for item in group["items"] %}
                     <tr>
-                      <td><code>{{ item.code }}</code></td>
-                      <td>{{ item.name }}</td>
+                      <td>{% if item.href %}<a class="stock" href="{{ item.href }}"><code>{{ item.code }}</code></a>{% else %}<code>{{ item.code }}</code>{% endif %}</td>
+                      <td>{% if item.href %}<a class="stock" href="{{ item.href }}">{{ item.name }}</a>{% else %}{{ item.name }}{% endif %}</td>
                       <td>
                         {% if item.url %}
                           <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>

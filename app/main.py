@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.charts.board_rotation import render_board_rotation
 from app.charts.chan_board import WINDOW as CHAN_BARS, chan_fetch_start, render_chan_board_html
+from app.market_data.codes import to_baostock
 from app.market_data.providers.ths_line import (
     INDEX_NAMES,
     fetch_ths_daily_bars,
@@ -20,6 +21,7 @@ from scripts.chan_fractal_probe import WARMUP
 from app.charts.index_ladder import render_a_share_breadth, render_index_size_ladder
 from app.charts.kline import render_kline
 from app.charts.mini_kline import render_mini_kline
+from app.charts.stock_heat import render_stock_heat_html
 from app.charts.theme_wave import (
     render_theme_wave_contour,
 )
@@ -36,6 +38,7 @@ from app.db import (
     fetch_board_daily_bars_many,
     fetch_board_heat_series,
     fetch_board_name,
+    fetch_stock_heat_series,
     fetch_board_rotation,
     fetch_concept_heat_named_window,
     fetch_concept_heat_window,
@@ -68,6 +71,8 @@ from app.market_data.csi500 import (
 )
 from app.market_data.providers import baostock_kline
 from app.news_board import fetch_news_board
+from app.stock_news import safe_stock_news
+from app.stock_identity import safe_stock_identity
 from app.sync_runner import JOB_IDS, get_runner_state, start_job
 from app.sync_status import fetch_sync_dashboard_status
 from app.themes import build_theme_view, get_theme, list_themes
@@ -2705,10 +2710,14 @@ def analyze_page(
         "show_dates": False,
         "chart_html": None,
         "chan_html": None,
+        "heat_html": None,
         "summary": None,
         "chan_summary": None,
+        "heat_summary": None,
         "chan_plan": None,
         "error": None,
+        "stock_news": None,
+        "identity": None,
     }
     if not raw:
         return templates.TemplateResponse(request, "analyze.html", payload)
@@ -2719,6 +2728,9 @@ def analyze_page(
         return templates.TemplateResponse(request, "analyze.html", payload)
 
     payload["code"] = normalized
+    payload["identity"] = safe_stock_identity(normalized)
+    payload["title"] = payload["identity"]["title"]
+    payload["stock_news"] = safe_stock_news(normalized)
     today = date.today()
     explicit_window = start_date is not None or end_date is not None
     try:
@@ -2739,8 +2751,7 @@ def analyze_page(
             raise RuntimeError("所选区间无数据")
         window_start = visible[0]["trade_date"]
         window_end = visible[-1]["trade_date"]
-        label = INDEX_NAMES.get(normalized)
-        title = f"{label} {normalized}" if label else normalized
+        title = payload["title"]
         chart_html = render_kline(visible, title=title, code=normalized)
         chan_html, chan_start, chan_end, chan_count, chan_plan = render_chan_board_html(
             [row for row in records if row["trade_date"] <= window_end],
@@ -2748,6 +2759,27 @@ def analyze_page(
             include_plotlyjs=False,
             plan_lines=True,
         )
+        heat_html = None
+        heat_summary = None
+        try:
+            bs_code = to_baostock(normalized)
+            heats = fetch_stock_heat_series(bs_code, chan_start, chan_end)
+            heat_html = render_stock_heat_html(
+                heats,
+                title=title,
+                start=chan_start,
+                end=chan_end,
+                n=chan_count,
+                include_plotlyjs=False,
+            )
+            if heat_html is not None:
+                heat_summary = (
+                    f"个股短热 · {chan_start} ~ {chan_end}"
+                    " · 与缠论横轴对齐 · 数值越小越热"
+                )
+        except ValueError:
+            # Non-stock codes (some indices) have no baostock heat key.
+            pass
     except ValueError:
         payload["error"] = "日期格式应为 YYYY-MM-DD"
         payload["show_dates"] = True
@@ -2774,6 +2806,8 @@ def analyze_page(
                 f"缠论 · {chan_count} 根K线 · {chan_start} ~ {chan_end}"
                 " · 结束日向前最多 200 个交易日"
             ),
+            "heat_html": heat_html,
+            "heat_summary": heat_summary,
         }
     )
     return templates.TemplateResponse(request, "analyze.html", payload)

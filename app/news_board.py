@@ -302,6 +302,7 @@ def _load_detail(cur: psycopg.Cursor, day: date) -> dict[str, Any]:
         {
             "code": row[0],
             "name": row[1],
+            "href": analyze_href(row[0]),
             "focus": _num(row[2], 1),
             "score": _num(row[3], 1),
             "rank_no": row[4],
@@ -322,6 +323,7 @@ def _load_detail(cur: psycopg.Cursor, day: date) -> dict[str, Any]:
         {
             "code": row[0],
             "name": row[1],
+            "href": analyze_href(row[0]),
             "rank_change": _signed(row[2], 0),
             "rank_no": row[3],
             "focus": _num(row[4], 1),
@@ -384,6 +386,7 @@ def _hot_list(cur: psycopg.Cursor, day: date, list_name: str) -> list[dict[str, 
             "rank_no": row[0],
             "code": row[1],
             "name": row[2],
+            "href": analyze_href(row[1]),
             "pct_chg": _signed(row[3], 2),
             "rank_change": _signed(row[4], 0) if row[4] is not None else None,
         }
@@ -402,7 +405,12 @@ def _weibo(cur: psycopg.Cursor, day: date) -> list[dict[str, Any]]:
         (day,),
     )
     return [
-        {"name": row[0], "code": row[1], "rate": _num(row[2], 2)}
+        {
+            "name": row[0],
+            "code": row[1],
+            "href": analyze_href(row[1]),
+            "rate": _num(row[2], 2),
+        }
         for row in cur.fetchall()
     ]
 
@@ -420,7 +428,13 @@ def _notices(cur: psycopg.Cursor, day: date) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = {name: [] for name in NOTICE_TYPES}
     extras: dict[str, list[dict[str, Any]]] = {}
     for notice_type, code, name, title, url in cur.fetchall():
-        item = {"code": code, "name": name, "title": title, "url": _href(url)}
+        item = {
+            "code": code,
+            "name": name,
+            "href": analyze_href(code),
+            "title": title,
+            "url": _href(url),
+        }
         if notice_type in grouped:
             grouped[notice_type].append(item)
         else:
@@ -445,6 +459,21 @@ def _cctv(cur: psycopg.Cursor, day: date) -> list[dict[str, str]]:
         (day,),
     )
     return [{"title": row[0], "content": row[1] or ""} for row in cur.fetchall()]
+
+
+def analyze_href(code: str | None) -> str | None:
+    """Link a stored baostock code to the 6-character analyze page."""
+    if not code:
+        return None
+    text = code.strip()
+    if len(text) == 9 and text[2] == "." and text[:2].lower() in {"sh", "sz", "bj"}:
+        symbol = text[3:]
+    else:
+        symbol = text
+    symbol = symbol.upper()
+    if len(symbol) != 6 or not symbol.isalnum():
+        return None
+    return f"/analyze?code={symbol}"
 
 
 def _href(url: str | None) -> str | None:

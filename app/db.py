@@ -607,6 +607,32 @@ def fetch_board_heat_series(
     ]
 
 
+def fetch_stock_heat_series(
+    code: str,
+    start: date,
+    end: date,
+) -> list[dict[str, object]]:
+    """Short and long heat for one stock (baostock code). Null heats stay null."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date, heat_short, heat_long
+                FROM stock_heat_daily
+                WHERE code = %s
+                  AND trade_date >= %s
+                  AND trade_date <= %s
+                ORDER BY trade_date
+                """,
+                (code, start, end),
+            )
+            rows = cur.fetchall()
+    return [
+        {"trade_date": row[0], "heat_short": row[1], "heat_long": row[2]}
+        for row in rows
+    ]
+
+
 def replace_board_universe(
     rows: list[BoardUniverseRow],
     *,
@@ -854,6 +880,39 @@ def save_board_constituent_sync_state(
                 ),
             )
         conn.commit()
+
+
+def fetch_constituent_seeds(
+    trade_date: date,
+    board_type: str,
+    *,
+    per_board: int = 3,
+) -> dict[str, list[str]]:
+    """A few stored member codes per board, used to open that board's F10 page."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT board_code, stock_code
+                FROM board_constituent_daily
+                WHERE trade_date = %s
+                  AND board_type = %s
+                ORDER BY board_code, stock_code
+                """,
+                (trade_date, board_type),
+            )
+            grouped: dict[str, list[str]] = {}
+            for board_code, stock_code in cur.fetchall():
+                grouped.setdefault(board_code, []).append(stock_code)
+    seeds: dict[str, list[str]] = {}
+    for board_code, codes in grouped.items():
+        if len(codes) <= per_board:
+            seeds[board_code] = codes
+            continue
+        last = len(codes) - 1
+        picks = sorted({0, last // 2, last})
+        seeds[board_code] = [codes[index] for index in picks[:per_board]]
+    return seeds
 
 
 def fetch_board_constituent_codes(
@@ -1619,6 +1678,137 @@ def replace_board_heat(board_type: str, start: date, rows: list[BoardHeatRow]) -
                 )
         conn.commit()
     return len(payload)
+
+
+def fetch_stock_returns(*, start: date | None = None) -> list[tuple]:
+    """A-share OHLC rows from stock_daily_bar for heat ranking.
+
+    Returns (trade_date, code, pct_chg, high, low, close). Optional start
+    limits the lookback for tip-window recomputes.
+    """
+    sql = f"""
+        SELECT trade_date, code, pct_chg, high, low, close
+        FROM stock_daily_bar AS s
+        WHERE high IS NOT NULL
+          AND low IS NOT NULL
+          AND close IS NOT NULL
+          AND {A_SHARE_CODE_FILTER_SQL}
+    """
+    params: tuple = ()
+    if start is not None:
+        sql += " AND trade_date >= %s"
+        params = (start,)
+    sql += " ORDER BY trade_date, code"
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [
+                (row[0], row[1], row[2], row[3], row[4], row[5])
+                for row in cur.fetchall()
+            ]
+
+
+def fetch_stock_heat(*, start: date | None = None) -> list[BoardHeatRow]:
+    """Stored stock heat as BoardHeatRow with board_type='stock'."""
+    sql = """
+        SELECT trade_date, code, pct_chg, rank_no, universe_n, heat_short, heat_long
+        FROM stock_heat_daily
+    """
+    params: tuple = ()
+    if start is not None:
+        sql += " WHERE trade_date >= %s"
+        params = (start,)
+    sql += " ORDER BY trade_date, code"
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [
+                BoardHeatRow(
+                    trade_date=row[0],
+                    board_type="stock",
+                    board_code=row[1],
+                    pct_chg=row[2],
+                    rank_no=row[3],
+                    universe_n=row[4],
+                    heat_short=row[5],
+                    heat_long=row[6],
+                )
+                for row in cur.fetchall()
+            ]
+
+
+def replace_stock_heat(start: date, rows: list[BoardHeatRow]) -> int:
+    """Replace stock heat from start through the written set."""
+    payload = [
+        (
+            row.trade_date,
+            row.board_code,
+            row.pct_chg,
+            row.rank_no,
+            row.universe_n,
+            row.heat_short,
+            row.heat_long,
+        )
+        for row in rows
+        if row.trade_date >= start
+    ]
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM stock_heat_daily WHERE trade_date >= %s",
+                (start,),
+            )
+            if payload:
+                cur.executemany(
+                    """
+                    INSERT INTO stock_heat_daily (
+                        trade_date, code, pct_chg,
+                        rank_no, universe_n, heat_short, heat_long
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    payload,
+                )
+        conn.commit()
+    return len(payload)
+
+
+def fetch_max_stock_bar_date() -> date | None:
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(trade_date) FROM stock_daily_bar")
+            return cur.fetchone()[0]
+
+
+def fetch_max_stock_heat_date() -> date | None:
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(trade_date) FROM stock_heat_daily")
+            return cur.fetchone()[0]
+
+
+def fetch_stock_bar_dates_ending(on_or_before: date, limit: int) -> list[date]:
+    """Up to `limit` distinct bar dates on or before the day, oldest first."""
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date
+                FROM (
+                    SELECT DISTINCT trade_date
+                    FROM stock_daily_bar
+                    WHERE trade_date <= %s
+                    ORDER BY trade_date DESC
+                    LIMIT %s
+                ) AS recent
+                ORDER BY trade_date
+                """,
+                (on_or_before, limit),
+            )
+            return [row[0] for row in cur.fetchall()]
 
 
 def fetch_heat_dates_ending(

@@ -219,18 +219,26 @@ def build_chan_figure(window, *, title: str, plan_lines: bool = False):
     return figure, _plan_caption(plan)
 
 
+def chan_xaxis_range(start: date, end: date, n: int) -> list[datetime]:
+    """Same padded x-range as the Chan figure for a window of ``n`` bars."""
+    if n < 1:
+        return []
+    if n == 1 or start == end:
+        pad = timedelta(days=2)
+    else:
+        step = (end - start).days / (n - 1)
+        pad = timedelta(days=max(step * 1.5, 1.5))
+    return [
+        datetime.combine(start, time.min) - pad,
+        datetime.combine(end, time.min) + pad,
+    ]
+
+
 def _xaxis_range(dates: Sequence[date]) -> list[datetime]:
     """Leave half a bar on each side so the first and last candles stay whole."""
     if not dates:
         return []
-    if len(dates) == 1:
-        pad = timedelta(days=2)
-    else:
-        step = (dates[-1] - dates[0]).days / (len(dates) - 1)
-        pad = timedelta(days=max(step * 1.5, 1.5))
-    start = datetime.combine(dates[0], time.min) - pad
-    end = datetime.combine(dates[-1], time.min) + pad
-    return [start, end]
+    return chan_xaxis_range(dates[0], dates[-1], len(dates))
 
 
 def _day(window, index: int):

@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 JOB_IDS = (
     "stock_universe",
     "stock_daily_bars",
+    "stock_heat",
     "board_universe",
     "board_daily_bars",
     "board_heat",
@@ -29,6 +30,7 @@ DAY_JOB_IDS = frozenset({"stock_universe", "board_universe", "board_constituents
 JOB_LABELS: dict[str, str] = {
     "stock_universe": "个股名单",
     "stock_daily_bars": "个股日 K",
+    "stock_heat": "个股短热",
     "board_universe": "板块名单",
     "board_daily_bars": "板块日 K",
     "board_heat": "板块热度",
@@ -107,6 +109,11 @@ def _build_command(
         if resume:
             cmd.append("--resume")
         return cmd
+    if job_id == "stock_heat":
+        cmd = [py, "-m", "app.jobs.compute_stock_heat"]
+        if trading_days is not None:
+            cmd.extend(["--trading-days", str(trading_days)])
+        return cmd
     if job_id == "board_universe":
         cmd = [py, "-m", "app.jobs.sync_board_universe"]
         if day is not None:
@@ -169,7 +176,7 @@ def start_job(
     if job_id not in JOB_IDS:
         raise ValueError(f"unknown job_id: {job_id}")
 
-    if job_id in {"stock_daily_bars", "board_daily_bars"}:
+    if job_id in {"stock_daily_bars", "board_daily_bars", "stock_heat"}:
         if trading_days is None or trading_days < 1:
             raise ValueError("trading_days must be >= 1")
     else:

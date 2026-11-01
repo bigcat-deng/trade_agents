@@ -9,6 +9,8 @@ No Eastmoney BK codes or EM fallbacks in this module.
 
 from __future__ import annotations
 
+import json
+import re
 import time
 from datetime import date
 from decimal import Decimal
@@ -74,11 +76,17 @@ def _headers(v_code: str | None = None) -> dict[str, str]:
     }
 
 
-def _http_get(url: str, *, headers: dict[str, str], timeout: float = 20.0) -> str:
+def _http_get(
+    url: str,
+    *,
+    headers: dict[str, str],
+    timeout: float = 20.0,
+    encoding: str | None = None,
+) -> str:
     def _once() -> str:
         response = requests.get(url, headers=headers, timeout=timeout)
         response.raise_for_status()
-        response.encoding = response.apparent_encoding or "utf-8"
+        response.encoding = encoding or response.apparent_encoding or "utf-8"
         return response.text
 
     return _retry(f"GET {url}", _once)
@@ -377,37 +385,199 @@ def _parse_cons_table(html: str) -> tuple[pd.DataFrame, int]:
     return frame, total_pages
 
 
-def fetch_board_constituents(
+def constituents_from_conceptlist(
+    payload: dict[str, Any],
+    *,
+    trade_date: date,
+    board_code: str,
+) -> list[BoardConstituentRow]:
+    """Every stock in a Tonghuashun conceptlist payload. No row cap."""
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        raise RuntimeError(f"THS conceptlist missing result for {board_code}")
+    listdata = result.get("listdata") or {}
+    if not isinstance(listdata, dict) or not listdata:
+        raise RuntimeError(f"THS conceptlist empty for {board_code}")
+    day = max(listdata, key=lambda key: str(key))
+    rows: list[BoardConstituentRow] = []
+    for item in listdata[day]:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        try:
+            rows.append(
+                from_akshare_ths_board_cons_row(
+                    {"代码": item[0], "名称": item[1]},
+                    trade_date=trade_date,
+                    board_type="concept",
+                    board_code=board_code,
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    kept = _dedup_constituents(rows)
+    if not kept:
+        raise RuntimeError(f"THS conceptlist produced no valid rows for {board_code}")
+    return kept
+
+
+def _fetch_conceptlist(
+    trade_date: date,
+    board_code: str,
+) -> list[BoardConstituentRow]:
+    """One response lists every member. The quote site only shows five pages."""
+    code = board_code.strip()
+    url = (
+        "https://basic.10jqka.com.cn/ajax/stock/conceptlist.php"
+        f"?cid={code}&code=000001"
+    )
+    text = _http_get(
+        url,
+        headers={
+            "User-Agent": _UA,
+            "Referer": "https://basic.10jqka.com.cn/",
+        },
+        timeout=30.0,
+    )
+    return constituents_from_conceptlist(
+        json.loads(text),
+        trade_date=trade_date,
+        board_code=code,
+    )
+
+
+_FIELD_LEVEL = re.compile(
+    r"(二级|三级)行业分类：\s*(.+?)\s*（共\s*\d+\s*家）"
+)
+_STOCK_CODE = re.compile(r"^\d{6}$")
+_FIELD_TABLE = {"二级": "hy2_table_1", "三级": "hy3_table_1"}
+
+
+def _industry_leaf(label: str) -> str:
+    leaf = label.split("--")[-1].strip()
+    return leaf.rstrip("ⅡⅢ").strip()
+
+
+def constituents_from_field_page(
+    html: str,
+    *,
+    trade_date: date,
+    board_code: str,
+    board_name: str,
+) -> list[BoardConstituentRow]:
+    """Stocks embedded in one F10 industry-comparison page.
+
+    The quote site only publishes five pages. This page includes the whole
+    second- or third-level industry table.
+    """
+    if f"field/0{board_code}" not in html:
+        raise RuntimeError(f"field page is not industry {board_code}")
+    soup = BeautifulSoup(html, features="lxml")
+    levels = _FIELD_LEVEL.findall(soup.get_text(" ", strip=True))
+    if board_name:
+        matched = [
+            level
+            for level, label in levels
+            if _industry_leaf(label) == board_name
+        ]
+        if not matched:
+            raise RuntimeError(f"field page has no industry named {board_name}")
+        level = "三级" if "三级" in matched else matched[0]
+    else:
+        level = "二级"
+    table_id = _FIELD_TABLE[level]
+    table = soup.find(id=table_id)
+    if table is None:
+        raise RuntimeError(f"field page has no {table_id} for {board_code}")
+    rows: list[BoardConstituentRow] = []
+    for tr in table.find_all("tr"):
+        cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+        if len(cells) < 2 or not _STOCK_CODE.fullmatch(cells[0]):
+            continue
+        try:
+            rows.append(
+                from_akshare_ths_board_cons_row(
+                    {"代码": cells[0], "名称": cells[1]},
+                    trade_date=trade_date,
+                    board_type="industry",
+                    board_code=board_code,
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    kept = _dedup_constituents(rows)
+    if not kept:
+        raise RuntimeError(f"field page produced no stocks for {board_code}")
+    return kept
+
+
+def _fetch_industry_field(
+    trade_date: date,
+    board_code: str,
+    board_name: str,
+    seed_codes: list[str],
+) -> list[BoardConstituentRow]:
+    if not seed_codes:
+        raise RuntimeError(f"no stored member to open the field page for {board_code}")
+    errors: list[str] = []
+    headers = {
+        "User-Agent": _UA,
+        "Referer": "https://basic.10jqka.com.cn/",
+    }
+    for seed in seed_codes:
+        digits = seed.split(".")[-1]
+        url = f"https://basic.10jqka.com.cn/{digits}/field.html"
+        try:
+            html = _http_get(url, headers=headers, timeout=30.0, encoding="gbk")
+            return constituents_from_field_page(
+                html,
+                trade_date=trade_date,
+                board_code=board_code,
+                board_name=board_name,
+            )
+        except Exception as exc:  # noqa: BLE001 - try the next member
+            errors.append(f"{digits}: {exc}")
+    raise RuntimeError("; ".join(errors))
+
+
+def _dedup_constituents(rows: list[BoardConstituentRow]) -> list[BoardConstituentRow]:
+    dedup: dict[str, BoardConstituentRow] = {}
+    for row in rows:
+        dedup.setdefault(row.stock_code, row)
+    return list(dedup.values())
+
+
+def _fetch_detail_pages(
     trade_date: date,
     board_type: BoardType,
     board_code: str,
-) -> BoardConstituentsFetchInfo:
-    """Paginate Tonghuashun board detail pages for member stocks."""
-    code = board_code.strip()
+) -> tuple[list[BoardConstituentRow], str]:
+    """Quote-site member pages. Page 6 and later redirect to login."""
     kind = _detail_kind(board_type)
-    prefix = f"http://q.10jqka.com.cn/{kind}/detail/code/{code}"
+    prefix = f"http://q.10jqka.com.cn/{kind}/detail/code/{board_code}"
     frames: list[pd.DataFrame] = []
     total_pages = 1
     page = 1
-    while page <= max(total_pages, 1) and page <= 100:
+    headers = _headers()
+    while page <= total_pages:
         url = prefix + "/" if page == 1 else f"{prefix}/page/{page}/"
-        html = _http_get(url, headers=_headers(), timeout=25.0)
+        html = _http_get(url, headers=headers, timeout=25.0)
         frame, detected = _parse_cons_table(html)
         if page == 1:
             total_pages = max(detected, 1)
         if frame.empty:
-            break
+            if frames:
+                break
+            raise RuntimeError(
+                f"THS cons page {page}/{total_pages} empty for {board_type}:{board_code}"
+            )
         frames.append(frame)
         if page >= total_pages:
             break
         page += 1
         time.sleep(0.15)
 
-    if not frames:
-        raise RuntimeError(f"THS cons empty for {board_type}:{code}")
-
-    big = pd.concat(frames, ignore_index=True)
     rows: list[BoardConstituentRow] = []
+    big = pd.concat(frames, ignore_index=True)
     for _, raw in big.iterrows():
         try:
             rows.append(
@@ -415,20 +585,71 @@ def fetch_board_constituents(
                     raw.to_dict(),
                     trade_date=trade_date,
                     board_type=board_type,
-                    board_code=code,
+                    board_code=board_code,
                 )
             )
         except (KeyError, ValueError):
             continue
-
-    dedup: dict[str, BoardConstituentRow] = {}
-    for row in rows:
-        dedup.setdefault(row.stock_code, row)
-    result = list(dedup.values())
-    if not result:
-        raise RuntimeError(f"THS cons produced no valid rows for {board_type}:{code}")
-    return BoardConstituentsFetchInfo(
-        result,
-        source=SOURCE,
-        attempts=[f"ths_detail_pages: ok ({len(result)} rows, pages={total_pages})"],
+    kept = _dedup_constituents(rows)
+    if not kept:
+        raise RuntimeError(f"THS cons produced no valid rows for {board_type}:{board_code}")
+    pages_fetched = len(frames)
+    status = "ok" if pages_fetched >= total_pages else "partial"
+    note = (
+        f"ths_detail_pages: {status} ({len(kept)} rows, "
+        f"pages={pages_fetched}/{total_pages})"
     )
+    return kept, note
+
+
+def fetch_board_constituents(
+    trade_date: date,
+    board_type: BoardType,
+    board_code: str,
+    *,
+    board_name: str = "",
+    seed_codes: list[str] | None = None,
+) -> BoardConstituentsFetchInfo:
+    """All member stocks for one Tonghuashun board.
+
+    Concepts come from ``conceptlist.php``. Industries come from the F10
+    comparison table of a current member, plus any quote-site page that is
+    still public. The quote site stops at page 5.
+    """
+    code = board_code.strip()
+    if board_type == "concept":
+        rows = _fetch_conceptlist(trade_date, code)
+        return BoardConstituentsFetchInfo(
+            rows,
+            source=SOURCE,
+            attempts=[f"ths_conceptlist: ok ({len(rows)} rows)"],
+        )
+
+    attempts: list[str] = []
+    try:
+        field_rows = _fetch_industry_field(
+            trade_date,
+            code,
+            board_name.strip(),
+            list(seed_codes or []),
+        )
+    except Exception as exc:  # noqa: BLE001 - quote pages may still be complete
+        attempts.append(f"ths_field: fail ({exc})")
+        field_rows = []
+    else:
+        attempts.append(f"ths_field: ok ({len(field_rows)} rows)")
+        return BoardConstituentsFetchInfo(field_rows, source=SOURCE, attempts=attempts)
+
+    try:
+        quote_rows, quote_note = _fetch_detail_pages(trade_date, board_type, code)
+    except Exception as exc:  # noqa: BLE001
+        attempts.append(f"ths_detail_pages: fail ({exc})")
+        raise RuntimeError(
+            f"industry {code} stayed behind the login wall; " + "; ".join(attempts)
+        ) from exc
+    attempts.append(quote_note)
+    if "partial" in quote_note:
+        raise RuntimeError(
+            f"industry {code} stayed behind the login wall; " + "; ".join(attempts)
+        )
+    return BoardConstituentsFetchInfo(quote_rows, source=SOURCE, attempts=attempts)

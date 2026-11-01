@@ -76,6 +76,7 @@
       min-height: 200px;
     }
     .chan-block { margin-top: 1.5rem; }
+    .heat-block { margin-top: 0.75rem; }
     .plan-values {
       display: flex;
       flex-wrap: wrap;
@@ -91,12 +92,52 @@
     .plan-values .loss { color: var(--ink); }
     .error { color: #b91c1c; margin: 0.75rem 0; }
     .note { color: var(--muted); font-size: 0.9rem; }
+    .membership { margin: 0.15rem 0 0.85rem; }
+    .membership p { margin: 0.2rem 0; line-height: 1.6; }
+    .membership a { color: var(--accent); text-decoration: none; }
+    .membership a:hover { text-decoration: underline; }
+    .news-block { margin-top: 1.75rem; }
+    .news-block h2 { margin: 0 0 0.35rem; font-size: 1.25rem; }
+    .news-block a { color: var(--accent); }
+    .news-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .news-card { margin-top: 0.75rem; }
+    .news-card h3, .news-grid h3 { margin: 0 0 0.45rem; font-size: 1rem; }
+    .stat { margin: 0.35rem 0 0; }
+    .stat div { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 0.25rem; }
+    .stat dt { color: var(--muted); }
+    .stat dd { margin: 0; }
+    .news-list { margin: 0.2rem 0 0; padding-left: 1.1rem; }
+    .news-list li { margin: 0.4rem 0; line-height: 1.45; }
+    .spark { width: 100%; max-width: 280px; height: 72px; display: block; margin-top: 0.65rem; }
+    @media (max-width: 720px) {
+      .news-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <main class="{% if chart_html or chan_html %}wide{% endif %}">
+  <main class="{% if chart_html or chan_html or heat_html %}wide{% endif %}">
     <a class="back" href="/">← 热度轮转</a>
     <h1>{{ title }}</h1>
+    {% if identity and identity.show_boards %}
+    <div class="membership">
+      <p>所属板块
+        {% if identity.industries %}
+          {% for board in identity.industries %}<a href="{{ board.href }}">{{ board.name }}</a>{% if not loop.last %}、{% endif %}{% endfor %}
+        {% else %}暂无已入库板块{% endif %}
+      </p>
+      <p>所属概念
+        {% if identity.concepts %}
+          {% for board in identity.concepts %}<a href="{{ board.href }}">{{ board.name }}</a>{% if not loop.last %}、{% endif %}{% endfor %}
+        {% else %}暂无已入库概念{% endif %}
+      </p>
+      {% if identity.as_of %}<p class="note">成分截至 {{ identity.as_of }}</p>{% endif %}
+    </div>
+    {% endif %}
     <p class="meta">个股和 ETF 用 6 位代码，例如 600519。指数用同花顺代码，例如 1A0001、1B0300、399001。</p>
 
     <form method="get" action="/analyze">
@@ -136,6 +177,12 @@
       <section class="chan-block">
         <p class="note">{{ chan_summary }}</p>
         <div class="panel">{{ chan_html | safe }}</div>
+        {% if heat_html %}
+        <div class="heat-block">
+          <p class="note">{{ heat_summary }}</p>
+          <div class="panel">{{ heat_html | safe }}</div>
+        </div>
+        {% endif %}
         {% if chan_plan %}
         <p class="plan-values">
           <span class="target">目标 {{ chan_plan.target }}</span>
@@ -147,6 +194,104 @@
         </p>
         {% endif %}
       </section>
+    {% endif %}
+
+    {% if stock_news %}
+    <section class="news-block">
+      <h2>个股资讯{% if stock_news.name %} · {{ stock_news.name }}{% endif %}</h2>
+      {% if stock_news.kind == "index" or stock_news.kind == "error" %}
+        <p class="{% if stock_news.kind == 'error' %}error{% else %}note{% endif %}">{{ stock_news.message }}</p>
+      {% else %}
+        <p class="note">
+          {% if stock_news.as_of %}新闻截至 {{ stock_news.as_of }}{% else %}新闻库还没有快照日{% endif %}
+          · <a href="{{ stock_news.news_href }}">当日全市场</a>
+          · 不随上面的 K 线区间变化
+        </p>
+        <div class="news-grid">
+          <div class="panel">
+            <h3>千股千评</h3>
+            {% if stock_news.comment %}
+            <dl class="stat">
+              <div><dt>关注度</dt><dd>{{ stock_news.comment.focus or "—" }}</dd></div>
+              <div><dt>评分</dt><dd>{{ stock_news.comment.score or "—" }}</dd></div>
+              <div><dt>排名</dt><dd>{{ stock_news.comment.rank_no if stock_news.comment.rank_no is not none else "—" }}</dd></div>
+              <div><dt>排名变动</dt><dd>{{ stock_news.comment.rank_change or "—" }}</dd></div>
+            </dl>
+            {% elif stock_news.comment_missing %}
+            <p class="note">该日无千股千评</p>
+            {% else %}
+            <p class="note">还没有这只股票的千股千评</p>
+            {% endif %}
+            {% if stock_news.sparkline %}
+            <svg class="spark" viewBox="0 0 280 72" role="img" aria-label="关注度从 {{ stock_news.sparkline.start }} 的 {{ stock_news.sparkline.low }} 到 {{ stock_news.sparkline.end }} 的 {{ stock_news.sparkline.high }}">
+              <polyline points="{{ stock_news.sparkline.points }}" fill="none" stroke="#1d4ed8" stroke-width="2"></polyline>
+            </svg>
+            <p class="note">{{ stock_news.sparkline.start }} 至 {{ stock_news.sparkline.end }}，关注度 {{ stock_news.sparkline.low }}–{{ stock_news.sparkline.high }}</p>
+            {% endif %}
+          </div>
+          <div class="panel">
+            <h3>人气榜</h3>
+            {% if stock_news.rank.state == "on" %}
+            <dl class="stat">
+              <div><dt>名次</dt><dd>{{ stock_news.rank.rank_no }}</dd></div>
+              <div><dt>名次变动</dt><dd>{{ stock_news.rank.rank_change or "—" }}</dd></div>
+              <div><dt>涨跌幅</dt><dd>{{ stock_news.rank.pct_chg or "—" }}</dd></div>
+            </dl>
+            {% else %}
+            <p class="note">{{ stock_news.rank.label }}</p>
+            {% endif %}
+          </div>
+          <div class="panel">
+            <h3>飙升榜</h3>
+            {% if stock_news.surge.state == "on" %}
+            <dl class="stat">
+              <div><dt>名次</dt><dd>{{ stock_news.surge.rank_no }}</dd></div>
+              <div><dt>名次变动</dt><dd>{{ stock_news.surge.rank_change or "—" }}</dd></div>
+              <div><dt>涨跌幅</dt><dd>{{ stock_news.surge.pct_chg or "—" }}</dd></div>
+            </dl>
+            {% else %}
+            <p class="note">{{ stock_news.surge.label }}</p>
+            {% endif %}
+          </div>
+          <div class="panel">
+            <h3>微博</h3>
+            {% if stock_news.weibo %}
+            <dl class="stat">
+              {% for row in stock_news.weibo %}
+              <div><dt>{{ row.period }}人气指数</dt><dd>{{ row.rate or "—" }}</dd></div>
+              {% endfor %}
+            </dl>
+            {% else %}
+            <p class="note">{{ stock_news.weibo_note }}</p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="panel news-card">
+          <h3>公告</h3>
+          {% if stock_news.notices %}
+          <ul class="news-list">
+            {% for row in stock_news.notices %}
+            <li>{{ row.day }} · {{ row.type }} · {% if row.url %}<a href="{{ row.url }}">{{ row.title }}</a>{% else %}{{ row.title }}{% endif %}</li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="note">暂无已入库公告</p>
+          {% endif %}
+        </div>
+        <div class="panel news-card">
+          <h3>快讯</h3>
+          {% if stock_news.flashes %}
+          <ul class="news-list">
+            {% for row in stock_news.flashes %}
+            <li>{{ row.published_at }} · {{ row.source_label }} · {% if row.url %}<a href="{{ row.url }}">{{ row.title }}</a>{% else %}{{ row.title }}{% endif %}{% if row.content %}<div class="note">{{ row.content }}</div>{% endif %}</li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="note">{{ stock_news.flash_note }}</p>
+          {% endif %}
+        </div>
+      {% endif %}
+    </section>
     {% endif %}
   </main>
 </body>

@@ -6,7 +6,19 @@ import unittest
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from app.news_board import assemble_board, format_flashes, select_day
+from app.news_board import analyze_href, assemble_board, format_flashes, select_day
+
+
+class AnalyzeHrefTests(unittest.TestCase):
+    def test_baostock_code_becomes_six_digits(self) -> None:
+        self.assertEqual(analyze_href("sh.600519"), "/analyze?code=600519")
+        self.assertEqual(analyze_href("sz.000037"), "/analyze?code=000037")
+        self.assertEqual(analyze_href("bj.920001"), "/analyze?code=920001")
+
+    def test_missing_or_unusable_code_has_no_link(self) -> None:
+        self.assertIsNone(analyze_href(None))
+        self.assertIsNone(analyze_href(""))
+        self.assertIsNone(analyze_href("not-a-code"))
 
 
 class SelectDayTests(unittest.TestCase):
