@@ -48,6 +48,8 @@
     th { color: var(--muted); font-weight: 500; }
     a.stock { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--line); }
     a.stock:hover { color: #1d4ed8; border-color: #1d4ed8; }
+    tr.ratio-top td { background: rgba(251, 146, 60, 0.18); }
+    tr.ratio-bottom td { background: rgba(74, 222, 128, 0.18); }
     .empty { color: var(--muted); margin: 1rem 0; }
     .panel {
       background: var(--card);
@@ -91,7 +93,7 @@
         </thead>
         <tbody>
           {% for row in rows %}
-          <tr>
+          <tr{% if row.row_class %} class="{{ row.row_class }}"{% endif %}>
             <td><a class="stock" href="{{ row.analyze_href }}">{{ row.name }}</a></td>
             <td>{{ row.code }}</td>
             <td>{{ row.close_text }}</td>

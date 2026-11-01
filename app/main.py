@@ -59,7 +59,7 @@ from app.interpret.service import (
     UnknownTemplate,
     interpret,
 )
-from app.levels.board_members import rank_board_members
+from app.levels.board_members import rank_board_members, ratio_highlight_codes
 from app.levels.industry_rank import rank_industry_plans, short_heat_bands, state_label
 from app.market_data.related_etfs import build_related_etf_rows, related_etf_view
 from app.themes.member_wave import build_member_short_heat_payload
@@ -2891,7 +2891,7 @@ def _board_members_page(
                 f"{page['kline_prefix']}/{board_code}/kline"
                 f"?end_date={as_of.isoformat()}"
             ),
-            "rows": [_member_row_view(row) for row in ranked],
+            "rows": _member_rows_view(ranked),
             "heat_html": heat_html,
             "heat_empty": heat_empty,
             "heat_axis_note": heat_axis_note,
@@ -2900,13 +2900,23 @@ def _board_members_page(
     )
 
 
-def _member_row_view(row) -> dict:
+def _member_rows_view(rows) -> list[dict]:
+    top, bottom = ratio_highlight_codes(rows)
+    return [_member_row_view(row, top=top, bottom=bottom) for row in rows]
+
+
+def _member_row_view(row, *, top: set[str] | None = None, bottom: set[str] | None = None) -> dict:
     if row.ratio is not None:
         ratio_text = f"{row.ratio:.2f} : 1"
     elif row.note:
         ratio_text = row.note
     else:
         ratio_text = "—"
+    row_class = ""
+    if top and row.code in top:
+        row_class = "ratio-top"
+    elif bottom and row.code in bottom:
+        row_class = "ratio-bottom"
     return {
         "code": row.code,
         "name": row.name,
@@ -2915,6 +2925,7 @@ def _member_row_view(row) -> dict:
         "yield_text": _percent_text(row.yield_rate),
         "heat_text": _heat_text(row.heat),
         "ratio_text": ratio_text,
+        "row_class": row_class,
     }
 
 

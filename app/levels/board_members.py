@@ -163,5 +163,31 @@ def _sort_key(row: MemberPlanRow) -> tuple:
     return (0, row.heat, row.code)
 
 
+def ratio_highlight_codes(
+    rows: Sequence[MemberPlanRow],
+    *,
+    limit: int = 3,
+) -> tuple[set[str], set[str]]:
+    """Codes with the best and worst yield∶loss among rows that have a ratio.
+
+    Top names are the highest ratios; bottom names are the lowest, chosen from
+    whatever remains after the top set so a short list does not paint both.
+    """
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    scored = [(row.code, float(row.ratio)) for row in rows if row.ratio is not None]
+    if not scored:
+        return set(), set()
+    ordered = sorted(scored, key=lambda item: (-item[1], item[0]))
+    top_n = min(limit, len(ordered))
+    top = {code for code, _ratio in ordered[:top_n]}
+    remaining = [item for item in ordered if item[0] not in top]
+    if not remaining:
+        return top, set()
+    bottom_n = min(limit, len(remaining))
+    bottom = {code for code, _ratio in remaining[-bottom_n:]}
+    return top, bottom
+
+
 def _bar_ok(row: Mapping[str, Any]) -> bool:
     return all(row.get(name) is not None for name in ("open", "high", "low", "close"))
