@@ -82,6 +82,7 @@ class TargetStopPlanTests(unittest.TestCase):
                 "close": "120.00",
                 "yield_rate": "8.33%",
                 "loss_rate": "16.67%",
+                "ratio": "0.50 : 1",
             },
         )
         outside = target_stop_plan((100, 130, 160), high=210, low=200, close=205)

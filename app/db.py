@@ -633,6 +633,33 @@ def fetch_stock_heat_series(
     ]
 
 
+def fetch_stock_comment_ranks(
+    code: str,
+    start: date,
+    end: date,
+) -> list[dict[str, object]]:
+    """千股千评 rank for one stock (baostock code). Days without a rank are omitted."""
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date, rank_no, rank_change
+                FROM stock_comment_daily
+                WHERE code = %s
+                  AND trade_date >= %s
+                  AND trade_date <= %s
+                  AND rank_no IS NOT NULL
+                ORDER BY trade_date
+                """,
+                (code, start, end),
+            )
+            rows = cur.fetchall()
+    return [
+        {"trade_date": row[0], "rank_no": row[1], "rank_change": row[2]}
+        for row in rows
+    ]
+
+
 def replace_board_universe(
     rows: list[BoardUniverseRow],
     *,

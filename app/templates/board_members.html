@@ -68,7 +68,7 @@
     <p class="meta">
       {{ board_code }} · {{ kind_label }} · 截止 {{ as_of }} · 共 {{ rows|length }} 只。
       热度只在本板块成分股集合内计算短热（数值越小越热），表按热度从热到冷排列。
-      收益率与收益∶损失来自各股缠论关键线的目标与止损；收盘为截止日 close。
+      当前收益率为截止日当日涨跌幅；目标收益率、收益∶损失与目标止损来自各股缠论关线；收盘为截止日 close。
     </p>
     {% if heat_html %}
     <p class="meta">{{ heat_axis_note }} 共 {{ heat_board_count }} 只成分股。</p>
@@ -86,9 +86,11 @@
             <th>名称</th>
             <th>代码</th>
             <th>收盘</th>
-            <th>收益率</th>
+            <th>当前收益率</th>
             <th>热度</th>
             <th>收益∶损失</th>
+            <th>目标收益率</th>
+            <th>目标止损</th>
           </tr>
         </thead>
         <tbody>
@@ -97,9 +99,11 @@
             <td><a class="stock" href="{{ row.analyze_href }}">{{ row.name }}</a></td>
             <td>{{ row.code }}</td>
             <td>{{ row.close_text }}</td>
-            <td>{{ row.yield_text }}</td>
+            <td>{{ row.day_return_text }}</td>
             <td>{{ row.heat_text }}</td>
             <td>{{ row.ratio_text }}</td>
+            <td>{{ row.target_yield_text }}</td>
+            <td>{{ row.target_stop_text }}</td>
           </tr>
           {% endfor %}
         </tbody>

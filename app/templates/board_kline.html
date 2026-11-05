@@ -156,7 +156,8 @@
     .plan-values .stop { color: #15803d; }
     .plan-values .close,
     .plan-values .yield,
-    .plan-values .loss { color: var(--ink); }
+    .plan-values .loss,
+    .plan-values .ratio { color: var(--ink); }
     .error {
       color: #b91c1c;
       margin: 0.75rem 0;
@@ -207,6 +208,7 @@
           <span class="close">收盘 {{ chan_plan.close }}</span>
           <span class="yield">收益率 {{ chan_plan.yield_rate }}</span>
           <span class="loss">损失率 {{ chan_plan.loss_rate }}</span>
+          <span class="ratio">收益∶损失 {{ chan_plan.ratio }}</span>
         </p>
         {% endif %}
       </section>

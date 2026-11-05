@@ -476,7 +476,7 @@ def _plan_caption(plan) -> dict | None:
     """Plan prices plus the return and loss of buying at the current close.
 
     Target and stop stay as drawn. Yield is ``(target − close) / close`` and
-    loss is ``(close − stop) / close``.
+    loss is ``(close − stop) / close``. Ratio is reward∶risk as ``x : 1``.
     """
     if plan is None or plan.target is None or plan.buy is None or plan.stop is None:
         return None
@@ -488,6 +488,7 @@ def _plan_caption(plan) -> dict | None:
         "close": f"{close:.2f}",
         "yield_rate": _percent((plan.target - close) / close) if close else "—",
         "loss_rate": _percent((close - plan.stop) / close) if close else "—",
+        "ratio": "—" if plan.ratio is None else f"{plan.ratio:.2f} : 1",
     }
 
 

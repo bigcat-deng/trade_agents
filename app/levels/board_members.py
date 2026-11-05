@@ -1,24 +1,27 @@
 """Rank a board's constituent stocks by short heat inside that set.
 
 Each stock gets the same Chan key lines and target/stop plan used on the
-board and analyze pages. Short heat is recomputed only among the members.
+board and analyze pages. Daily bars come from Tonghuashun (same as /analyze).
+Short heat is recomputed only among the members.
 """
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Any, Mapping, Sequence
 
 from app.charts.chan_board import WINDOW, chan_fetch_start, drawn_key_levels
-from app.db import (
-    fetch_board_constituents_named,
-    fetch_stock_bars_for_codes,
-)
+from app.db import fetch_board_constituents_named
 from app.levels.target_stop import target_stop_plan
 from app.market_data.board_heat import BoardReturn, compute_heat
+from app.market_data.codes import to_akshare_em
+from app.market_data.providers.ths_line import fetch_ths_daily_bars
 from scripts.chan_fractal_probe import prepare_chan_window
+
+_THS_FETCH_WORKERS = 8
 
 
 @dataclass(frozen=True)
@@ -27,9 +30,12 @@ class MemberPlanRow:
     name: str
     trade_date: date | None
     close: float | None
-    yield_rate: float | None
+    day_return: float | None
     heat: float | None
     ratio: float | None
+    target_yield: float | None
+    target: float | None
+    stop: float | None
     note: str | None
 
 
@@ -45,17 +51,45 @@ def rank_board_members(
         return []
     codes = [code for code, _name in members]
     names = {code: name or code for code, name in members}
-    bars = fetch_stock_bars_for_codes(codes, chan_fetch_start(as_of), as_of)
-    by_code: dict[str, list[dict[str, object]]] = {code: [] for code in codes}
-    for row in bars:
-        code = str(row["code"])
-        by_code.setdefault(code, []).append(row)
+    by_code = _fetch_ths_bars_by_code(codes, chan_fetch_start(as_of), as_of)
     heat_by_code = _member_short_heat(by_code, as_of)
     rows = [
         _plan_stock(code, names.get(code, code), by_code.get(code, []), heat_by_code.get(code))
         for code in codes
     ]
     return sorted(rows, key=_sort_key)
+
+
+def _fetch_ths_bars_by_code(
+    codes: Sequence[str],
+    start: date,
+    end: date,
+) -> dict[str, list[dict[str, object]]]:
+    """Same Tonghuashun daily bars /analyze uses, keyed by baostock code."""
+    by_code: dict[str, list[dict[str, object]]] = {code: [] for code in codes}
+    if not codes:
+        return by_code
+
+    def _one(code: str) -> tuple[str, list[dict[str, object]]]:
+        try:
+            ths = to_akshare_em(code)
+            rows = fetch_ths_daily_bars(ths, start, end)
+        except (ValueError, RuntimeError):
+            return code, []
+        out: list[dict[str, object]] = []
+        for row in rows:
+            item = dict(row)
+            item["code"] = code
+            out.append(item)
+        return code, out
+
+    workers = min(_THS_FETCH_WORKERS, len(codes))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_one, code) for code in codes]
+        for fut in as_completed(futures):
+            code, rows = fut.result()
+            by_code[code] = rows
+    return by_code
 
 
 def _member_short_heat(
@@ -98,21 +132,26 @@ def _plan_stock(
 ) -> MemberPlanRow:
     usable = [row for row in bars if _bar_ok(row)]
     if len(usable) < 2:
-        close = float(usable[-1]["close"]) if usable else None
-        day = usable[-1]["trade_date"] if usable else None
+        tip = usable[-1] if usable else None
         return MemberPlanRow(
             code=code,
             name=name,
-            trade_date=day,  # type: ignore[arg-type]
-            close=close,
-            yield_rate=None,
+            trade_date=None if tip is None else tip["trade_date"],  # type: ignore[arg-type]
+            close=None if tip is None else float(tip["close"]),
+            day_return=_day_return_at(usable, len(usable) - 1) if usable else None,
             heat=heat,
             ratio=None,
+            target_yield=None,
+            target=None,
+            stop=None,
             note="无K线",
         )
     window = prepare_chan_window(usable, n=WINDOW)
     close = float(window.closes[-1])
     day = window.dates[-1]
+    tip = next((row for row in reversed(usable) if row["trade_date"] == day), usable[-1])
+    tip_index = usable.index(tip)
+    day_return = _day_return_at(usable, tip_index)
     try:
         keys = drawn_key_levels(window)
         plan = target_stop_plan(
@@ -127,9 +166,12 @@ def _plan_stock(
             name=name,
             trade_date=day,
             close=close,
-            yield_rate=None,
+            day_return=day_return,
             heat=heat,
             ratio=None,
+            target_yield=None,
+            target=None,
+            stop=None,
             note="重要线不足",
         )
     if plan.mode == "outside" or plan.target is None or plan.stop is None:
@@ -138,22 +180,49 @@ def _plan_stock(
             name=name,
             trade_date=day,
             close=close,
-            yield_rate=None,
+            day_return=day_return,
             heat=heat,
             ratio=None,
+            target_yield=None,
+            target=None,
+            stop=None,
             note="区间外" if plan.mode == "outside" else "重要线不足",
         )
-    yield_rate = (plan.target - close) / close if close else None
+    target_yield = (plan.target - close) / close if close else None
     return MemberPlanRow(
         code=code,
         name=name,
         trade_date=day,
         close=close,
-        yield_rate=yield_rate,
+        day_return=day_return,
         heat=heat,
         ratio=plan.ratio,
+        target_yield=target_yield,
+        target=float(plan.target),
+        stop=float(plan.stop),
         note=None,
     )
+
+
+def _day_return_at(bars: Sequence[Mapping[str, Any]], index: int) -> float | None:
+    """Session return on bars[index] as a fraction.
+
+    Prefer ``pct_chg`` when present (baostock percent). Tonghuashun bars have
+    no pct_chg, so fall back to close vs previous close.
+    """
+    if index < 0 or index >= len(bars):
+        return None
+    row = bars[index]
+    raw = row.get("pct_chg")
+    if raw is not None:
+        return float(raw) / 100.0
+    if index < 1:
+        return None
+    close = float(row["close"])
+    prev = float(bars[index - 1]["close"])
+    if prev == 0:
+        return None
+    return (close - prev) / prev
 
 
 def _sort_key(row: MemberPlanRow) -> tuple:

@@ -38,6 +38,7 @@ from app.db import (
     fetch_board_daily_bars_many,
     fetch_board_heat_series,
     fetch_board_name,
+    fetch_stock_comment_ranks,
     fetch_stock_heat_series,
     fetch_board_rotation,
     fetch_concept_heat_named_window,
@@ -2764,6 +2765,7 @@ def analyze_page(
         try:
             bs_code = to_baostock(normalized)
             heats = fetch_stock_heat_series(bs_code, chan_start, chan_end)
+            comments = fetch_stock_comment_ranks(bs_code, chan_start, chan_end)
             heat_html = render_stock_heat_html(
                 heats,
                 title=title,
@@ -2771,12 +2773,15 @@ def analyze_page(
                 end=chan_end,
                 n=chan_count,
                 include_plotlyjs=False,
+                comments=comments,
             )
             if heat_html is not None:
                 heat_summary = (
                     f"个股短热 · {chan_start} ~ {chan_end}"
                     " · 与缠论横轴对齐 · 数值越小越热"
                 )
+                if comments:
+                    heat_summary += " · 点为千股千评排名"
         except ValueError:
             # Non-stock codes (some indices) have no baostock heat key.
             pass
@@ -2917,14 +2922,20 @@ def _member_row_view(row, *, top: set[str] | None = None, bottom: set[str] | Non
         row_class = "ratio-top"
     elif bottom and row.code in bottom:
         row_class = "ratio-bottom"
+    if row.target is not None and row.stop is not None:
+        target_stop_text = f"{_plan_price(row.target)} / {_plan_price(row.stop)}"
+    else:
+        target_stop_text = "—"
     return {
         "code": row.code,
         "name": row.name,
         "analyze_href": _analyze_href(row.code),
         "close_text": _plan_price(row.close),
-        "yield_text": _percent_text(row.yield_rate),
+        "day_return_text": _percent_text(row.day_return),
         "heat_text": _heat_text(row.heat),
         "ratio_text": ratio_text,
+        "target_yield_text": _percent_text(row.target_yield),
+        "target_stop_text": target_stop_text,
         "row_class": row_class,
     }
 

@@ -50,6 +50,73 @@ class StockHeatChartTests(unittest.TestCase):
         assert html is not None
         self.assertTrue("\\u77ed\\u70ed" in html or "短热" in html)
 
+    def test_comment_ranks_are_markers_on_the_same_axis(self) -> None:
+        start = date(2024, 1, 2)
+        heats = [
+            {
+                "trade_date": start,
+                "heat_short": Decimal("900"),
+                "heat_long": Decimal("1200"),
+            },
+            {
+                "trade_date": date(2024, 1, 8),
+                "heat_short": Decimal("700"),
+                "heat_long": Decimal("1100"),
+            },
+        ]
+        comments = [
+            {"trade_date": start, "rank_no": 12, "rank_change": 3},
+            {"trade_date": date(2024, 1, 5), "rank_no": None, "rank_change": 1},
+            {"trade_date": date(2024, 1, 8), "rank_no": 40, "rank_change": -2},
+        ]
+        figure = build_stock_heat_figure(
+            heats,
+            title="测试",
+            start=start,
+            end=date(2024, 1, 8),
+            n=2,
+            comments=comments,
+        )
+        self.assertIsNotNone(figure)
+        assert figure is not None
+        self.assertEqual(len(figure.data), 3)
+        comment = figure.data[2]
+        self.assertEqual(comment.name, "千股千评")
+        self.assertEqual(comment.mode, "lines+markers")
+        self.assertEqual(comment.line.dash, "dash")
+        self.assertEqual(list(comment.x), [start, date(2024, 1, 8)])
+        self.assertEqual(list(comment.y), [12.0, 40.0])
+        self.assertEqual(list(comment.customdata), ["+3", "-2"])
+        self.assertEqual(figure.layout.yaxis.autorange, "reversed")
+        html = render_stock_heat_html(
+            heats,
+            title="测试",
+            start=start,
+            end=date(2024, 1, 8),
+            n=2,
+            comments=comments,
+        )
+        assert html is not None
+        self.assertTrue("\\u5343\\u80a1\\u5343\\u8bc4" in html or "千股千评" in html)
+
+    def test_comment_ranks_do_not_draw_without_heat(self) -> None:
+        heats = [
+            {"trade_date": date(2024, 1, 2), "heat_short": None, "heat_long": None},
+        ]
+        comments = [
+            {"trade_date": date(2024, 1, 2), "rank_no": 8, "rank_change": 0},
+        ]
+        self.assertIsNone(
+            build_stock_heat_figure(
+                heats,
+                title="空",
+                start=date(2024, 1, 2),
+                end=date(2024, 1, 2),
+                n=1,
+                comments=comments,
+            )
+        )
+
     def test_build_stock_heat_figure_empty_when_all_null(self) -> None:
         heats = [
             {"trade_date": date(2024, 1, 2), "heat_short": None, "heat_long": None},
