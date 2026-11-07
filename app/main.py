@@ -2810,7 +2810,7 @@ def analyze_page(
                     " · 与缠论横轴对齐 · 数值越小越热"
                 )
                 if comments:
-                    heat_summary += " · 点为千股千评排名"
+                    heat_summary += " · 线为千股千评排名"
         except ValueError:
             # Non-stock codes (some indices) have no baostock heat key.
             pass

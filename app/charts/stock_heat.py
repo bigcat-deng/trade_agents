@@ -70,7 +70,7 @@ def build_stock_heat_figure(
     """Plot heat_short / heat_long; return None when nothing finite to draw.
 
     ``comments`` are 千股千评 ranks on the same reversed axis. Only days with
-    a rank are included; those points are joined with a dashed line.
+    a rank are included; those ranks are joined with a translucent green line.
     """
     dates: list[date] = []
     short: list[float | None] = []
@@ -134,9 +134,8 @@ def build_stock_heat_figure(
                 x=comment_dates,
                 y=comment_ranks,
                 name="千股千评",
-                mode="lines+markers",
-                line=dict(color="#b45309", width=1.4, dash="dash"),
-                marker=dict(color="#b45309", size=8, symbol="circle"),
+                mode="lines",
+                line=dict(color="rgba(21, 128, 61, 0.5)", width=1.4),
                 customdata=comment_changes,
                 hovertemplate="千股千评 %{y:.0f}  变动 %{customdata}<extra></extra>",
             ),

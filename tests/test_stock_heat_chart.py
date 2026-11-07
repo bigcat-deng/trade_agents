@@ -50,7 +50,7 @@ class StockHeatChartTests(unittest.TestCase):
         assert html is not None
         self.assertTrue("\\u77ed\\u70ed" in html or "短热" in html)
 
-    def test_comment_ranks_are_markers_on_the_same_axis(self) -> None:
+    def test_comment_ranks_are_a_line_on_the_same_axis(self) -> None:
         start = date(2024, 1, 2)
         heats = [
             {
@@ -82,8 +82,9 @@ class StockHeatChartTests(unittest.TestCase):
         self.assertEqual(len(figure.data), 3)
         comment = figure.data[2]
         self.assertEqual(comment.name, "千股千评")
-        self.assertEqual(comment.mode, "lines+markers")
-        self.assertEqual(comment.line.dash, "dash")
+        self.assertEqual(comment.mode, "lines")
+        self.assertEqual(comment.line.color, "rgba(21, 128, 61, 0.5)")
+        self.assertEqual(comment.line.dash, None)
         self.assertEqual(list(comment.x), [start, date(2024, 1, 8)])
         self.assertEqual(list(comment.y), [12.0, 40.0])
         self.assertEqual(list(comment.customdata), ["+3", "-2"])
