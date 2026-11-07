@@ -155,7 +155,10 @@
     </table>
     </div>
     <h2>缠论</h2>
-    <p class="meta">结束日向前最多 200 个交易日。K 线下方是当日成交量。</p>
+    <p class="meta">
+      结束日向前最多 200 个交易日。K 线下方是当日成交量。
+      道琼斯和纳斯达克用新浪，按各自交易日切到同一结束日。
+    </p>
     {% if chan_error %}
     <p class="meta error">{{ chan_error }}</p>
     {% endif %}
@@ -164,6 +167,9 @@
     <p class="meta">{{ chart.summary }}</p>
     <div class="panel">{{ chart.html | safe }}</div>
     {% endfor %}
+    {% if us_chan_error %}
+    <p class="meta error">{{ us_chan_error }}</p>
+    {% endif %}
     {% endif %}
   </main>
 </body>

@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from app.market_data.index_ladder import INDICES, align_breadth, build_payload
+from app.market_data.index_ladder import (
+    INDICES,
+    align_breadth,
+    build_payload,
+    us_index_rows,
+)
 
 
 def _series(closes: list[float]) -> dict[date, tuple[float, float, float]]:
@@ -71,3 +76,48 @@ class AlignBreadthTests(unittest.TestCase):
         self.assertAlmostEqual(aligned["up_ratio"][2], round(1600 / 5000 * 100, 1))
         self.assertEqual(aligned["last_complete"]["date"], "2026-09-23")
         self.assertEqual(aligned["last_complete"]["down"], 3400)
+
+
+class UsIndexRowTests(unittest.TestCase):
+    def test_cuts_at_end_and_drops_blank_prices(self) -> None:
+        end = date(2026, 11, 6)
+        records = [
+            {
+                "date": date(2026, 11, 7),
+                "open": 3.0,
+                "high": 4.0,
+                "low": 2.0,
+                "close": 3.5,
+                "volume": 9.0,
+            },
+            {
+                "date": datetime(2026, 11, 6, 16, 0),
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "volume": float("nan"),
+            },
+            {
+                "date": date(2026, 11, 5),
+                "open": 1.0,
+                "high": 1.0,
+                "low": 1.0,
+                "close": None,
+                "volume": 4.0,
+            },
+            {
+                "date": date(2026, 11, 4),
+                "open": 8.0,
+                "high": 9.0,
+                "low": 7.0,
+                "close": 8.5,
+                "volume": 12.0,
+            },
+        ]
+        rows = us_index_rows(records, end)
+        self.assertEqual([row["trade_date"] for row in rows], [date(2026, 11, 4), end])
+        self.assertEqual(rows[0]["close"], 8.5)
+        self.assertEqual(rows[0]["volume"], 12.0)
+        self.assertEqual(rows[1]["volume"], 0.0)
+        self.assertEqual(rows[1]["open"], 1.0)

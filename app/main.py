@@ -65,7 +65,14 @@ from app.levels.industry_rank import rank_industry_plans, short_heat_bands, stat
 from app.market_data.related_etfs import build_related_etf_rows, related_etf_view
 from app.themes.member_wave import build_member_short_heat_payload
 from app.market_data.board_heat import top_short_heat_keys
-from app.market_data.index_ladder import INDICES, align_breadth, fetch_index_ohlcv, load_size_ladder
+from app.market_data.index_ladder import (
+    INDICES,
+    US_CHAN_INDICES,
+    align_breadth,
+    fetch_index_ohlcv,
+    fetch_us_index_ohlcv,
+    load_size_ladder,
+)
 from app.market_data.csi500 import (
     csi500_maps_ending,
     fetch_csi500_closes,
@@ -314,6 +321,7 @@ def index_size_ladder_page(
         "breadth_note": None,
         "chan_charts": [],
         "chan_error": None,
+        "us_chan_error": None,
     }
     try:
         payload = load_size_ladder(n, end)
@@ -340,28 +348,49 @@ def index_size_ladder_page(
     return templates.TemplateResponse(request, "index_size_ladder.html", context)
 
 
+def _chan_chart_entry(name: str, code: str, rows: list[dict]) -> dict:
+    html, start, visible_end, count, _plan = render_chan_board_html(
+        rows,
+        title=f"{name} {code}",
+        include_plotlyjs=False,
+    )
+    return {
+        "name": name,
+        "code": code,
+        "summary": f"缠论 · {count} 根K线 · {start} ~ {visible_end}",
+        "html": html,
+    }
+
+
 def _index_chan_context(end: date) -> dict:
-    """Chan charts for the ladder indices, ending on the page end date."""
+    """Chan charts for the ladder indices, ending on the page end date.
+
+    Dow and Nasdaq composite are appended after 国证2000. A Sina failure
+    leaves the A-share charts in place.
+    """
     try:
         series = fetch_index_ohlcv(chan_fetch_start(end), end)
     except (RuntimeError, ValueError) as exc:
-        return {"chan_charts": [], "chan_error": str(exc)}
-    charts = []
-    for name, code, _color in INDICES:
-        html, start, visible_end, count, _plan = render_chan_board_html(
-            series[name],
-            title=f"{name} {code}",
-            include_plotlyjs=False,
+        return {"chan_charts": [], "chan_error": str(exc), "us_chan_error": None}
+    charts = [
+        _chan_chart_entry(name, code, series[name])
+        for name, code, _color in INDICES
+    ]
+    us_chan_error = None
+    try:
+        us_series = fetch_us_index_ohlcv(end)
+    except Exception as exc:
+        us_chan_error = str(exc)
+    else:
+        charts.extend(
+            _chan_chart_entry(name, symbol, us_series[name])
+            for name, symbol in US_CHAN_INDICES
         )
-        charts.append(
-            {
-                "name": name,
-                "code": code,
-                "summary": f"缠论 · {count} 根K线 · {start} ~ {visible_end}",
-                "html": html,
-            }
-        )
-    return {"chan_charts": charts, "chan_error": None}
+    return {
+        "chan_charts": charts,
+        "chan_error": None,
+        "us_chan_error": us_chan_error,
+    }
 
 
 def _breadth_context(date_strings: list[str]) -> dict:

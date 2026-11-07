@@ -11,10 +11,12 @@ Cumulative return and the spread use close, rebased to the first day of the wind
 
 from __future__ import annotations
 
+import math
 import statistics
 import threading
 import time
-from datetime import date, timedelta
+from collections.abc import Iterable, Mapping
+from datetime import date, datetime, timedelta
 
 import baostock as bs
 import numpy as np
@@ -31,6 +33,11 @@ INDICES: tuple[tuple[str, str, str], ...] = (
 )
 LARGE_NAME = "上证50"
 SMALL_NAME = "国证2000"
+# Chan charts only, drawn under 国证2000. Sina symbols, not part of the ladder.
+US_CHAN_INDICES: tuple[tuple[str, str], ...] = (
+    ("道琼斯", ".DJI"),
+    ("纳斯达克", ".IXIC"),
+)
 
 _CACHE: dict[tuple[int, str], dict] = {}
 _LOCK = threading.Lock()
@@ -195,6 +202,64 @@ def align_breadth(
         "median_traded": median,
         "last_complete": last_complete,
     }
+
+
+def _bar_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _blank_price(value: object) -> bool:
+    if value is None:
+        return True
+    try:
+        return math.isnan(float(value))
+    except (TypeError, ValueError):
+        return True
+
+
+def us_index_rows(records: Iterable[Mapping[str, object]], end: date) -> list[dict]:
+    """OHLCV rows for the chan board, oldest first, on or before ``end``."""
+    rows: list[dict] = []
+    for record in records:
+        day = _bar_date(record.get("date"))
+        if day is None or day > end:
+            continue
+        prices = [record.get(key) for key in ("open", "high", "low", "close")]
+        if any(_blank_price(value) for value in prices):
+            continue
+        volume = record.get("volume")
+        rows.append(
+            {
+                "trade_date": day,
+                "open": float(prices[0]),
+                "high": float(prices[1]),
+                "low": float(prices[2]),
+                "close": float(prices[3]),
+                "volume": 0.0 if _blank_price(volume) else float(volume),
+            }
+        )
+    rows.sort(key=lambda row: row["trade_date"])
+    return rows
+
+
+def fetch_us_index_ohlcv(end: date) -> dict[str, list[dict]]:
+    """Dow and Nasdaq composite daily bars from Sina, on or before ``end``."""
+    import akshare as ak
+
+    out: dict[str, list[dict]] = {}
+    for name, symbol in US_CHAN_INDICES:
+        frame = ak.index_us_stock_sina(symbol=symbol)
+        rows = us_index_rows(frame.to_dict("records"), end)
+        if not rows:
+            raise RuntimeError(
+                f"sina returned no bars for {name} {symbol} on or before {end}"
+            )
+        out[name] = rows
+    return out
 
 
 def fetch_index_ohlcv(
