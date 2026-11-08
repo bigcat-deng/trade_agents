@@ -121,3 +121,21 @@ class UsIndexRowTests(unittest.TestCase):
         self.assertEqual(rows[0]["volume"], 12.0)
         self.assertEqual(rows[1]["volume"], 0.0)
         self.assertEqual(rows[1]["open"], 1.0)
+
+    def test_iso_date_string_is_kept(self) -> None:
+        rows = us_index_rows(
+            [
+                {
+                    "date": "2026-11-06",
+                    "open": 1.0,
+                    "high": 2.0,
+                    "low": 0.5,
+                    "close": 1.5,
+                    "volume": 3.0,
+                }
+            ],
+            date(2026, 11, 6),
+        )
+        self.assertEqual(rows[0]["trade_date"], date(2026, 11, 6))
+        self.assertEqual(rows[0]["close"], 1.5)
+        self.assertEqual(rows[0]["volume"], 3.0)

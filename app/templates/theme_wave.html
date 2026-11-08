@@ -845,9 +845,14 @@
     <p class="meta">还没有行业板块热度可画。</p>
     {% endif %}
 
-    {% if concept_short_href %}
+    {% if concept_short_href or all_stock_heat_href %}
     <p class="page-links">
+      {% if concept_short_href %}
       <a href="{{ concept_short_href }}">概念短热 Top200∪主题 →</a>
+      {% endif %}
+      {% if all_stock_heat_href %}
+      <a href="{{ all_stock_heat_href }}">全股热度 →</a>
+      {% endif %}
     </p>
     {% endif %}
 

@@ -2,10 +2,86 @@
 
 from __future__ import annotations
 
+import json
+
 import plotly.graph_objects as go
 
 from app.themes.board_cross_marks import CROSS_STYLE
 from app.themes.board_fractal_marks import FRACTAL_STYLE
+
+
+def _zoom_name_label_script(
+    *,
+    stock_x: list[float],
+    stock_names: list[str],
+    threshold: int,
+) -> str:
+    """Show x tick names only when the visible stock count is ≤ ``threshold``."""
+    xs = json.dumps(stock_x, ensure_ascii=False)
+    names = json.dumps(stock_names, ensure_ascii=False)
+    return f"""
+var gd = document.getElementById('{{plot_id}}');
+if (gd && typeof Plotly !== 'undefined' && !gd._zoomNameLabelsBound) {{
+  gd._zoomNameLabelsBound = true;
+  var STOCK_X = {xs};
+  var STOCK_NAMES = {names};
+  var THRESH = {int(threshold)};
+  var updating = false;
+  function visibleStocks(range) {{
+    var vals = [];
+    var texts = [];
+    if (!range || range.length < 2) return {{vals: vals, texts: texts}};
+    var xmin = Math.min(range[0], range[1]);
+    var xmax = Math.max(range[0], range[1]);
+    for (var i = 0; i < STOCK_X.length; i++) {{
+      if (STOCK_X[i] >= xmin && STOCK_X[i] <= xmax) {{
+        vals.push(STOCK_X[i]);
+        texts.push(STOCK_NAMES[i]);
+      }}
+    }}
+    return {{vals: vals, texts: texts}};
+  }}
+  function applyTicks() {{
+    if (updating) return;
+    var axis = gd.layout && gd.layout.xaxis;
+    var autorange = !axis || axis.autorange !== false || !axis.range;
+    var nextVals = [];
+    var nextTexts = [];
+    var angle = 0;
+    var fontSize = 10;
+    if (!autorange) {{
+      var hit = visibleStocks(axis.range);
+      if (hit.vals.length > 0 && hit.vals.length <= THRESH) {{
+        nextVals = hit.vals;
+        nextTexts = hit.texts;
+        angle = -55;
+        fontSize = hit.vals.length > 40 ? 8 : 10;
+      }}
+    }}
+    updating = true;
+    Plotly.relayout(gd, {{
+      'xaxis.tickvals': nextVals,
+      'xaxis.ticktext': nextTexts,
+      'xaxis.tickangle': angle,
+      'xaxis.tickfont.size': fontSize
+    }}).then(function() {{ updating = false; }}, function() {{ updating = false; }});
+  }}
+  gd.on('plotly_relayout', function(ev) {{
+    if (!ev || updating) return;
+    if (
+      'xaxis.range[0]' in ev ||
+      'xaxis.range[1]' in ev ||
+      'xaxis.range' in ev ||
+      'xaxis.autorange' in ev
+    ) {{
+      applyTicks();
+    }}
+  }});
+  gd.on('plotly_doubleclick', function() {{
+    setTimeout(applyTicks, 0);
+  }});
+}}
+"""
 
 # Hover on CSI 500 traces draws a paper-wide row line (shared y with the heat).
 # Also force dual-subplot double-click to reset heat x + CSI x2 + shared y.
@@ -370,6 +446,11 @@ def render_theme_wave_contour(
     csi500_volumes_scaled: list[float | None] | None = None,
     forecast_split_y: float | None = None,
     show_colorbar: bool = True,
+    zoom_label_stock_x: list[float] | None = None,
+    zoom_label_stock_names: list[str] | None = None,
+    zoom_label_threshold: int | None = None,
+    hover_customdata: list[list[list[object]]] | None = None,
+    hovertemplate: str | None = None,
 ) -> str:
     """2D contour of theme × time hotness.
 
@@ -380,17 +461,31 @@ def render_theme_wave_contour(
     if not dates or not x or not z:
         return "<p class='meta'>没有可绘制的等位图数据</p>"
 
-    theme_labels = [_theme_label_for_x(value, x_tickvals, x_ticktext) for value in x]
     y = list(range(len(dates)))
     y_tickvals, y_ticktext = _y_ticks(dates)
-    customdata = [
-        [[theme_labels[j], dates[i], _format_heat(z[i][j])] for j in range(len(x))]
-        for i in range(len(dates))
-    ]
+    if hover_customdata is not None:
+        customdata = hover_customdata
+    else:
+        theme_labels = [_theme_label_for_x(value, x_tickvals, x_ticktext) for value in x]
+        customdata = [
+            [[theme_labels[j], dates[i], _format_heat(z[i][j])] for j in range(len(x))]
+            for i in range(len(dates))
+        ]
     tickfont_size = 8 if len(x_tickvals) > 40 else 10
     # X tick labels live on the top axis; keep bottom tight.
+    # Zoom-name mode starts blank but may show angled names after box-zoom.
+    zoom_label_ready = (
+        zoom_label_stock_x is not None
+        and zoom_label_stock_names is not None
+        and zoom_label_threshold is not None
+        and zoom_label_threshold >= 1
+        and len(zoom_label_stock_x) == len(zoom_label_stock_names)
+        and bool(zoom_label_stock_x)
+    )
     tick_margin = (
-        bottom_margin if bottom_margin is not None else (110 if tickangle else 48)
+        bottom_margin
+        if bottom_margin is not None
+        else (110 if tickangle or zoom_label_ready else 48)
     )
     has_tip_overlay = return_exceedance is not None or tip_labels is not None
     margin_t = 28 + tick_margin + (40 if has_tip_overlay else 0)
@@ -413,7 +508,8 @@ def render_theme_wave_contour(
         line=dict(width=0.6, color="rgba(28,25,23,0.25)"),
         showscale=bool(show_colorbar),
         customdata=customdata,
-        hovertemplate=(
+        hovertemplate=hovertemplate
+        or (
             f"{entity_label} %{{customdata[0]}}<br>"
             "日期 %{customdata[1]}<br>"
             "热度 %{customdata[2]}<extra></extra>"
@@ -618,8 +714,26 @@ def render_theme_wave_contour(
         include_plotlyjs="cdn" if include_plotlyjs else False,
         config={"displayModeBar": False, "responsive": True},
     )
+    scripts: list[str] = []
     if has_csi500:
-        html_kw["post_script"] = _CSI_ROW_HOVER_SCRIPT
+        scripts.append(_CSI_ROW_HOVER_SCRIPT)
+    if (
+        zoom_label_stock_x is not None
+        and zoom_label_stock_names is not None
+        and zoom_label_threshold is not None
+        and zoom_label_threshold >= 1
+        and len(zoom_label_stock_x) == len(zoom_label_stock_names)
+        and zoom_label_stock_x
+    ):
+        scripts.append(
+            _zoom_name_label_script(
+                stock_x=zoom_label_stock_x,
+                stock_names=zoom_label_stock_names,
+                threshold=zoom_label_threshold,
+            )
+        )
+    if scripts:
+        html_kw["post_script"] = "\n".join(scripts)
     return fig.to_html(**html_kw)
 
 

@@ -66,10 +66,13 @@ from app.market_data.related_etfs import build_related_etf_rows, related_etf_vie
 from app.themes.member_wave import build_member_short_heat_payload
 from app.market_data.board_heat import top_short_heat_keys
 from app.market_data.index_ladder import (
+    BENCHMARK_INDICES,
     INDICES,
+    STAR_COMPOSITE,
     US_CHAN_INDICES,
     align_breadth,
     fetch_index_ohlcv,
+    fetch_star_composite_ohlcv,
     fetch_us_index_ohlcv,
     load_size_ladder,
 )
@@ -130,6 +133,14 @@ from app.themes.fund_wave import (
     build_fund_wave_panel_payload,
 )
 from app.themes.stock_basket_wave import build_stock_basket_page_payload
+from app.themes.all_stock_wave import (
+    ALL_STOCK_HOVERTEMPLATE,
+    ALL_STOCK_WINDOW_DAYS,
+    ZOOM_NAME_THRESHOLD,
+    build_all_stock_heat_payload,
+    build_all_stock_hover_customdata,
+    resolve_stock_heat_as_of,
+)
 from app.themes.wave_surface import (
     build_map_scrub_frames,
     build_map_slider_dates,
@@ -374,8 +385,21 @@ def _index_chan_context(end: date) -> dict:
         return {"chan_charts": [], "chan_error": str(exc), "us_chan_error": None}
     charts = [
         _chan_chart_entry(name, code, series[name])
-        for name, code, _color in INDICES
+        for name, code in BENCHMARK_INDICES
     ]
+    star_name, star_code = STAR_COMPOSITE
+    try:
+        star_rows = fetch_star_composite_ohlcv(chan_fetch_start(end), end)
+    except Exception as exc:
+        charts.append(
+            {"name": star_name, "code": star_code, "summary": "", "html": "", "error": str(exc)}
+        )
+    else:
+        charts.append(_chan_chart_entry(star_name, star_code, star_rows))
+    charts.extend(
+        _chan_chart_entry(name, code, series[name])
+        for name, code, _color in INDICES
+    )
     us_chan_error = None
     try:
         us_series = fetch_us_index_ohlcv(end)
@@ -687,6 +711,21 @@ def concept_short_wave_page(
         include_plotlyjs=False,
     )
     return templates.TemplateResponse(request, "concept_short_wave.html", payload)
+
+
+@app.get("/boards/concept/themes/wave/all-stock-heat", response_class=HTMLResponse)
+def all_stock_heat_page(
+    request: Request,
+    days: int = Query(ALL_STOCK_WINDOW_DAYS, ge=10, le=60),
+    as_of: str | None = Query(None),
+) -> HTMLResponse:
+    """Full-market stock short-heat water wave (trajectory seriation)."""
+    try:
+        requested = _parse_optional_day(as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="as_of must be YYYY-MM-DD") from exc
+    payload = _all_stock_heat_page_payload(days=days, as_of=requested)
+    return templates.TemplateResponse(request, "all_stock_heat.html", payload)
 
 
 @app.get("/boards/fund/wave", response_class=HTMLResponse)
@@ -1125,6 +1164,10 @@ def _themes_wave_empty(
             f"/boards/concept/themes/wave/concept-short?days={days}"
             f"&as_of={requested.isoformat()}"
         ),
+        "all_stock_heat_href": (
+            f"/boards/concept/themes/wave/all-stock-heat"
+            f"?days={ALL_STOCK_WINDOW_DAYS}&as_of={requested.isoformat()}"
+        ),
         "fund_wave_href": (
             f"/boards/fund/wave?days={days}&as_of={requested.isoformat()}"
         ),
@@ -1519,6 +1562,10 @@ def _themes_wave_page_payload(
             f"/boards/concept/themes/wave/concept-short?days={days}"
             f"&as_of={requested.isoformat()}"
         ),
+        "all_stock_heat_href": (
+            f"/boards/concept/themes/wave/all-stock-heat"
+            f"?days={ALL_STOCK_WINDOW_DAYS}&as_of={as_of_key}"
+        ),
         "fund_wave_href": f"/boards/fund/wave?days={days}&as_of={as_of_key}",
         "industry_fund_chart_url": (
             f"/boards/fund/wave/api/industry?days={days}&as_of={as_of_key}"
@@ -1566,6 +1613,83 @@ def _themes_wave_page_payload(
         "concept_slider_dates": [],
         "concept_slider_index": 0,
         "concept_scrub_frames": [],
+        "empty_message": None,
+    }
+
+
+def _all_stock_heat_page_payload(*, days: int, as_of: date | None) -> dict:
+    """Full-market stock short-heat water wave page."""
+    requested = as_of or date.today()
+    wave_back = (
+        f"/boards/concept/themes/wave?days=40&as_of={requested.isoformat()}"
+    )
+    selected = resolve_stock_heat_as_of(requested)
+    if selected is None:
+        return {
+            "title": "全股热度",
+            "wave_back_href": wave_back,
+            "window_start": None,
+            "window_end": None,
+            "date_count": 0,
+            "board_count": 0,
+            "zoom_name_threshold": ZOOM_NAME_THRESHOLD,
+            "axis_note": "",
+            "chart_html": "",
+            "empty_message": "还没有个股短热。",
+        }
+    plane = build_all_stock_heat_payload(as_of=selected, window_days=days)
+    if plane.get("empty_message") or not plane.get("dates"):
+        return {
+            "title": "全股热度",
+            "wave_back_href": wave_back,
+            "window_start": None,
+            "window_end": None,
+            "date_count": 0,
+            "board_count": 0,
+            "zoom_name_threshold": ZOOM_NAME_THRESHOLD,
+            "axis_note": plane.get("axis_note") or "",
+            "chart_html": "",
+            "empty_message": plane.get("empty_message")
+            or "窗口内没有可绘制的全股热度",
+        }
+    hover_customdata = build_all_stock_hover_customdata(
+        dates=plane["dates"],
+        x=plane["x"],
+        z=plane["z_short"],
+        stock_x=list(plane["stock_x"]),
+        display_codes=list(plane["stock_display_codes"]),
+        names=list(plane["stock_names"]),
+        industries=list(plane["stock_industries"]),
+    )
+    chart_html = render_theme_wave_contour(
+        dates=plane["dates"],
+        x=plane["x"],
+        z=plane["z_short"],
+        x_tickvals=plane["x_tickvals"],
+        x_ticktext=plane["x_ticktext"],
+        include_plotlyjs=False,
+        height=720,
+        title="全股短热水面",
+        xaxis_title="个股（轨迹叶序）",
+        entity_label="个股",
+        tickangle=0,
+        show_colorbar=True,
+        zoom_label_stock_x=list(plane["stock_x"]),
+        zoom_label_stock_names=list(plane["stock_names"]),
+        zoom_label_threshold=int(plane["zoom_name_threshold"]),
+        hover_customdata=hover_customdata,
+        hovertemplate=ALL_STOCK_HOVERTEMPLATE,
+    )
+    return {
+        "title": "全股热度",
+        "wave_back_href": wave_back,
+        "window_start": plane["dates"][0],
+        "window_end": plane["dates"][-1],
+        "date_count": len(plane["dates"]),
+        "board_count": plane["board_count"],
+        "zoom_name_threshold": plane["zoom_name_threshold"],
+        "axis_note": plane["axis_note"],
+        "chart_html": chart_html,
         "empty_message": None,
     }
 
@@ -2930,6 +3054,9 @@ def _board_members_page(
             "heat_empty": heat_empty,
             "heat_axis_note": heat_axis_note,
             "heat_board_count": heat_board_count,
+            "heat_board_codes": heat.get("board_codes") or [],
+            "heat_board_names": heat.get("board_names") or [],
+            "heat_date_count": len(heat.get("dates") or []),
         },
     )
 

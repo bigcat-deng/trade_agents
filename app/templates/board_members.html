@@ -46,10 +46,19 @@
     th:first-child, td:first-child,
     th:nth-child(2), td:nth-child(2) { text-align: left; }
     th { color: var(--muted); font-weight: 500; }
-    a.stock { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--line); }
+    a.stock { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--line); cursor: pointer; }
     a.stock:hover { color: #1d4ed8; border-color: #1d4ed8; }
     tr.ratio-top td { background: rgba(251, 146, 60, 0.18); }
     tr.ratio-bottom td { background: rgba(74, 222, 128, 0.18); }
+    tr.wave-picked td { outline: 2px solid rgba(220, 38, 38, 0.45); outline-offset: -2px; }
+    .pick-status {
+      margin: 0 0 0.75rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      min-height: 1.2em;
+    }
+    .pick-status.ok { color: #b91c1c; font-weight: 650; }
+    .pick-status.err { color: #b91c1c; }
     .empty { color: var(--muted); margin: 1rem 0; }
     .panel {
       background: var(--card);
@@ -69,9 +78,11 @@
       {{ board_code }} · {{ kind_label }} · 截止 {{ as_of }} · 共 {{ rows|length }} 只。
       热度只在本板块成分股集合内计算短热（数值越小越热），表按热度从热到冷排列。
       当前收益率为截止日当日涨跌幅；目标收益率、收益∶损失与目标止损来自各股缠论关线；收盘为截止日 close。
+      {% if heat_html %}点击名称在上方水波图圈出该列；按住 Ctrl/⌘ 再点可打开分析页。{% endif %}
     </p>
     {% if heat_html %}
     <p class="meta">{{ heat_axis_note }} 共 {{ heat_board_count }} 只成分股。</p>
+    <p class="pick-status" id="member-pick-status" aria-live="polite"></p>
     <div class="panel" id="member-heat-chart">{{ heat_html | safe }}</div>
     {% elif heat_empty %}
     <p class="empty">{{ heat_empty }}</p>
@@ -95,8 +106,8 @@
         </thead>
         <tbody>
           {% for row in rows %}
-          <tr{% if row.row_class %} class="{{ row.row_class }}"{% endif %}>
-            <td><a class="stock" href="{{ row.analyze_href }}">{{ row.name }}</a></td>
+          <tr{% if row.row_class %} class="{{ row.row_class }}"{% endif %} data-wave-code="{{ row.code }}">
+            <td><a class="stock" href="{{ row.analyze_href }}" data-wave-code="{{ row.code }}">{{ row.name }}</a></td>
             <td>{{ row.code }}</td>
             <td>{{ row.close_text }}</td>
             <td>{{ row.day_return_text }}</td>
@@ -111,5 +122,137 @@
     </div>
     {% endif %}
   </main>
+  {% if heat_html %}
+  <script>
+    (function () {
+      const boardCodes = {{ heat_board_codes | default([]) | tojson }};
+      const boardNames = {{ heat_board_names | default([]) | tojson }};
+      const dateCount = {{ heat_date_count | default(0) | tojson }};
+      const PICK_MARK = "board-pick-mark";
+      const statusEl = document.getElementById("member-pick-status");
+      const chartPanel = document.getElementById("member-heat-chart");
+      if (!Array.isArray(boardCodes) || !boardCodes.length || !chartPanel) return;
+
+      function setStatus(text, kind) {
+        if (!statusEl) return;
+        statusEl.textContent = text || "";
+        statusEl.className = "pick-status" + (kind ? " " + kind : "");
+      }
+
+      function getPlot() {
+        return chartPanel.querySelector(".js-plotly-plot, .plotly-graph-div");
+      }
+
+      function plotYCount(gd) {
+        const y = gd && gd.data && gd.data[0] && gd.data[0].y;
+        if (Array.isArray(y) && y.length) return y.length;
+        const z = gd && gd.data && gd.data[0] && gd.data[0].z;
+        if (Array.isArray(z) && z.length) return z.length;
+        return Math.max(1, Number(dateCount) || 1);
+      }
+
+      function withoutPickMarks(shapes) {
+        return (shapes || []).filter((s) => !s || s.name !== PICK_MARK);
+      }
+
+      function withoutPickAnnotations(annotations) {
+        return (annotations || []).filter((a) => !a || a.name !== PICK_MARK);
+      }
+
+      function columnPickShapes(idx, nDates) {
+        return [
+          {
+            name: PICK_MARK,
+            type: "rect",
+            xref: "x",
+            yref: "y",
+            x0: idx - 0.5,
+            x1: idx + 0.5,
+            y0: -0.5,
+            y1: nDates - 0.5,
+            fillcolor: "rgba(0,0,0,0)",
+            line: { color: "#dc2626", width: 2.2 },
+            layer: "above",
+          },
+        ];
+      }
+
+      function applyHighlightToPlot(gd, idx) {
+        if (!gd || typeof Plotly === "undefined") return false;
+        const nDates = plotYCount(gd);
+        const shapes = withoutPickMarks(gd.layout.shapes).concat(
+          columnPickShapes(idx, nDates)
+        );
+        const annotations = withoutPickAnnotations(gd.layout.annotations);
+        annotations.push({
+          name: PICK_MARK,
+          xref: "x",
+          yref: "y",
+          x: idx,
+          y: nDates - 0.5,
+          text: "<b>" + idx + "</b>",
+          showarrow: false,
+          font: {
+            color: "#dc2626",
+            size: 13,
+            family: "IBM Plex Sans, Noto Sans SC, sans-serif",
+          },
+          bgcolor: "rgba(255,253,248,0.82)",
+          borderpad: 2,
+          yanchor: "bottom",
+          yshift: 8,
+        });
+        Plotly.relayout(gd, { shapes: shapes, annotations: annotations });
+        return true;
+      }
+
+      function findIndex(code) {
+        const raw = String(code || "").trim();
+        if (!raw) return -1;
+        const exact = boardCodes.findIndex((c) => c === raw);
+        if (exact >= 0) return exact;
+        const lower = raw.toLowerCase();
+        return boardCodes.findIndex((c) => String(c).toLowerCase() === lower);
+      }
+
+      function markTableRow(code) {
+        document.querySelectorAll("tr[data-wave-code].wave-picked").forEach((tr) => {
+          tr.classList.remove("wave-picked");
+        });
+        const hit = document.querySelector('tr[data-wave-code="' + CSS.escape(code) + '"]');
+        if (hit) hit.classList.add("wave-picked");
+      }
+
+      function highlightCode(code) {
+        const idx = findIndex(code);
+        if (idx < 0) {
+          setStatus("水波图里没有这只个股", "err");
+          return false;
+        }
+        const gd = getPlot();
+        if (!gd || typeof Plotly === "undefined") {
+          setStatus("图尚未就绪，请稍后重试", "err");
+          return false;
+        }
+        applyHighlightToPlot(gd, idx);
+        const name = boardNames[idx] || code;
+        setStatus("下标 " + idx + " · " + name, "ok");
+        markTableRow(code);
+        chartPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        return true;
+      }
+
+      document.querySelectorAll("a.stock[data-wave-code]").forEach((link) => {
+        link.addEventListener("click", function (ev) {
+          if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button !== 0) {
+            return;
+          }
+          ev.preventDefault();
+          highlightCode(link.getAttribute("data-wave-code") || "");
+        });
+      });
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>

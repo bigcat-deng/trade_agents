@@ -1154,6 +1154,95 @@ def fetch_stock_code_names(codes: list[str]) -> dict[str, str]:
     return {str(row[0]): str(row[1] or row[0]) for row in rows}
 
 
+def fetch_stock_industry_names(
+    codes: list[str],
+    *,
+    as_of: date | None = None,
+) -> dict[str, str]:
+    """Latest industry board name(s) for each stock, joined with 、 if many."""
+    if not codes:
+        return {}
+    unique = list(dict.fromkeys(codes))
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            if as_of is None:
+                cur.execute(
+                    """
+                    SELECT c.stock_code,
+                           COALESCE(
+                               (
+                                   SELECT u.board_name
+                                   FROM board_universe_daily AS u
+                                   WHERE u.board_type = 'industry'
+                                     AND u.board_code = c.board_code
+                                   ORDER BY u.trade_date DESC
+                                   LIMIT 1
+                               ),
+                               c.board_code
+                           ) AS board_name
+                    FROM board_constituent_daily AS c
+                    JOIN (
+                        SELECT stock_code, MAX(trade_date) AS trade_date
+                        FROM board_constituent_daily
+                        WHERE board_type = 'industry'
+                          AND stock_code = ANY(%s)
+                        GROUP BY stock_code
+                    ) AS latest
+                      ON c.stock_code = latest.stock_code
+                     AND c.trade_date = latest.trade_date
+                    WHERE c.board_type = 'industry'
+                    ORDER BY c.stock_code, board_name
+                    """,
+                    (unique,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT c.stock_code,
+                           COALESCE(
+                               (
+                                   SELECT u.board_name
+                                   FROM board_universe_daily AS u
+                                   WHERE u.board_type = 'industry'
+                                     AND u.board_code = c.board_code
+                                   ORDER BY u.trade_date DESC
+                                   LIMIT 1
+                               ),
+                               c.board_code
+                           ) AS board_name
+                    FROM board_constituent_daily AS c
+                    JOIN (
+                        SELECT stock_code,
+                               COALESCE(
+                                   MAX(trade_date) FILTER (
+                                       WHERE trade_date <= %s
+                                   ),
+                                   MAX(trade_date)
+                               ) AS trade_date
+                        FROM board_constituent_daily
+                        WHERE board_type = 'industry'
+                          AND stock_code = ANY(%s)
+                        GROUP BY stock_code
+                    ) AS latest
+                      ON c.stock_code = latest.stock_code
+                     AND c.trade_date = latest.trade_date
+                    WHERE c.board_type = 'industry'
+                    ORDER BY c.stock_code, board_name
+                    """,
+                    (as_of, unique),
+                )
+            rows = cur.fetchall()
+    out: dict[str, list[str]] = {}
+    for stock_code, board_name in rows:
+        label = str(board_name or "").strip()
+        if not label:
+            continue
+        bucket = out.setdefault(str(stock_code), [])
+        if label not in bucket:
+            bucket.append(label)
+    return {code: "、".join(names) for code, names in out.items()}
+
+
 def fetch_latest_etf_universe() -> list[tuple[str, str]]:
     """Latest trading names that look like ETFs (by name, not A-share filter)."""
     with psycopg.connect(database_url()) as conn:
@@ -1749,20 +1838,30 @@ def fetch_stock_returns(*, start: date | None = None) -> list[tuple]:
             ]
 
 
-def fetch_stock_heat(*, start: date | None = None) -> list[BoardHeatRow]:
+def fetch_stock_heat(
+    *,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[BoardHeatRow]:
     """Stored stock heat as BoardHeatRow with board_type='stock'."""
     sql = """
         SELECT trade_date, code, pct_chg, rank_no, universe_n, heat_short, heat_long
         FROM stock_heat_daily
     """
-    params: tuple = ()
+    clauses: list[str] = []
+    params: list[object] = []
     if start is not None:
-        sql += " WHERE trade_date >= %s"
-        params = (start,)
+        clauses.append("trade_date >= %s")
+        params.append(start)
+    if end is not None:
+        clauses.append("trade_date <= %s")
+        params.append(end)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY trade_date, code"
     with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, params)
+            cur.execute(sql, tuple(params))
             return [
                 BoardHeatRow(
                     trade_date=row[0],
@@ -1776,6 +1875,29 @@ def fetch_stock_heat(*, start: date | None = None) -> list[BoardHeatRow]:
                 )
                 for row in cur.fetchall()
             ]
+
+
+def fetch_stock_heat_dates_ending(on_or_before: date, limit: int) -> list[date]:
+    """Up to ``limit`` distinct stock-heat dates on or before the day, oldest first."""
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date
+                FROM (
+                    SELECT DISTINCT trade_date
+                    FROM stock_heat_daily
+                    WHERE trade_date <= %s
+                    ORDER BY trade_date DESC
+                    LIMIT %s
+                ) AS recent
+                ORDER BY trade_date
+                """,
+                (on_or_before, limit),
+            )
+            return [row[0] for row in cur.fetchall()]
 
 
 def replace_stock_heat(start: date, rows: list[BoardHeatRow]) -> int:

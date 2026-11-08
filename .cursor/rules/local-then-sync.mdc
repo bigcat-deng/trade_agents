@@ -1,0 +1,19 @@
+---
+description: Change the local repo only; the cloud copy is updated by the sync method
+alwaysApply: true
+---
+
+# Local edits, cloud via sync
+
+- Make every code and content change in the local workspace first
+- Do not SSH, scp, rsync, restart, or otherwise modify the cloud host
+- Do not treat a remote deploy or a remote process restart as part of the change
+- The cloud copy, including http://134.175.139.38:8000, is updated by the existing sync method
+- Reading the cloud page to inspect behavior is fine; writing to it is not
+
+## Examples
+
+```text
+BAD: edit files on the server, or restart uvicorn on 134.175.139.38
+GOOD: edit the local repo, run local checks, leave the cloud update to sync
+```

@@ -33,6 +33,15 @@ INDICES: tuple[tuple[str, str, str], ...] = (
 )
 LARGE_NAME = "上证50"
 SMALL_NAME = "国证2000"
+# Chan charts drawn above 上证50. Not part of the size ladder.
+BENCHMARK_INDICES: tuple[tuple[str, str], ...] = (
+    ("上证指数", "sh.000001"),
+    ("深成指数", "sz.399001"),
+    ("创业板指数", "sz.399006"),
+)
+# Eastmoney symbol. Baostock does not carry 科创综指.
+STAR_COMPOSITE = ("科创综指", "sh.000680")
+STAR_COMPOSITE_EM = "sh000680"
 # Chan charts only, drawn under 国证2000. Sina symbols, not part of the ladder.
 US_CHAN_INDICES: tuple[tuple[str, str], ...] = (
     ("道琼斯", ".DJI"),
@@ -209,6 +218,11 @@ def _bar_date(value: object) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return None
     return None
 
 
@@ -246,6 +260,24 @@ def us_index_rows(records: Iterable[Mapping[str, object]], end: date) -> list[di
     return rows
 
 
+def fetch_star_composite_ohlcv(start: date, end: date) -> list[dict]:
+    """科创综指 daily bars from Eastmoney, on or before ``end``."""
+    import akshare as ak
+
+    name, code = STAR_COMPOSITE
+    frame = ak.stock_zh_index_daily_em(
+        symbol=STAR_COMPOSITE_EM,
+        start_date=start.strftime("%Y%m%d"),
+        end_date=end.strftime("%Y%m%d"),
+    )
+    rows = us_index_rows(frame.to_dict("records"), end)
+    if not rows:
+        raise RuntimeError(
+            f"eastmoney returned no bars for {name} {code} on or before {end}"
+        )
+    return rows
+
+
 def fetch_us_index_ohlcv(end: date) -> dict[str, list[dict]]:
     """Dow and Nasdaq composite daily bars from Sina, on or before ``end``."""
     import akshare as ak
@@ -265,7 +297,7 @@ def fetch_us_index_ohlcv(end: date) -> dict[str, list[dict]]:
 def fetch_index_ohlcv(
     start: date, end: date
 ) -> dict[str, list[dict]]:
-    """OHLCV rows for each ladder index, oldest first. Caller must not overlap logins."""
+    """OHLCV rows for the benchmark and ladder indices, oldest first."""
     login = None
     for attempt in range(1, 4):
         login = bs.login()
@@ -277,7 +309,9 @@ def fetch_index_ohlcv(
         raise RuntimeError(f"baostock login failed: {message}")
     try:
         out: dict[str, list[dict]] = {}
-        for name, code, _color in INDICES:
+        wanted = [(name, code) for name, code in BENCHMARK_INDICES]
+        wanted.extend((name, code) for name, code, _color in INDICES)
+        for name, code in wanted:
             rows = baostock_kline.fetch_daily_bars(code, start, end)
             series: list[dict] = []
             for bar in rows:

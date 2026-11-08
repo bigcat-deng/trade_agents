@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7e5e4 0, transparent 40%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2.5rem;
+    }
+    a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    h1 {
+      margin: 0.6rem 0 0.35rem;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      color: var(--muted);
+      margin: 0 0 0.85rem;
+      line-height: 1.55;
+    }
+    .panel {
+      margin: 0;
+      padding: 0.6rem 0.75rem 0.85rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      min-width: 0;
+      overflow-x: auto;
+    }
+    .empty {
+      color: var(--muted);
+      margin: 1rem 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="{{ wave_back_href }}">← 主题热度水面</a>
+    <h1>{{ title }}</h1>
+    <p class="meta">
+      {% if window_start and window_end %}
+      窗口 {{ window_start }} → {{ window_end }}（{{ date_count }} 个交易日）
+      · {{ board_count }} 只个股
+      · 框选放大后可见 ≤ {{ zoom_name_threshold }} 只时标注名称
+      {% else %}
+      还没有全股热度窗口。
+      {% endif %}
+    </p>
+    {% if axis_note %}
+    <p class="meta">{{ axis_note }}</p>
+    {% endif %}
+    {% if empty_message %}
+    <p class="empty">{{ empty_message }}</p>
+    {% elif chart_html %}
+    <div class="panel">{{ chart_html | safe }}</div>
+    {% endif %}
+  </main>
+</body>
+</html>
