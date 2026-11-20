@@ -41,6 +41,11 @@ PROSE_THEME_TEMPLATES = frozenset(
         "theme-wave-reading",
         "concept-wavelet-reading",
         "industry-wavelet-reading",
+        "industry-short-heat-reading",
+        "industry-fund-wave-reading",
+        "industry-smooth-range-reading",
+        "industry-smooth-return-reading",
+        "industry-rim-joint-reading",
     }
 )
 

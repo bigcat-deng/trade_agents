@@ -45,7 +45,7 @@ def smooth_range_axis_note(board_type: str = "industry") -> str:
         "颜色为典型价 avg=(C+H+L)/3 经卡尔曼滤波后，"
         f"在近{SMOOTH_RANGE_NORM_DAYS}个交易日自身区间的 min-max 位置"
         f"（越高=平滑价越靠近自身近窗上沿）；进深为时间；"
-        f"末日前方红字=截止日区间位置最高的{entity}名。"
+        f"末日前方红字=区间位置最高、蓝字=最低的{entity}名。"
     )
 
 
@@ -57,7 +57,7 @@ def smooth_return_axis_note(board_type: str = "industry") -> str:
         "颜色为卡尔曼典型价的简单日收益"
         f"（r=k_t/k_{{t-1}}-1）在近{SMOOTH_RANGE_NORM_DAYS}个交易日自身区间的 min-max 位置"
         f"（越高=收益相对自身近窗越高）；进深为时间；"
-        f"末日前方红字=截止日收益区间位置最高的{entity}名。"
+        f"末日前方红字=收益区间位置最高、蓝字=最低的{entity}名。"
     )
 
 
@@ -250,6 +250,7 @@ def build_industry_smooth_range_plane(
         "metric": metric_key,
         "board_type": kind,
         "tip_labels": {"x": [], "y": [], "text": [], "color": "#dc2626"},
+        "tip_cold_labels": {"x": [], "y": [], "text": [], "color": "#2563eb"},
         "empty_message": (
             f"没有可绘制的{entity}平滑收益窗口"
             if metric_key == "return"
@@ -300,6 +301,15 @@ def build_industry_smooth_range_plane(
         n_dates=len(window_dates),
         top_n=5,
     )
+    tip_cold_labels = tip_hottest_labels(
+        ordered_codes=ordered_codes,
+        names=labels,
+        z_native=z_native,
+        n_dates=len(window_dates),
+        top_n=5,
+        hottest_first=False,
+        color="#2563eb",
+    )
     return {
         "dates": [d.isoformat() for d in window_dates],
         "board_codes": list(ordered_codes),
@@ -316,6 +326,7 @@ def build_industry_smooth_range_plane(
         "metric": metric_key,
         "board_type": kind,
         "tip_labels": tip_labels,
+        "tip_cold_labels": tip_cold_labels,
         "empty_message": None,
     }
 
@@ -428,6 +439,7 @@ def build_board_smooth_range_panel_payload(
         entity_label=entity,
         tickangle=-45,
         tip_labels=plane.get("tip_labels"),
+        tip_cold_labels=plane.get("tip_cold_labels"),
         show_colorbar=False,
     )
     return out

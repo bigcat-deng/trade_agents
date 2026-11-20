@@ -425,6 +425,76 @@
       border-color: #1d4ed8;
       color: #1d4ed8;
     }
+    .industry-ai {
+      margin: 0.75rem 0 0.85rem;
+    }
+    .industry-ai-toggle {
+      font: inherit;
+      font-size: 0.92rem;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .industry-ai-toggle:hover:not(:disabled) {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+    .industry-ai-toggle:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+    .industry-ai-panel {
+      margin-top: 0.65rem;
+      padding: 0.75rem 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .industry-ai-panel[hidden] {
+      display: none;
+    }
+    .industry-ai-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.35rem;
+    }
+    .industry-ai-head strong {
+      font-size: 1.02rem;
+    }
+    .industry-ai-head button {
+      font: inherit;
+      font-size: 0.88rem;
+      padding: 0.28rem 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .industry-ai-head button:hover:not(:disabled) {
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+    .industry-ai-head button:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+    .industry-ai .reading-block { margin: 0 0 0.85rem; }
+    .industry-ai .reading-title {
+      margin: 0 0 0.35rem;
+      font-weight: 600;
+      font-size: 0.98rem;
+    }
+    .industry-ai .reading-para {
+      margin: 0;
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+    .industry-fund-ai {
+      margin: 0.75rem 0 0.85rem;
+    }
     .fund-lazy {
       margin: 0.85rem 0 1rem;
     }
@@ -685,6 +755,17 @@
       <p class="hint">只带动行业热度图演变；横轴叶序固定。方格下沿黑/白细线=当日收盘收益超过近100日波动率2倍（黑正白负）；顶上红/绿字=最后交易日正超/负超行业；小交叉×=MACD（上穿橙、下穿蓝）；右侧实线=中证500同日收盘收益，虚线=成交量（按双方波动对齐到收益尺度）。默认前后各10个交易日（当日居中），后续不足则右端钉在最后交易日。</p>
     </div>
     {% endif %}
+    <div class="industry-ai" id="industry-ai">
+      <button type="button" class="industry-ai-toggle" id="industry-ai-toggle">AI 解读</button>
+      <div class="industry-ai-panel" id="industry-ai-panel" hidden>
+        <div class="industry-ai-head">
+          <strong>行业短热 · AI 解读</strong>
+          <button type="button" id="industry-ai-reread">重新解读</button>
+        </div>
+        <p class="meta" id="industry-ai-meta"></p>
+        <div id="industry-ai-body"></div>
+      </div>
+    </div>
     {% if industry_fund_chart_url %}
     <section
       class="fund-lazy"
@@ -705,6 +786,17 @@
       <p class="page-links"><a href="{{ fund_wave_href }}">完整资金水面 →</a></p>
       {% endif %}
     </section>
+    <div class="industry-ai industry-fund-ai" id="industry-fund-ai">
+      <button type="button" class="industry-ai-toggle" id="industry-fund-ai-toggle">AI 解读</button>
+      <div class="industry-ai-panel" id="industry-fund-ai-panel" hidden>
+        <div class="industry-ai-head">
+          <strong>行业资金水面 · AI 解读</strong>
+          <button type="button" id="industry-fund-ai-reread">重新解读</button>
+        </div>
+        <p class="meta" id="industry-fund-ai-meta"></p>
+        <div id="industry-fund-ai-body"></div>
+      </div>
+    </div>
     {% endif %}
     {% if industry_smooth_range_chart_url %}
     <section
@@ -723,6 +815,17 @@
       <div class="error chart-error" hidden></div>
       <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
     </section>
+    <div class="industry-ai" id="industry-smooth-range-ai">
+      <button type="button" class="industry-ai-toggle" id="industry-smooth-range-ai-toggle">AI 解读</button>
+      <div class="industry-ai-panel" id="industry-smooth-range-ai-panel" hidden>
+        <div class="industry-ai-head">
+          <strong>行业平滑价位 · AI 解读</strong>
+          <button type="button" id="industry-smooth-range-ai-reread">重新解读</button>
+        </div>
+        <p class="meta" id="industry-smooth-range-ai-meta"></p>
+        <div id="industry-smooth-range-ai-body"></div>
+      </div>
+    </div>
     {% endif %}
     {% if industry_smooth_return_chart_url %}
     <section
@@ -741,6 +844,17 @@
       <div class="error chart-error" hidden></div>
       <div class="panel chart-mount"><p class="chart-loading">滚动至此加载…</p></div>
     </section>
+    <div class="industry-ai" id="industry-smooth-return-ai">
+      <button type="button" class="industry-ai-toggle" id="industry-smooth-return-ai-toggle">AI 解读</button>
+      <div class="industry-ai-panel" id="industry-smooth-return-ai-panel" hidden>
+        <div class="industry-ai-head">
+          <strong>行业平滑收益 · AI 解读</strong>
+          <button type="button" id="industry-smooth-return-ai-reread">重新解读</button>
+        </div>
+        <p class="meta" id="industry-smooth-return-ai-meta"></p>
+        <div id="industry-smooth-return-ai-body"></div>
+      </div>
+    </div>
     {% endif %}
     <section class="rim-read" aria-label="行业主线政权">
       <h3>主线政权 · 近 {{ industry_rim.display_days if industry_rim and industry_rim.display_days else 10 }} 日</h3>
@@ -779,6 +893,17 @@
       <p class="meta">近端没有可标的主线政权。</p>
       {% endif %}
     </section>
+    <div class="industry-ai" id="industry-rim-ai">
+      <button type="button" class="industry-ai-toggle" id="industry-rim-ai-toggle">AI 解读</button>
+      <div class="industry-ai-panel" id="industry-rim-ai-panel" hidden>
+        <div class="industry-ai-head">
+          <strong>主线政权 · 联合 AI 解读</strong>
+          <button type="button" id="industry-rim-ai-reread">重新解读</button>
+        </div>
+        <p class="meta" id="industry-rim-ai-meta"></p>
+        <div id="industry-rim-ai-body"></div>
+      </div>
+    </div>
     {% if industry_forecast_href %}
     <p class="page-links">
       <a href="{{ industry_forecast_href }}">行业短热 · 5日推演 →</a>
@@ -1930,6 +2055,221 @@
         { rootMargin: "240px 0px", threshold: 0.01 }
       );
       sections.forEach((section) => observer.observe(section));
+    })();
+  </script>
+  <script>
+    (function () {
+      const readingAsOf = {{ as_of | tojson }};
+      const readingDays = {{ days | default(40) | tojson }};
+      // Longer titles first. Includes heat + fund section names (and legacy).
+      const READING_TITLES = [
+        "未来异常演变预期",
+        "未来价位演变预期",
+        "未来收益演变预期",
+        "未来结构预期",
+        "未来热度演变预期",
+        "主线与成员",
+        "四层佐证",
+        "候选与许可",
+        "升温团块",
+        "降温团块",
+        "放量团块",
+        "缩量团块",
+        "高位团块",
+        "低位团块",
+        "偏强团块",
+        "偏弱团块",
+        "扩散态势",
+        "主线与长红",
+        "近端变化",
+        "冲击与结构",
+        "分行业短评",
+        "候补",
+        "总览",
+      ];
+
+      function stripDecor(line) {
+        return String(line || "")
+          .trim()
+          .replace(/^\*\*\s*/, "")
+          .replace(/\s*\*\*$/, "")
+          .replace(/\*\*/g, "");
+      }
+      function parseLeadingTitle(line) {
+        const raw = stripDecor(line)
+          .replace(/^[0-9０-９]+[、.．)）]\s*/, "")
+          .trim();
+        for (const title of READING_TITLES) {
+          if (!raw.startsWith(title)) continue;
+          const after = raw.slice(title.length);
+          if (after && !/^[：:（(\s]/.test(after)) continue;
+          let rest = after
+            .replace(/^[（(][^）)]*[）)]/, "")
+            .replace(/^[：:\s]+/, "")
+            .trim();
+          return { title, rest };
+        }
+        return null;
+      }
+      function bindInterpretPanel(cfg) {
+        const toggleBtn = document.getElementById(cfg.toggleId);
+        const panel = document.getElementById(cfg.panelId);
+        const metaEl = document.getElementById(cfg.metaId);
+        const bodyEl = document.getElementById(cfg.bodyId);
+        const rereadBtn = document.getElementById(cfg.rereadId);
+        if (!toggleBtn || !panel || !metaEl || !bodyEl) return;
+
+        let interpretRequestId = 0;
+        let loadedOnce = false;
+
+        function appendReadingBlock(title, bodyText) {
+          const wrap = document.createElement("div");
+          wrap.className = "reading-block";
+          if (title) {
+            const h = document.createElement("p");
+            h.className = "reading-title";
+            h.textContent = title;
+            wrap.appendChild(h);
+          }
+          const rest = String(bodyText || "").trim();
+          if (rest) {
+            const p = document.createElement("p");
+            p.className = "reading-para";
+            p.textContent = rest;
+            wrap.appendChild(p);
+          }
+          if (title || rest) bodyEl.appendChild(wrap);
+        }
+        function renderProseReading(text) {
+          bodyEl.replaceChildren();
+          const lines = String(text || "").replace(/\r\n/g, "\n").trim().split("\n");
+          let currentTitle = null;
+          let parts = [];
+          const flush = () => {
+            if (currentTitle === null && !parts.some((x) => String(x).trim())) {
+              parts = [];
+              return;
+            }
+            appendReadingBlock(currentTitle, parts.join("\n"));
+            currentTitle = null;
+            parts = [];
+          };
+          for (const line of lines) {
+            const parsed = parseLeadingTitle(line);
+            if (parsed) {
+              flush();
+              currentTitle = parsed.title;
+              if (parsed.rest) parts.push(parsed.rest);
+              continue;
+            }
+            parts.push(line);
+          }
+          flush();
+        }
+        async function loadReading(force) {
+          if (!readingAsOf) {
+            metaEl.textContent = "缺少截止日，无法解读";
+            return;
+          }
+          const ticket = ++interpretRequestId;
+          metaEl.textContent = force ? "正在重新解读…" : "正在解读…";
+          if (force || !loadedOnce) bodyEl.replaceChildren();
+          toggleBtn.disabled = true;
+          if (rereadBtn) rereadBtn.disabled = true;
+          try {
+            const response = await fetch("/api/interpret/" + cfg.template, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                as_of: readingAsOf,
+                force: !!force,
+                window_trading_days: readingDays || undefined,
+              }),
+            });
+            const payload = await response.json();
+            if (ticket !== interpretRequestId) return;
+            if (!response.ok) {
+              metaEl.textContent = "解读失败";
+              bodyEl.textContent = payload.detail || "解读失败";
+              return;
+            }
+            const cached = payload.cached ? " · 缓存" : "";
+            metaEl.textContent = "截至 " + payload.as_of + " · " + payload.model + cached;
+            const conclusion = (payload.reading && payload.reading.conclusion) || "";
+            if (!conclusion) {
+              bodyEl.textContent = "解读失败";
+              return;
+            }
+            renderProseReading(conclusion);
+            loadedOnce = true;
+          } catch (_err) {
+            if (ticket !== interpretRequestId) return;
+            metaEl.textContent = "解读失败";
+            bodyEl.textContent = "解读失败";
+          } finally {
+            if (ticket === interpretRequestId) {
+              toggleBtn.disabled = false;
+              if (rereadBtn) rereadBtn.disabled = false;
+            }
+          }
+        }
+
+        toggleBtn.addEventListener("click", () => {
+          const opening = panel.hasAttribute("hidden");
+          if (opening) {
+            panel.removeAttribute("hidden");
+            toggleBtn.textContent = "收起解读";
+            if (!loadedOnce) loadReading(false);
+          } else {
+            panel.setAttribute("hidden", "");
+            toggleBtn.textContent = "AI 解读";
+          }
+        });
+        if (rereadBtn) {
+          rereadBtn.addEventListener("click", () => loadReading(true));
+        }
+      }
+
+      bindInterpretPanel({
+        template: "industry-short-heat-reading",
+        toggleId: "industry-ai-toggle",
+        panelId: "industry-ai-panel",
+        metaId: "industry-ai-meta",
+        bodyId: "industry-ai-body",
+        rereadId: "industry-ai-reread",
+      });
+      bindInterpretPanel({
+        template: "industry-fund-wave-reading",
+        toggleId: "industry-fund-ai-toggle",
+        panelId: "industry-fund-ai-panel",
+        metaId: "industry-fund-ai-meta",
+        bodyId: "industry-fund-ai-body",
+        rereadId: "industry-fund-ai-reread",
+      });
+      bindInterpretPanel({
+        template: "industry-smooth-range-reading",
+        toggleId: "industry-smooth-range-ai-toggle",
+        panelId: "industry-smooth-range-ai-panel",
+        metaId: "industry-smooth-range-ai-meta",
+        bodyId: "industry-smooth-range-ai-body",
+        rereadId: "industry-smooth-range-ai-reread",
+      });
+      bindInterpretPanel({
+        template: "industry-smooth-return-reading",
+        toggleId: "industry-smooth-return-ai-toggle",
+        panelId: "industry-smooth-return-ai-panel",
+        metaId: "industry-smooth-return-ai-meta",
+        bodyId: "industry-smooth-return-ai-body",
+        rereadId: "industry-smooth-return-ai-reread",
+      });
+      bindInterpretPanel({
+        template: "industry-rim-joint-reading",
+        toggleId: "industry-rim-ai-toggle",
+        panelId: "industry-rim-ai-panel",
+        metaId: "industry-rim-ai-meta",
+        bodyId: "industry-rim-ai-body",
+        rereadId: "industry-rim-ai-reread",
+      });
     })();
   </script>
 </body>

@@ -212,9 +212,16 @@ def tip_hottest_labels(
     z_native: list[list[float | None]],
     n_dates: int,
     top_n: int = 5,
+    hottest_first: bool = True,
+    color: str | None = None,
 ) -> dict[str, object]:
-    """Red tip labels for the hottest ``top_n`` columns on the last row."""
-    empty: dict[str, object] = {"x": [], "y": [], "text": [], "color": "#dc2626"}
+    """Tip name labels for the hottest (or coldest) ``top_n`` columns on the last row.
+
+    Default is red hottest labels. Pass ``hottest_first=False`` (and usually a blue
+    ``color``) for the lowest tip values.
+    """
+    label_color = color or ("#dc2626" if hottest_first else "#2563eb")
+    empty: dict[str, object] = {"x": [], "y": [], "text": [], "color": label_color}
     if not ordered_codes or not z_native or n_dates < 1:
         return empty
     tip_row = z_native[-1]
@@ -232,7 +239,7 @@ def tip_hottest_labels(
         else:
             label = code
         scored.append((float(val), i, label))
-    scored.sort(reverse=True)
+    scored.sort(reverse=hottest_first)
     y_top = float(n_dates - 1) + 0.5
     xs: list[float] = []
     ys: list[float] = []
@@ -241,7 +248,7 @@ def tip_hottest_labels(
         xs.append(float(idx))
         ys.append(y_top)
         texts.append(label)
-    return {"x": xs, "y": ys, "text": texts, "color": "#dc2626"}
+    return {"x": xs, "y": ys, "text": texts, "color": label_color}
 
 
 def _scenario_note(

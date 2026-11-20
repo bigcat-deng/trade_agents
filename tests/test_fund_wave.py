@@ -80,6 +80,9 @@ class FundWaveTests(unittest.TestCase):
         tip_z = plane["z_boards"][-1]
         # 丙 should be the hottest tip column among the three
         self.assertEqual(plane["tip_labels"]["text"][0], "丙")
+        self.assertEqual(plane["tip_labels"]["color"], "#dc2626")
+        self.assertEqual(plane["tip_cold_labels"]["color"], "#2563eb")
+        self.assertIn("甲", plane["tip_cold_labels"]["text"])
         self.assertGreater(tip_z[plane["board_codes"].index("c")], 0.6)
 
     def test_panel_payload_rejects_unknown(self) -> None:

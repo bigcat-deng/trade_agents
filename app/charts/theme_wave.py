@@ -438,6 +438,7 @@ def render_theme_wave_contour(
     bottom_margin: int | None = None,  # legacy name; reserved space for top x-tick labels
     return_exceedance: dict[str, object] | None = None,
     tip_labels: dict[str, object] | None = None,
+    tip_cold_labels: dict[str, object] | None = None,
     cross_marks: dict[str, object] | None = None,
     fractal_marks: dict[str, object] | None = None,
     marker_halo: bool = False,
@@ -487,7 +488,11 @@ def render_theme_wave_contour(
         if bottom_margin is not None
         else (110 if tickangle or zoom_label_ready else 48)
     )
-    has_tip_overlay = return_exceedance is not None or tip_labels is not None
+    has_tip_overlay = (
+        return_exceedance is not None
+        or tip_labels is not None
+        or tip_cold_labels is not None
+    )
     margin_t = 28 + tick_margin + (40 if has_tip_overlay else 0)
     margin_b = 24
     has_csi500 = bool(csi500_returns) and any(v is not None for v in csi500_returns)
@@ -633,6 +638,8 @@ def render_theme_wave_contour(
         annotations.extend(exceedance_label_annotations(return_exceedance))
     if tip_labels is not None:
         annotations.extend(tip_label_annotations(tip_labels))
+    if tip_cold_labels is not None:
+        annotations.extend(tip_label_annotations(tip_cold_labels))
 
     shapes: list[dict] = []
     if forecast_split_y is not None:

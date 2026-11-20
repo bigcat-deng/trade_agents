@@ -35,6 +35,16 @@ from app.interpret.theme_wave import build_theme_wave_reading_prompt
 from app.themes.heat_wavelet2d import DEFAULT_WINDOW_DAYS as WAVELET_WINDOW_DAYS
 from app.interpret.concept_wavelet import build_concept_wavelet_reading_prompt
 from app.interpret.industry_wavelet import build_industry_wavelet_reading_prompt
+from app.interpret.industry_short_heat import (
+    DEFAULT_WINDOW_DAYS as INDUSTRY_SHORT_HEAT_WINDOW_DAYS,
+    build_industry_short_heat_reading_prompt,
+)
+from app.interpret.industry_fund_wave import build_industry_fund_wave_reading_prompt
+from app.interpret.industry_smooth_range import (
+    build_industry_smooth_range_reading_prompt,
+    build_industry_smooth_return_reading_prompt,
+)
+from app.interpret.industry_rim_joint import build_industry_rim_joint_reading_prompt
 from app.prompts.template import load_prompt
 
 
@@ -63,6 +73,11 @@ BUILDERS = {
     "theme-wave-reading": build_theme_wave_reading_prompt,
     "concept-wavelet-reading": build_concept_wavelet_reading_prompt,
     "industry-wavelet-reading": build_industry_wavelet_reading_prompt,
+    "industry-short-heat-reading": build_industry_short_heat_reading_prompt,
+    "industry-fund-wave-reading": build_industry_fund_wave_reading_prompt,
+    "industry-smooth-range-reading": build_industry_smooth_range_reading_prompt,
+    "industry-smooth-return-reading": build_industry_smooth_return_reading_prompt,
+    "industry-rim-joint-reading": build_industry_rim_joint_reading_prompt,
 }
 
 
@@ -100,6 +115,15 @@ WAVELET_READING_TEMPLATES = frozenset(
     {
         "concept-wavelet-reading",
         "industry-wavelet-reading",
+    }
+)
+WINDOWED_PROSE_TEMPLATES = frozenset(
+    {
+        "industry-short-heat-reading",
+        "industry-fund-wave-reading",
+        "industry-smooth-range-reading",
+        "industry-smooth-return-reading",
+        "industry-rim-joint-reading",
     }
 )
 
@@ -238,6 +262,22 @@ def _interpret_prose(
             )
             roster_key = max(20, min(180, roster_key))
             cache_name = f"{cache_name}#r{roster_key}"
+    elif template_name in WINDOWED_PROSE_TEMPLATES:
+        if roster_trading_days is not None:
+            raise InterpretError(
+                f"roster_trading_days is not supported for template {template_name}"
+            )
+        template, prompt, resolved = builder(
+            as_of, window_trading_days=window_trading_days
+        )
+        resolved_window = window_trading_days
+        if resolved_window is None:
+            resolved_window = int(
+                template.config.get("window_trading_days")
+                or INDUSTRY_SHORT_HEAT_WINDOW_DAYS
+            )
+        resolved_window = max(20, min(180, int(resolved_window)))
+        cache_name = f"{template.name}#d{resolved_window}"
     else:
         if window_trading_days is not None:
             raise InterpretError(

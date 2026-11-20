@@ -35,28 +35,28 @@ INDUSTRY_FUND_AXIS_NOTE = (
     "（共动近的挨在一起，整窗不逐日重排）；"
     f"颜色为 log(成交额) 相对近{FUND_ANOMALY_LOOKBACK}日自身均值的滚动 z"
     "（经 tanh 映到 0–1；越高=相对自身越异常放量）；"
-    "进深为时间；末日前方红字=截止日自身异常最高的行业名。"
+    "进深为时间；末日前方红字=自身异常最高、蓝字=最低的行业名。"
 )
 
 INDUSTRY_FUND_AXIS_NOTE_HEAT_ALIGN = (
     "横轴：与上方行业短热图同一叶序（列一一对应，便于对照）；"
     f"颜色为 log(成交额) 相对近{FUND_ANOMALY_LOOKBACK}日自身滚动 z"
     "（越高=相对自身越放量）；进深为时间；"
-    "末日前方红字=截止日自身异常最高的行业名。"
+    "末日前方红字=自身异常最高、蓝字=最低的行业名。"
 )
 
 CONCEPT_FUND_AXIS_NOTE = (
     f"横轴：近窗靠后四分之一成交额均值 Top{FUND_CONCEPT_TOP_N}"
     "∪ 全部主题分析概念；叶序=自身异常轨迹 + 成分/名称结构融合；"
     f"颜色为 log(成交额) 相对近{FUND_ANOMALY_LOOKBACK}日自身滚动 z（越高=相对自身越放量）；"
-    "进深为时间；末日前方红字=自身异常最高概念名。"
+    "进深为时间；末日前方红字=自身异常最高、蓝字=最低的概念名。"
 )
 
 CONCEPT_FUND_AXIS_NOTE_HEAT_ALIGN = (
     "横轴：与上方概念短热 Top∪主题图同一叶序（列一一对应，便于对照）；"
     f"颜色为 log(成交额) 相对近{FUND_ANOMALY_LOOKBACK}日自身滚动 z"
     "（越高=相对自身越放量）；进深为时间；"
-    "末日前方红字=自身异常最高概念名。"
+    "末日前方红字=自身异常最高、蓝字=最低的概念名。"
 )
 
 
@@ -144,6 +144,15 @@ def _build_plane(
         n_dates=len(window_dates),
         top_n=5,
     )
+    tip_cold_labels = tip_hottest_labels(
+        ordered_codes=ordered,
+        names=labels,
+        z_native=z_native,
+        n_dates=len(window_dates),
+        top_n=5,
+        hottest_first=False,
+        color="#2563eb",
+    )
     return {
         "dates": [d.isoformat() for d in window_dates],
         "board_codes": ordered,
@@ -159,6 +168,7 @@ def _build_plane(
         "densify": densify,
         "lookback": lookback,
         "tip_labels": tip_labels,
+        "tip_cold_labels": tip_cold_labels,
         "empty_message": None,
     }
 
@@ -186,6 +196,7 @@ def build_industry_fund_plane(
         "densify": densify,
         "lookback": lookback,
         "tip_labels": {"x": [], "y": [], "text": [], "color": "#dc2626"},
+        "tip_cold_labels": {"x": [], "y": [], "text": [], "color": "#2563eb"},
         "empty_message": "没有可绘制的行业成交额窗口",
     }
     if not window_dates:
@@ -257,6 +268,7 @@ def build_concept_fund_plane(
         "densify": densify,
         "lookback": lookback,
         "tip_labels": {"x": [], "y": [], "text": [], "color": "#dc2626"},
+        "tip_cold_labels": {"x": [], "y": [], "text": [], "color": "#2563eb"},
         "empty_message": "没有可绘制的概念成交额窗口",
     }
     if not window_dates:
@@ -277,7 +289,7 @@ def build_concept_fund_plane(
         note = (
             f"横轴：与上方概念短热同一叶序，共 {len(frozen)} 列；"
             f"颜色为 log(成交额) 相对近{lookback}日自身滚动 z（越高=相对自身越放量）；"
-            "进深为时间；末日前方红字=自身异常最高概念名。"
+            "进深为时间；末日前方红字=自身异常最高、蓝字=最低的概念名。"
         )
         plane = _build_plane(
             window_dates=window_dates,
@@ -337,7 +349,7 @@ def build_concept_fund_plane(
         f"∪ 主题概念（补入 {len(theme_added_codes)}），合计 {len(ordered)} 列；"
         "叶序=自身异常轨迹 + 成分/名称结构融合；"
         f"颜色为 log(成交额) 相对近{lookback}日自身滚动 z（越高=相对自身越放量）；"
-        "进深为时间；末日前方红字=自身异常最高概念名。"
+        "进深为时间；末日前方红字=自身异常最高、蓝字=最低的概念名。"
     )
     plane = _build_plane(
         window_dates=window_dates,
@@ -478,6 +490,7 @@ def build_fund_wave_panel_payload(
         entity_label=entity_label,
         tickangle=-45,
         tip_labels=plane.get("tip_labels"),
+        tip_cold_labels=plane.get("tip_cold_labels"),
         show_colorbar=False,
     )
     return out
